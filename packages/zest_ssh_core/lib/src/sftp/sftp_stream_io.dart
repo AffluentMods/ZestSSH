@@ -1,0 +1,211 @@
+// SPDX-License-Identifier: MIT
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:zest_ssh_core/src/sftp/sftp_client.dart';
+import 'package:zest_ssh_core/src/utils/stream.dart';
+
+/// The amount of data to send in a single SFTP packet.
+///
+/// From the SFTP spec it's safe to send up to 32KB of data in a single packet.
+/// We use 32KB: versus 16KB it halves the number of AWAITED SFTP write
+/// round-trips per MB (64 -> 32), which is what lifts throughput against the
+/// per-chunk RTT ceiling. Note it does NOT reduce SSH-layer work: a 32768-byte
+/// write is 32797 bytes on the channel once the SFTP header and file handle
+/// are added, so it exceeds OpenSSH's 32768-byte channel packet limit and is
+/// split into a full packet plus a small tail, leaving the encrypt/MAC count
+/// per MB unchanged. Reducing that would mean sizing the payload to
+/// remoteMaximumPacketSize minus the header, or negotiating
+/// limits@openssh.com.
+const chunkSize = 32 * 1024;
+
+/// The maximum amount of data that can be sent to the remote host without
+/// receiving an acknowledgement. Kept at 1MB (32 x 32KB) so doubling the chunk
+/// size does not widen the in-flight window or the encrypt burst.
+const maxBytesOnTheWire = chunkSize * 32;
+
+/// Holds the state of a streaming write operation from [stream] to [file].
+class SftpFileWriter with DoneFuture {
+  /// The remote file to write to.
+  final SftpFile file;
+
+  /// The stream of data to write to [file].
+  final Stream<Uint8List> stream;
+
+  /// The offset in [file] to start writing to.
+  final int offset;
+
+  /// Called when [bytes] of data have been successfully written to [file].
+  final Function(int bytes)? onProgress;
+
+  /// Creates a new [SftpFileWriter]. The upload process is started immediately
+  /// after construction.
+  SftpFileWriter(this.file, this.stream, this.offset, this.onProgress) {
+    _subscription = stream.transform(MaxChunkSize(chunkSize)).listen(
+          _handleLocalData,
+          onError: _handleLocalError,
+          onDone: _handleLocalDone,
+        );
+  }
+
+  /// The subscription for [stream]. We use this to pause and resume the data
+  /// source.
+  late final StreamSubscription<Uint8List> _subscription;
+
+  final _doneCompleter = Completer<void>();
+
+  /// Bytes of data that have been sent to the remote host.
+  var _bytesSent = 0;
+
+  /// Bytes of data that have been acknowledged by the remote host.
+  var _bytesAcked = 0;
+
+  /// Number of bytes sent to the server but not yet acknowledged.
+  ///
+  /// This number is used to pause the stream when it gets too high.
+  int get _bytesOnTheWire => _bytesSent - _bytesAcked;
+
+  /// Whether [stream] has emitted all of its data.
+  var _streamDone = false;
+
+  /// A [Future] that completes when:
+  ///
+  /// - All data from [stream] has been written to [file]
+  /// - Or the write operation has been aborted by calling [abort].
+  ///
+  /// It fails with the first write that the server refuses, and with what
+  /// [stream] itself fails with.
+  @override
+  Future<void> get done => _doneCompleter.future;
+
+  /// The number of bytes that have been successfully written to [file].
+  int get progress => _bytesAcked;
+
+  /// Stops [stream] from emitting more data. Returns a [Future] that completes
+  /// when the underlying data source of [stream] has been successfully closed.
+  ///
+  /// Calling [abort] will make [done] to complete immediately.
+  Future<void> abort() async {
+    if (!_doneCompleter.isCompleted) {
+      _doneCompleter.complete();
+    }
+    await _subscription.cancel();
+  }
+
+  /// Pauses [stream] from emitting more data. It's safe to call this even if
+  /// the stream is already paused. Use [resume] to resume the operation.
+  void pause() {
+    if (!_subscription.isPaused) {
+      _subscription.pause();
+    }
+  }
+
+  /// Resumes [stream] after it has been paused. It's safe to call this even if
+  /// the stream is not paused. Use [pause] to pause the operation.
+  void resume() {
+    _subscription.resume();
+  }
+
+  /// Handles the incoming data chunks from the stream.
+  ///
+  /// This function manages the flow control by pausing the stream if the
+  /// amount of unacknowledged data (`_bytesOnTheWire`) exceeds the
+  /// `maxBytesOnTheWire` limit. It then writes the data chunk to the remote file
+  /// at the appropriate offset, updates the counters, and triggers the
+  /// progress callback. Finally, it checks if all data has been acknowledged
+  /// and completes the operation if done.
+  Future<void> _handleLocalData(Uint8List chunk) async {
+    try {
+      if (_bytesOnTheWire >= maxBytesOnTheWire) {
+        _subscription.pause();
+      } else {
+        _subscription.resume();
+      }
+
+      final chunkWriteOffset = offset + _bytesSent;
+      _bytesSent += chunk.length;
+      await file.writeBytes(chunk, offset: chunkWriteOffset);
+
+      _bytesAcked += chunk.length;
+      onProgress?.call(_bytesAcked);
+
+      if (_bytesOnTheWire < maxBytesOnTheWire) {
+        _subscription.resume();
+      }
+
+      if (_streamDone &&
+          _bytesSent == _bytesAcked &&
+          !_doneCompleter.isCompleted) {
+        _doneCompleter.complete();
+      }
+    } catch (e, st) {
+      // A rejected WRITE (ENOSPC, revoked permission, SSH_FX_FAILURE) or a
+      // client close mid-write used to be swallowed by the fire-and-forget
+      // listen() handler, leaving [done] hanging forever. Surface it so the
+      // upload FAILS instead of stalling; the .zestpart staging plus
+      // size-verify-and-rename above this layer means the remote file is
+      // never left half-written.
+      if (!_doneCompleter.isCompleted) {
+        _doneCompleter.completeError(e, st);
+      }
+      await _subscription.cancel();
+    }
+  }
+
+  /// [stream] failed: a file that could not be read to its end. The writing
+  /// ends with that, at once, whatever of it is still on its way; nothing
+  /// more comes of a stream that has failed (what cuts it into pieces ends
+  /// with it). (It was listened to for its data and its end alone: the
+  /// failure went to nobody, the stream ended behind it, and the writing was
+  /// over without a failure, with as much written as had come.)
+  void _handleLocalError(Object error, StackTrace stackTrace) {
+    if (!_doneCompleter.isCompleted) {
+      _doneCompleter.completeError(error, stackTrace);
+    }
+  }
+
+  /// Handles the completion of the data stream.
+  ///
+  /// This function is triggered when the stream has finished emitting all its
+  /// data. It checks if all data has been successfully acknowledged and
+  /// marks the operation as complete by calling `_doneCompleter.complete()`
+  /// if no more data remains to be processed.
+  void _handleLocalDone() {
+    _streamDone = true;
+    if (_bytesSent == _bytesAcked && !_doneCompleter.isCompleted) {
+      _doneCompleter.complete();
+    }
+  }
+}
+
+/// Implements [Future] interface for [SftpFileWriter].
+///
+/// This is for compatibility with earlier versions of dartssh2 and dartssh2.
+mixin DoneFuture implements Future {
+  Future<void> get done;
+
+  @override
+  Stream<void> asStream() => done.asStream();
+
+  @override
+  Future<void> catchError(
+    Function onError, {
+    bool Function(Object error)? test,
+  }) =>
+      done.catchError(onError, test: test);
+
+  @override
+  Future<S> then<S>(FutureOr<S> Function(void) onValue, {Function? onError}) =>
+      done.then(onValue, onError: onError);
+
+  @override
+  Future<void> whenComplete(FutureOr Function() action) =>
+      done.whenComplete(action);
+
+  @override
+  Future<void> timeout(
+    Duration timeLimit, {
+    FutureOr<void> Function()? onTimeout,
+  }) =>
+      done.timeout(timeLimit, onTimeout: onTimeout);
+}

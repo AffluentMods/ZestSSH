@@ -1,0 +1,8 @@
+{
+ "name": "reset_xterm",
+ "program": "reset",
+ "term": "xterm-256color",
+ "rows": 30,
+ "cols": 100,
+ "data": "G2MbXTEwNAcbWyFwG1s/Mzs0bBtbNGwbPhtbPzY5bA0="
+}

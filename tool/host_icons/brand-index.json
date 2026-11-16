@@ -1,0 +1,218 @@
+[
+  {
+    "id": "ubuntu",
+    "name": "Ubuntu",
+    "source": "simple-icons",
+    "slug": "ubuntu",
+    "brandHex": "#E95420"
+  },
+  {
+    "id": "debian",
+    "name": "Debian",
+    "source": "simple-icons",
+    "slug": "debian",
+    "brandHex": "#A81D33"
+  },
+  {
+    "id": "fedora",
+    "name": "Fedora",
+    "source": "simple-icons",
+    "slug": "fedora",
+    "brandHex": "#51A2DA"
+  },
+  {
+    "id": "centos",
+    "name": "CentOS",
+    "source": "simple-icons",
+    "slug": "centos",
+    "brandHex": "#262577"
+  },
+  {
+    "id": "alpine",
+    "name": "Alpine",
+    "source": "simple-icons",
+    "slug": "alpinelinux",
+    "brandHex": "#0D597F"
+  },
+  {
+    "id": "arch",
+    "name": "Arch",
+    "source": "simple-icons",
+    "slug": "archlinux",
+    "brandHex": "#1793D1"
+  },
+  {
+    "id": "opensuse",
+    "name": "openSUSE",
+    "source": "simple-icons",
+    "slug": "opensuse",
+    "brandHex": "#73BA25"
+  },
+  {
+    "id": "nixos",
+    "name": "NixOS",
+    "source": "simple-icons",
+    "slug": "nixos",
+    "brandHex": "#5277C3"
+  },
+  {
+    "id": "kali",
+    "name": "Kali",
+    "source": "simple-icons",
+    "slug": "kalilinux",
+    "brandHex": "#557C94"
+  },
+  {
+    "id": "mint",
+    "name": "Linux Mint",
+    "source": "simple-icons",
+    "slug": "linuxmint",
+    "brandHex": "#86BE43"
+  },
+  {
+    "id": "popos",
+    "name": "Pop!_OS",
+    "source": "simple-icons",
+    "slug": "popos",
+    "brandHex": "#48B9C7"
+  },
+  {
+    "id": "macos",
+    "name": "macOS",
+    "source": "simple-icons",
+    "slug": "apple",
+    "brandHex": "#000000"
+  },
+  {
+    "id": "windows",
+    "name": "Windows",
+    "source": "fallback",
+    "fallback": "desktop"
+  },
+  {
+    "id": "freebsd",
+    "name": "FreeBSD",
+    "source": "simple-icons",
+    "slug": "freebsd",
+    "brandHex": "#AB2B28"
+  },
+  {
+    "id": "proxmox",
+    "name": "Proxmox",
+    "source": "simple-icons",
+    "slug": "proxmox",
+    "brandHex": "#E57000"
+  },
+  {
+    "id": "truenas",
+    "name": "TrueNAS",
+    "source": "simple-icons",
+    "slug": "truenas",
+    "brandHex": "#0095D5"
+  },
+  {
+    "id": "unraid",
+    "name": "Unraid",
+    "source": "simple-icons",
+    "slug": "unraid",
+    "brandHex": "#F15A2C"
+  },
+  {
+    "id": "esxi",
+    "name": "VMware ESXi",
+    "source": "simple-icons",
+    "slug": "vmware",
+    "brandHex": "#607078"
+  },
+  {
+    "id": "raspberrypi",
+    "name": "Raspberry Pi OS",
+    "source": "simple-icons",
+    "slug": "raspberrypi",
+    "brandHex": "#A22846"
+  },
+  {
+    "id": "homeassistant",
+    "name": "Home Assistant",
+    "source": "simple-icons",
+    "slug": "homeassistant",
+    "brandHex": "#18BCF2"
+  },
+  {
+    "id": "docker",
+    "name": "Docker container",
+    "source": "simple-icons",
+    "slug": "docker",
+    "brandHex": "#2496ED"
+  },
+  {
+    "id": "rhel",
+    "name": "RHEL",
+    "source": "simple-icons",
+    "slug": "redhat",
+    "brandHex": "#EE0000"
+  },
+  {
+    "id": "rocky",
+    "name": "Rocky",
+    "source": "simple-icons",
+    "slug": "rockylinux",
+    "brandHex": "#10B981"
+  },
+  {
+    "id": "alma",
+    "name": "AlmaLinux",
+    "source": "simple-icons",
+    "slug": "almalinux",
+    "brandHex": "#000000"
+  },
+  {
+    "id": "manjaro",
+    "name": "Manjaro",
+    "source": "simple-icons",
+    "slug": "manjaro",
+    "brandHex": "#35BFA4"
+  },
+  {
+    "id": "sles",
+    "name": "SLES",
+    "source": "simple-icons",
+    "slug": "suse",
+    "brandHex": "#0C322C"
+  },
+  {
+    "id": "gentoo",
+    "name": "Gentoo",
+    "source": "simple-icons",
+    "slug": "gentoo",
+    "brandHex": "#54487A"
+  },
+  {
+    "id": "void",
+    "name": "Void",
+    "source": "simple-icons",
+    "slug": "voidlinux",
+    "brandHex": "#478061"
+  },
+  {
+    "id": "parrot",
+    "name": "Parrot",
+    "source": "simple-icons",
+    "slug": "parrotsecurity",
+    "brandHex": "#15E0ED"
+  },
+  {
+    "id": "openbsd",
+    "name": "OpenBSD",
+    "source": "simple-icons",
+    "slug": "openbsd",
+    "brandHex": "#F2CA30"
+  },
+  {
+    "id": "netbsd",
+    "name": "NetBSD",
+    "source": "simple-icons",
+    "slug": "netbsd",
+    "brandHex": "#FF6600"
+  }
+]

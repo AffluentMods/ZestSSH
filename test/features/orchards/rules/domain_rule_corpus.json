@@ -1,0 +1,30 @@
+{
+  "about": "Who the rule on address domains holds back, as the app (domainRuleHolds, lib/features/orchards/rules/orchard_rules.dart) and the server (rulesUnmet, src/lib/orchard_rules.js) both decide it. The same file in both repositories: change one, copy it to the other. Made-up addresses only.",
+  "cases": [
+    { "why": "no rule, anyone", "domains": [], "email": "sam@other.example", "ends_at": null, "held": false },
+    { "why": "no rule, no address", "domains": [], "email": null, "ends_at": null, "held": false },
+    { "why": "at a domain of the list", "domains": ["corp.example"], "email": "ann@corp.example", "ends_at": null, "held": false },
+    { "why": "at the second domain of the list", "domains": ["corp.example", "other.example"], "email": "ann@other.example", "ends_at": null, "held": false },
+    { "why": "written in capitals, with spaces around", "domains": ["corp.example"], "email": " Ann@CORP.Example ", "ends_at": null, "held": false },
+    { "why": "outside the list, no end date", "domains": ["corp.example"], "email": "sam@other.example", "ends_at": null, "held": true },
+    { "why": "outside the list, an end date: a guest", "domains": ["corp.example"], "email": "sam@other.example", "ends_at": 1893456000, "held": false },
+    { "why": "at a domain of the list, an end date", "domains": ["corp.example"], "email": "ann@corp.example", "ends_at": 1893456000, "held": false },
+    { "why": "a subdomain is another domain", "domains": ["corp.example"], "email": "ann@mail.corp.example", "ends_at": null, "held": true },
+    { "why": "what counts is after the last @", "domains": ["corp.example"], "email": "\"a@corp.example\"@other.example", "ends_at": null, "held": true },
+    { "why": "no @ at all", "domains": ["corp.example"], "email": "corp.example", "ends_at": null, "held": true },
+    { "why": "empty address", "domains": ["corp.example"], "email": "", "ends_at": null, "held": true },
+    { "why": "no address", "domains": ["corp.example"], "email": null, "ends_at": null, "held": true },
+    { "why": "no address, an end date: a guest", "domains": ["corp.example"], "email": null, "ends_at": 1893456000, "held": false }
+  ],
+  "end_now": 1800000000,
+  "end_dates": [
+    { "why": "no end date", "ends_at": null, "too_far": false },
+    { "why": "gone by", "ends_at": 1700000000, "too_far": false },
+    { "why": "tomorrow", "ends_at": 1800086400, "too_far": false },
+    { "why": "as far as the picker goes, five years and two leap days", "ends_at": 1957939200, "too_far": false },
+    { "why": "the last second", "ends_at": 1958198400, "too_far": false },
+    { "why": "a second past it", "ends_at": 1958198401, "too_far": true },
+    { "why": "a year past it", "ends_at": 1989734400, "too_far": true },
+    { "why": "the largest whole number there is", "ends_at": 9007199254740991, "too_far": true }
+  ]
+}

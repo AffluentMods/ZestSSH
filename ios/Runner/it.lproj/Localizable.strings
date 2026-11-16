@@ -1,0 +1,22 @@
+/* The Shortcuts actions' words (ZestSSHIntents.swift): titles, descriptions, what a run returns. */
+
+"Run SSH Command" = "Esegui comando SSH";
+"Runs a command on a saved host in ZestSSH." = "Esegue un comando su un host salvato in ZestSSH.";
+"SSH" = "SSH";
+"Host" = "Host";
+"The name of a saved host, or its id" = "Il nome di un host salvato, o il suo id";
+"Command" = "Comando";
+"The shell command to execute" = "Il comando shell da eseguire";
+"Timeout (seconds)" = "Timeout (secondi)";
+"API Key" = "Chiave API";
+"An automation API key from ZestSSH (Automation, API keys)" = "Una chiave API di automazione di ZestSSH (Automazione, Chiavi API)";
+"Error: failed to build automation URL" = "Errore: impossibile creare il link di automazione";
+"Command sent to ZestSSH" = "Comando inviato a ZestSSH";
+"Run SSH Snippet" = "Esegui snippet SSH";
+"Runs a saved snippet on a host in ZestSSH." = "Esegue uno snippet salvato su un host in ZestSSH.";
+"Snippet Name" = "Nome dello snippet";
+"The name of the saved snippet to run" = "Il nome dello snippet salvato da eseguire";
+"Snippet sent to ZestSSH" = "Snippet inviato a ZestSSH";
+"Connect via SSH" = "Connetti via SSH";
+"Opens ZestSSH and connects to a saved host." = "Apre ZestSSH e si connette a un host salvato.";
+"Run Snippet" = "Esegui snippet";

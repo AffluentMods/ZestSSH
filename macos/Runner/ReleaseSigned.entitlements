@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        The entitlements of the SIGNED release build only (4.0): the build
+        that is signed with the Developer ID certificate and carries the
+        Developer ID provisioning profile as
+        ZestSSH.app/Contents/embedded.provisionprofile. Xcode does not use
+        this file (CODE_SIGN_ENTITLEMENTS names Release.entitlements); the
+        release's signing step passes it to codesign.
+
+        It is Release.entitlements and three more. Associated domains lets
+        the app make and use passkeys for zestssh.com itself
+        (PasskeyChannel.swift); macOS grants it only where the embedded
+        profile does, and the profile is for one application identifier of
+        one team, which the other two name. An entitlement the profile does
+        not grant makes macOS refuse to start the app, so these three are in
+        no other build: a debug run, an unsigned build and a community build
+        use Release.entitlements or DebugProfile.entitlements, hold no
+        associated domains, and make passkeys through the website as before
+        4.0 (PasskeyChannel.mayAskForPasskeys reads what the running app
+        really holds). test/docs/mac_entitlements_test.dart keeps the two
+        files in step.
+    -->
+    <key>com.apple.application-identifier</key>
+    <string>D52P6T66KW.com.affluentlabs.zestssh</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>D52P6T66KW</string>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>webcredentials:zestssh.com</string>
+    </array>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>

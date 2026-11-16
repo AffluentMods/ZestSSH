@@ -1,0 +1,22 @@
+name: speech_to_text_windows
+description: Windows implementation of speech_to_text (speech_to_text_windows 1.0.1 from pub.dev, vendored with fixes, see CHANGELOG.md).
+version: 1.0.1+zest.1
+publish_to: none
+homepage: https://github.com/csdcorp/speech_to_text
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"
+
+flutter:
+  plugin:
+    implements: speech_to_text
+    platforms:
+      windows:
+        pluginClass: SpeechToTextWindows
+        dartPluginClass: SpeechToTextWindows
+
+dependencies:
+  flutter:
+    sdk: flutter
+  speech_to_text_platform_interface: ^2.4.0

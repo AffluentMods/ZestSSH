@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">Новый хост</string>
+    <string name="shortcut_new_connection_long">Создать новый хост</string>
+    <string name="shortcut_import">Импорт</string>
+    <string name="shortcut_import_long">Импортировать конфигурацию SSH</string>
+    <string name="shortcut_snippets">Сниппеты</string>
+    <string name="shortcut_snippets_long">Управление сниппетами</string>
+    <string name="widget_description">Подключайтесь к своим хостам одним касанием</string>
+    <string name="notification_channel_name">SSH-сеансы</string>
+    <string name="notification_channel_description">Показывается, пока открыты SSH-сеансы, чтобы они продолжали работать</string>
+    <string name="notification_active_one">Одна активная SSH-сессия</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="one">%d активная SSH-сессия</item>
+        <item quantity="few">%d активные SSH-сессии</item>
+        <item quantity="many">%d активных SSH-сессий</item>
+        <item quantity="other">%d активной SSH-сессии</item>
+    </plurals>
+    <string name="scheduled_channel_name">Запланированные задачи</string>
+    <string name="scheduled_channel_description">Просит запустить запланированную задачу, когда Android не даёт ZestSSH запустить её самому</string>
+    <string name="scheduled_ready_title">Запланированная задача готова</string>
+    <string name="scheduled_ready_text">Нажмите, чтобы запустить её. Android позволяет ZestSSH запускать задачи самому, только пока приложение открыто.</string>
+    <string name="widget_empty">Хостов пока нет. Нажмите +, чтобы добавить.</string>
+    <string name="widget_locked">Блокировка приложения включена\nОткройте ZestSSH, чтобы подключиться.</string>
+</resources>

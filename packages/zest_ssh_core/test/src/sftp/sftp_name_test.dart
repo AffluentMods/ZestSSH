@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: MIT
+import 'dart:typed_data';
+
+import 'package:zest_ssh_core/src/sftp/sftp_file_attrs.dart';
+import 'package:zest_ssh_core/src/sftp/sftp_name.dart';
+import 'package:zest_ssh_core/src/sftp/sftp_name_bytes.dart';
+import 'package:zest_ssh_core/src/ssh_message.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('SftpName writeTo/readFrom roundtrip', () {
+    final original = SftpName(
+      filename: 'report.txt',
+      longname: '-rw-r--r-- 1 user group 10 report.txt',
+      attr: SftpFileAttrs(
+        size: 10,
+        mode: const SftpFileMode.value((1 << 15) + 0x1A4),
+      ),
+    );
+
+    final writer = SSHMessageWriter();
+    original.writeTo(writer);
+
+    final reader = SSHMessageReader(writer.takeBytes());
+    final decoded = SftpName.readFrom(reader);
+
+    expect(decoded.filename, 'report.txt');
+    expect(decoded.longname, '-rw-r--r-- 1 user group 10 report.txt');
+    expect(decoded.attr.size, 10);
+    expect(decoded.attr.isFile, isTrue);
+  });
+
+  test('SftpName.readFrom tolerates malformed UTF-8 bytes', () {
+    final writer = SSHMessageWriter();
+    writer.writeString(Uint8List.fromList([0x66, 0x6f, 0x80, 0x6f]));
+    writer.writeString(Uint8List.fromList([0x6c, 0x73, 0xff]));
+    SftpFileAttrs().writeTo(writer);
+
+    final reader = SSHMessageReader(writer.takeBytes());
+    final decoded = SftpName.readFrom(reader);
+
+    // The name keeps its bytes, so it is asked for as it was listed
+    // (sftp_name_bytes_test); the long name is only shown.
+    expect(decoded.filename, 'fo${String.fromCharCode(sftpRawByteBase + 0x80)}o');
+    expect(sftpBytesOf(decoded.filename), [0x66, 0x6f, 0x80, 0x6f]);
+    expect(decoded.longname, 'ls\uFFFD');
+    expect(decoded.attr.size, isNull);
+  });
+}

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">Neuer Host</string>
+    <string name="shortcut_new_connection_long">Neuen Host anlegen</string>
+    <string name="shortcut_import">Importieren</string>
+    <string name="shortcut_import_long">SSH-Konfiguration importieren</string>
+    <string name="shortcut_snippets">Snippets</string>
+    <string name="shortcut_snippets_long">Snippets verwalten</string>
+    <string name="widget_description">Mit einem Tippen mit Ihren Hosts verbinden</string>
+    <string name="notification_channel_name">SSH-Sitzungen</string>
+    <string name="notification_channel_description">Wird angezeigt, solange SSH-Sitzungen offen sind, damit sie weiterlaufen</string>
+    <string name="notification_active_one">Eine aktive SSH-Sitzung</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="one">%d aktive SSH-Sitzung</item>
+        <item quantity="other">%d aktive SSH-Sitzungen</item>
+    </plurals>
+    <string name="scheduled_channel_name">Geplante Aufgaben</string>
+    <string name="scheduled_channel_description">Bittet Sie, eine geplante Aufgabe auszuführen, wenn Android ZestSSH sie nicht selbst starten lässt</string>
+    <string name="scheduled_ready_title">Eine geplante Aufgabe ist bereit</string>
+    <string name="scheduled_ready_text">Tippen Sie, um sie auszuführen. Android lässt ZestSSH eine Aufgabe nur dann selbst starten, wenn die App geöffnet ist.</string>
+    <string name="widget_empty">Noch keine Hosts. Tippen Sie auf +, um einen hinzuzufügen.</string>
+    <string name="widget_locked">App-Sperre ist an\nÖffnen Sie ZestSSH, um sich zu verbinden.</string>
+</resources>

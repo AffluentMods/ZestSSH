@@ -1,0 +1,40 @@
+# CI for the standalone public zest_ssh_core repo.
+# In the monorepo this file does nothing (Actions run from the repo root);
+# it is here so it ships with the package copy that becomes the public repo, whose working branch is
+# zest (it ran on main only, which the fork does not use).
+name: test
+
+on:
+  push:
+    branches: [zest]
+  pull_request:
+    branches: [zest]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          # The Dart the app ships with (Flutter 3.38.9), so CI checks what users run.
+          sdk: 3.10.8
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+        continue-on-error: true
+
+      - name: Analyze
+        run: dart analyze
+
+      - name: Run tests
+        run: dart test

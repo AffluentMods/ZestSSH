@@ -1,0 +1,486 @@
+// SPDX-License-Identifier: MIT
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:zest_ssh_core/dartssh2.dart';
+import 'package:zest_ssh_core/src/hostkey/hostkey_rsa.dart';
+import 'package:zest_ssh_core/src/message/msg_channel.dart';
+import 'package:zest_ssh_core/src/ssh_channel.dart';
+import 'package:zest_ssh_core/src/ssh_hostkey.dart';
+import 'package:zest_ssh_core/src/ssh_message.dart';
+import 'package:test/test.dart';
+
+import '../test_utils.dart';
+
+class _RecordingAgentHandler implements SSHAgentHandler {
+  _RecordingAgentHandler(this.response);
+
+  final Uint8List response;
+  final requests = <Uint8List>[];
+
+  @override
+  Future<Uint8List> handleRequest(Uint8List request) async {
+    requests.add(request);
+    return response;
+  }
+}
+
+/// An agent whose answer takes as long as [_answer] does.
+class _SlowAgentHandler implements SSHAgentHandler {
+  _SlowAgentHandler(this._answer);
+
+  final Future<Uint8List> _answer;
+
+  @override
+  Future<Uint8List> handleRequest(Uint8List request) => _answer;
+}
+
+/// Like a hardware token or a key held by a local agent: it can only sign
+/// asynchronously, and [sign] throws.
+class _AsyncOnlyKey extends SSHKeyPair {
+  _AsyncOnlyKey(this._real, {this.refuse = false});
+
+  final SSHKeyPair _real;
+  final bool refuse;
+
+  @override
+  String get name => _real.name;
+
+  @override
+  String get type => _real.type;
+
+  @override
+  SSHHostKey toPublicKey() => _real.toPublicKey();
+
+  @override
+  SSHSignature sign(Uint8List data) =>
+      throw UnsupportedError('this key only signs asynchronously');
+
+  @override
+  Future<SSHSignature> signAsync(Uint8List data) async {
+    if (refuse) throw StateError('touch not confirmed');
+    return _real.sign(data);
+  }
+
+  @override
+  String toPem() => throw UnsupportedError('no PEM for a token key');
+}
+
+class _BlobHostKey implements SSHHostKey {
+  _BlobHostKey(this._blob);
+
+  final Uint8List _blob;
+
+  @override
+  Uint8List encode() => _blob;
+}
+
+/// Presents its own public blob (as a certificate does) and signs with an
+/// inner key.
+class _WrappedKey extends SSHKeyPair implements SSHWrappedKeyPair {
+  _WrappedKey(this.innerKey, this._blob);
+
+  @override
+  final SSHKeyPair innerKey;
+
+  final Uint8List _blob;
+
+  @override
+  String get name => 'wrapped';
+
+  @override
+  String get type => innerKey.type;
+
+  @override
+  SSHHostKey toPublicKey() => _BlobHostKey(_blob);
+
+  @override
+  SSHSignature sign(Uint8List data) => innerKey.sign(data);
+
+  @override
+  String toPem() => innerKey.toPem();
+}
+
+void main() {
+  final rsaPrivate = fixture('ssh-rsa/id_rsa');
+
+  SSHKeyPair rsaIdentity() {
+    return SSHKeyPair.fromPem(rsaPrivate).single;
+  }
+
+  Uint8List buildRequestIdentities() {
+    final writer = SSHMessageWriter();
+    writer.writeUint8(SSHAgentProtocol.requestIdentities);
+    return writer.takeBytes();
+  }
+
+  Uint8List buildSignRequest(SSHKeyPair identity, Uint8List data, int flags) {
+    final writer = SSHMessageWriter();
+    writer.writeUint8(SSHAgentProtocol.signRequest);
+    writer.writeString(identity.toPublicKey().encode());
+    writer.writeString(data);
+    writer.writeUint32(flags);
+    return writer.takeBytes();
+  }
+
+  test('SSHKeyPairAgent returns identities', () async {
+    final identity = rsaIdentity();
+    final agent = SSHKeyPairAgent([identity], comment: 'test-key');
+
+    final response = await agent.handleRequest(buildRequestIdentities());
+    final reader = SSHMessageReader(response);
+
+    expect(reader.readUint8(), SSHAgentProtocol.identitiesAnswer);
+    expect(reader.readUint32(), 1);
+    final keyBlob = reader.readString();
+    final comment = reader.readUtf8();
+
+    expect(keyBlob, identity.toPublicKey().encode());
+    expect(comment, 'test-key');
+  });
+
+  test('SSHKeyPairAgent signs RSA with expected signature type', () async {
+    final identity = rsaIdentity();
+    final agent = SSHKeyPairAgent([identity]);
+    final data = Uint8List.fromList('sign-me'.codeUnits);
+
+    final cases = <int, String>{
+      SSHAgentProtocol.rsaSha2_256: SSHRsaSignatureType.sha256,
+      SSHAgentProtocol.rsaSha2_512: SSHRsaSignatureType.sha512,
+      0: SSHRsaSignatureType.sha1,
+    };
+
+    for (final entry in cases.entries) {
+      final response = await agent.handleRequest(
+        buildSignRequest(identity, data, entry.key),
+      );
+      final reader = SSHMessageReader(response);
+      expect(reader.readUint8(), SSHAgentProtocol.signResponse);
+
+      final signatureBlob = reader.readString();
+      final signature = SSHRsaSignature.decode(signatureBlob);
+      expect(signature.type, entry.value);
+    }
+  });
+
+  test('SSHKeyPairAgent returns failure for empty and unknown requests',
+      () async {
+    final identity = rsaIdentity();
+    final agent = SSHKeyPairAgent([identity]);
+
+    final emptyResponse = await agent.handleRequest(Uint8List(0));
+    expect(
+        SSHMessageReader(emptyResponse).readUint8(), SSHAgentProtocol.failure);
+
+    final unknownWriter = SSHMessageWriter();
+    unknownWriter.writeUint8(255);
+    final unknownResponse =
+        await agent.handleRequest(unknownWriter.takeBytes());
+    expect(
+      SSHMessageReader(unknownResponse).readUint8(),
+      SSHAgentProtocol.failure,
+    );
+  });
+
+  test('SSHKeyPairAgent returns failure when signing with unknown identity',
+      () async {
+    final agent = SSHKeyPairAgent([rsaIdentity()]);
+    final writer = SSHMessageWriter();
+    writer.writeUint8(SSHAgentProtocol.signRequest);
+    writer.writeString(Uint8List.fromList([0, 1, 2, 3]));
+    writer.writeString(Uint8List.fromList('sign-me'.codeUnits));
+    writer.writeUint32(SSHAgentProtocol.rsaSha2_256);
+
+    final response = await agent.handleRequest(writer.takeBytes());
+
+    expect(SSHMessageReader(response).readUint8(), SSHAgentProtocol.failure);
+  });
+
+  test('SSHAgentChannel handles fragmented request frames', () async {
+    final sentMessages = <SSHMessage>[];
+    final dataMessage = Completer<SSH_Message_Channel_Data>();
+    final handler = _RecordingAgentHandler(Uint8List.fromList([42, 43, 44]));
+
+    final controller = SSHChannelController(
+      localId: 1,
+      localMaximumPacketSize: 1024,
+      localInitialWindowSize: 1024,
+      remoteId: 2,
+      remoteMaximumPacketSize: 1024,
+      remoteInitialWindowSize: 1024,
+      sendMessage: (message) {
+        sentMessages.add(message);
+        if (message is SSH_Message_Channel_Data && !dataMessage.isCompleted) {
+          dataMessage.complete(message);
+        }
+      },
+    );
+
+    SSHAgentChannel(controller.channel, handler);
+
+    final requestPayload = Uint8List.fromList([
+      SSHAgentProtocol.requestIdentities,
+    ]);
+    final requestWriter = SSHMessageWriter();
+    requestWriter.writeUint32(requestPayload.length);
+    requestWriter.writeBytes(requestPayload);
+    final framedRequest = requestWriter.takeBytes();
+
+    controller.handleMessage(
+      SSH_Message_Channel_Data(
+        recipientChannel: controller.localId,
+        data: framedRequest.sublist(0, 2),
+      ),
+    );
+
+    controller.handleMessage(
+      SSH_Message_Channel_Data(
+        recipientChannel: controller.localId,
+        data: framedRequest.sublist(2),
+      ),
+    );
+
+    final responseMessage = await dataMessage.future;
+    expect(handler.requests.length, 1);
+    expect(handler.requests.single, requestPayload);
+
+    final responseReader = SSHMessageReader(responseMessage.data);
+    expect(responseReader.readUint32(), 3);
+    expect(responseReader.readBytes(3), Uint8List.fromList([42, 43, 44]));
+
+    expect(
+      sentMessages.whereType<SSH_Message_Channel_Data>().length,
+      1,
+    );
+
+    controller.destroy();
+  });
+
+  test('SSHAgentChannel handles back-to-back frames in one chunk', () async {
+    final dataMessages = <SSH_Message_Channel_Data>[];
+    final twoResponses = Completer<void>();
+    final handler = _RecordingAgentHandler(Uint8List.fromList([7, 8]));
+
+    final controller = SSHChannelController(
+      localId: 1,
+      localMaximumPacketSize: 1024,
+      localInitialWindowSize: 1024,
+      remoteId: 2,
+      remoteMaximumPacketSize: 1024,
+      remoteInitialWindowSize: 1024,
+      sendMessage: (message) {
+        if (message is SSH_Message_Channel_Data) {
+          dataMessages.add(message);
+          if (dataMessages.length == 2 && !twoResponses.isCompleted) {
+            twoResponses.complete();
+          }
+        }
+      },
+    );
+
+    SSHAgentChannel(controller.channel, handler);
+
+    Uint8List frame(Uint8List payload) {
+      final writer = SSHMessageWriter();
+      writer.writeUint32(payload.length);
+      writer.writeBytes(payload);
+      return writer.takeBytes();
+    }
+
+    final requestA = Uint8List.fromList([SSHAgentProtocol.requestIdentities]);
+    final requestB = Uint8List.fromList([SSHAgentProtocol.signRequest]);
+
+    final frameA = frame(requestA);
+    final frameB = frame(requestB);
+    final chunk = Uint8List(frameA.length + frameB.length)
+      ..setAll(0, frameA)
+      ..setAll(frameA.length, frameB);
+
+    controller.handleMessage(
+      SSH_Message_Channel_Data(
+        recipientChannel: controller.localId,
+        data: chunk,
+      ),
+    );
+
+    await twoResponses.future;
+
+    expect(handler.requests.length, 2);
+    expect(handler.requests[0], requestA);
+    expect(handler.requests[1], requestB);
+
+    for (final response in dataMessages) {
+      final responseReader = SSHMessageReader(response.data);
+      expect(responseReader.readUint32(), 2);
+      expect(responseReader.readBytes(2), Uint8List.fromList([7, 8]));
+    }
+
+    controller.destroy();
+  });
+
+  test('SSHAgentChannel ignores incomplete frame when channel closes',
+      () async {
+    final dataMessages = <SSH_Message_Channel_Data>[];
+    final handler = _RecordingAgentHandler(Uint8List.fromList([1]));
+
+    final controller = SSHChannelController(
+      localId: 1,
+      localMaximumPacketSize: 1024,
+      localInitialWindowSize: 1024,
+      remoteId: 2,
+      remoteMaximumPacketSize: 1024,
+      remoteInitialWindowSize: 1024,
+      sendMessage: (message) {
+        if (message is SSH_Message_Channel_Data) {
+          dataMessages.add(message);
+        }
+      },
+    );
+
+    SSHAgentChannel(controller.channel, handler);
+
+    final truncatedFrame = Uint8List.fromList([
+      0,
+      0,
+      0,
+      10,
+      SSHAgentProtocol.requestIdentities,
+    ]);
+
+    controller.handleMessage(
+      SSH_Message_Channel_Data(
+        recipientChannel: controller.localId,
+        data: truncatedFrame,
+      ),
+    );
+
+    controller.handleMessage(
+      SSH_Message_Channel_EOF(recipientChannel: controller.localId),
+    );
+    controller.handleMessage(
+      SSH_Message_Channel_Close(recipientChannel: controller.localId),
+    );
+
+    await Future<void>.delayed(Duration.zero);
+
+    expect(handler.requests, isEmpty);
+    expect(dataMessages, isEmpty);
+
+    controller.destroy();
+  });
+
+  // The program on the host that used the agent (ssh-add -l, git, ssh to a
+  // third host) closes its socket and the host says EOF. Nothing ended this
+  // side, so the channel stayed open on both sides for as long as the
+  // connection lasted, one more for every use of the agent.
+  group('SSHAgentChannel after the host says EOF', () {
+    late List<SSHMessage> sent;
+    late SSHChannelController controller;
+
+    setUp(() {
+      sent = [];
+      controller = SSHChannelController(
+        localId: 1,
+        localMaximumPacketSize: 32768,
+        localInitialWindowSize: 2 * 1024 * 1024,
+        remoteId: 7,
+        remoteMaximumPacketSize: 32768,
+        remoteInitialWindowSize: 2 * 1024 * 1024,
+        sendMessage: sent.add,
+      );
+    });
+    tearDown(() => controller.destroy());
+
+    Uint8List frame(int type) => (SSHMessageWriter()
+          ..writeUint32(1)
+          ..writeUint8(type))
+        .takeBytes();
+
+    List<Type> kinds() => [
+          for (final m in sent)
+            if (m is! SSH_Message_Channel_Window_Adjust) m.runtimeType,
+        ];
+
+    test('ends its side: EOF and CLOSE after the answer', () async {
+      SSHAgentChannel(controller.channel, _RecordingAgentHandler(Uint8List.fromList([SSHAgentProtocol.failure])));
+      controller.handleMessage(SSH_Message_Channel_Data(recipientChannel: 1, data: frame(SSHAgentProtocol.requestIdentities)));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(kinds(), [SSH_Message_Channel_Data]);
+
+      controller.handleMessage(SSH_Message_Channel_EOF(recipientChannel: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(kinds(), [SSH_Message_Channel_Data, SSH_Message_Channel_EOF, SSH_Message_Channel_Close]);
+      expect((sent.last as SSH_Message_Channel_Close).recipientChannel, 7);
+      await controller.channel.done.timeout(const Duration(seconds: 1));
+    });
+
+    test('a request still being answered when the host says EOF is answered first', () async {
+      final answer = Completer<Uint8List>();
+      SSHAgentChannel(controller.channel, _SlowAgentHandler(answer.future));
+      // The request and EOF at once: a program that writes its request and
+      // shuts its side of the socket.
+      controller.handleMessage(SSH_Message_Channel_Data(recipientChannel: 1, data: frame(SSHAgentProtocol.requestIdentities)));
+      controller.handleMessage(SSH_Message_Channel_EOF(recipientChannel: 1));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(kinds(), isEmpty, reason: 'nothing ends before the answer');
+
+      answer.complete(Uint8List.fromList([SSHAgentProtocol.failure]));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(kinds(), [SSH_Message_Channel_Data, SSH_Message_Channel_EOF, SSH_Message_Channel_Close]);
+    });
+  });
+
+  group('forwarding keys that are not plain software keys', () {
+    final ed25519 = SSHKeyPair.fromPem(fixture('ssh-ed25519/id_ed25519')).single;
+    final data = Uint8List.fromList('sign-me'.codeUnits);
+
+    test('a key that only signs asynchronously (hardware token) signs',
+        () async {
+      final token = _AsyncOnlyKey(ed25519);
+      final agent = SSHKeyPairAgent([token]);
+
+      final response =
+          await agent.handleRequest(buildSignRequest(token, data, 0));
+      final reader = SSHMessageReader(response);
+
+      expect(reader.readUint8(), SSHAgentProtocol.signResponse);
+      expect(reader.readString(), ed25519.sign(data).encode());
+    });
+
+    test('a refused signature is an agent failure, not an error', () async {
+      final token = _AsyncOnlyKey(ed25519, refuse: true);
+      final agent = SSHKeyPairAgent([token]);
+
+      final response =
+          await agent.handleRequest(buildSignRequest(token, data, 0));
+
+      expect(SSHMessageReader(response).readUint8(), SSHAgentProtocol.failure);
+    });
+
+    test('a wrapped RSA key (a certificate) gets the hash the request asks for',
+        () async {
+      final rsa = rsaIdentity();
+      final blob = Uint8List.fromList(
+          [...'cert:'.codeUnits, ...rsa.toPublicKey().encode()]);
+      final wrapped = _WrappedKey(rsa, blob);
+      final agent = SSHKeyPairAgent([wrapped]);
+
+      final identities = SSHMessageReader(
+          await agent.handleRequest(buildRequestIdentities()));
+      expect(identities.readUint8(), SSHAgentProtocol.identitiesAnswer);
+      expect(identities.readUint32(), 1);
+      expect(identities.readString(), blob);
+
+      for (final entry in {
+        SSHAgentProtocol.rsaSha2_512: SSHRsaSignatureType.sha512,
+        SSHAgentProtocol.rsaSha2_256: SSHRsaSignatureType.sha256,
+      }.entries) {
+        final reader = SSHMessageReader(await agent
+            .handleRequest(buildSignRequest(wrapped, data, entry.key)));
+        expect(reader.readUint8(), SSHAgentProtocol.signResponse);
+        expect(SSHRsaSignature.decode(reader.readString()).type, entry.value);
+      }
+    });
+  });
+}

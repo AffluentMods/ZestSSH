@@ -1,0 +1,735 @@
+// SPDX-License-Identifier: MIT
+import 'dart:async';
+import 'dart:math';
+
+import 'dart:typed_data';
+
+import 'package:zest_ssh_core/src/ssh_channel_id.dart';
+import 'package:zest_ssh_core/src/ssh_errors.dart';
+import 'package:zest_ssh_core/src/ssh_transport.dart';
+import 'package:zest_ssh_core/src/utils/async_queue.dart';
+import 'package:zest_ssh_core/src/message/msg_channel.dart';
+import 'package:zest_ssh_core/src/ssh_message.dart';
+import 'package:zest_ssh_core/src/utils/stream.dart';
+
+/// Handler of channel requests. Return true if the request was handled, false
+/// if the request was not recognized or could not be handled.
+typedef SSHChannelRequestHandler = bool Function(
+  SSH_Message_Channel_Request request,
+);
+
+class SSHChannelController {
+  final int localId;
+  final int localMaximumPacketSize;
+  final int localInitialWindowSize;
+
+  final int remoteId;
+  final int remoteMaximumPacketSize;
+  final int remoteInitialWindowSize;
+
+  final SSHPrintHandler? printDebug;
+
+  final void Function(SSHMessage) sendMessage;
+
+  /// Backpressure hook for bulk sends: completes once everything written to
+  /// the transport so far has been accepted by the OS (see
+  /// `SSHTransport.drainSocket`). Null (tests, exotic transports) = no-op.
+  final Future<void> Function()? drainSocket;
+
+  /// Bytes of channel data queued between two drains. Bounds the Dart-side
+  /// socket backlog, and with it the latency any other channel's packet sees
+  /// on a slow link (128 KB is ~75 ms on a 14 Mbps uplink). Small enough to
+  /// matter, large enough that the per-drain overhead is noise.
+  static const int _drainAfterBytes = 128 * 1024;
+
+  SSHChannel get channel => SSHChannel(this);
+
+  SSHChannelController({
+    required this.localId,
+    required this.localMaximumPacketSize,
+    required this.localInitialWindowSize,
+    required this.remoteId,
+    required this.remoteInitialWindowSize,
+    required this.remoteMaximumPacketSize,
+    required this.sendMessage,
+    this.drainSocket,
+    this.printDebug,
+  }) {
+    if (remoteInitialWindowSize > 0) {
+      _uploadLoop.activate();
+    }
+  }
+
+  /// Remaining local receive window size.
+  late var _localWindow = localInitialWindowSize;
+
+  /// Remaining remote receive window size.
+  late var _remoteWindow = remoteInitialWindowSize;
+
+  /// A [StreamController] that receives data from the remote side. While
+  /// nobody reads it (not yet, or not for the moment) the window is left
+  /// where it is, so that no more than a window's worth waits here; it is
+  /// opened again when a reader begins, and when one comes back.
+  late final _remoteStream = StreamController<SSHChannelData>(
+    onListen: _sendWindowAdjustIfNeeded,
+    onResume: _sendWindowAdjustIfNeeded,
+  );
+
+  /// A [StreamController] that accepts data from local end of the channel.
+  final _localStream = StreamController<SSHChannelData>();
+
+  late final _locaStreamConsumer = SSHChannelDataConsumer(_localStream.stream);
+
+  /// Handler of channel requests from the remote side.
+  late var _requestHandler = _defaultRequestHandler;
+
+  /// An [AsyncQueue] of pending request replies from the remote side.
+  final _requestReplyQueue = AsyncQueue<bool>();
+
+  /// How many requests on this channel went out asking for a reply and have
+  /// not had it. A reply when none is owed is dropped: each was kept for as
+  /// long as the channel lasted and answered a later request in place of
+  /// its own reply (found in a security review, November 2026).
+  var _repliesOwed = 0;
+
+  /// true if we have sent an EOF message to the remote side.
+  var _hasSentEOF = false;
+
+  /// true if we have sent an close message to the remote side.
+  var _hasSentClose = false;
+
+  final _done = Completer<void>();
+
+  /// What ended the channel, where that was the end of its connection.
+  Object? _endedBecause;
+
+  /// Sends [request], which asks for a reply, and waits for that reply. On a
+  /// channel that has ended nothing is sent (the id may be another
+  /// channel's by now) and the wait fails at once; a request still waiting
+  /// when the channel ends fails then, where it used to wait for ever.
+  Future<bool> _ask(SSH_Message_Channel_Request request) async {
+    if (_done.isCompleted) {
+      throw _endedBecause ?? SSHStateError('Channel is closed');
+    }
+    _repliesOwed++;
+    sendMessage(request);
+    return await _requestReplyQueue.next;
+  }
+
+  /// A reply to a request on this channel: to whoever waits for one, and
+  /// dropped where no request is owed one.
+  void _reply(bool granted) {
+    if (_repliesOwed == 0) {
+      printDebug?.call('SSHChannel: a reply to a request that was not made, dropped');
+      return;
+    }
+    _repliesOwed--;
+    _requestReplyQueue.add(granted);
+  }
+
+  /// The channel has ended: no reply will come for a request that still
+  /// waits for one. Such a request fails with [because] where the channel
+  /// ended with its connection (what ended that), and otherwise as a request
+  /// the server did not grant: it closed the channel instead of answering.
+  void _finish([Object? because]) {
+    _endedBecause = because;
+    _done.complete();
+    _requestReplyQueue.close(
+      because ?? SSHChannelRequestError('The channel closed before the request was answered'),
+    );
+  }
+
+  Future<bool> sendExec(String command) async {
+    return _ask(
+      SSH_Message_Channel_Request.exec(
+        recipientChannel: remoteId,
+        wantReply: true,
+        command: command,
+      ),
+    );
+  }
+
+  Future<bool> sendPtyReq({
+    String terminalType = 'xterm-256color',
+    int terminalWidth = 80,
+    int terminalHeight = 25,
+    int terminalPixelWidth = 0,
+    int terminalPixelHeight = 0,
+    Uint8List? terminalModes,
+  }) async {
+    return _ask(
+      SSH_Message_Channel_Request.pty(
+        recipientChannel: remoteId,
+        termType: terminalType,
+        termWidth: terminalWidth,
+        termHeight: terminalHeight,
+        termPixelWidth: terminalPixelWidth,
+        termPixelHeight: terminalPixelHeight,
+        termModes: terminalModes ?? Uint8List(0),
+        wantReply: true,
+      ),
+    );
+  }
+
+  Future<bool> sendShell() async {
+    return _ask(
+      SSH_Message_Channel_Request.shell(
+        recipientChannel: remoteId,
+        wantReply: true,
+      ),
+    );
+  }
+
+  /// Whether X11 forwarding was asked for on this channel, the server has
+  /// not said no, and the channel is still open on this side. Only then
+  /// does the connection take an `x11` channel the server opens: a server
+  /// that opens one on a connection that never asked is refused.
+  bool get asksForX11 => _asksForX11 && !_done.isCompleted && !_hasSentClose;
+  var _asksForX11 = false;
+
+  Future<bool> sendX11Req({
+    bool singleConnection = false,
+    String authenticationProtocol = 'MIT-MAGIC-COOKIE-1',
+    required String authenticationCookie,
+    int screenNumber = 0,
+  }) async {
+    // Marked before the request goes out, so that a channel the server
+    // opens right behind its yes (in the same read) is taken; a no takes
+    // it back.
+    _asksForX11 = true;
+    final granted = await _ask(
+      SSH_Message_Channel_Request.x11(
+        recipientChannel: remoteId,
+        wantReply: true,
+        singleConnection: singleConnection,
+        x11AuthenticationProtocol: authenticationProtocol,
+        x11AuthenticationCookie: authenticationCookie,
+        x11ScreenNumber: screenNumber,
+      ),
+    );
+    if (!granted) _asksForX11 = false;
+    return granted;
+  }
+
+  Future<bool> sendAgentForwardingRequest() async {
+    return _ask(
+      SSH_Message_Channel_Request(
+        recipientChannel: remoteId,
+        requestType: SSHChannelRequestType.authAgent,
+        wantReply: true,
+      ),
+    );
+  }
+
+  Future<bool> sendSubsystem(String subsystem) async {
+    return _ask(
+      SSH_Message_Channel_Request.subsystem(
+        recipientChannel: remoteId,
+        subsystemName: subsystem,
+        wantReply: true,
+      ),
+    );
+  }
+
+  Future<bool> sendEnv(String name, String value) async {
+    return _ask(
+      SSH_Message_Channel_Request.env(
+        recipientChannel: remoteId,
+        variableName: name,
+        variableValue: value,
+        wantReply: true,
+      ),
+    );
+  }
+
+  void sendSignal(String signal) {
+    sendMessage(
+      SSH_Message_Channel_Request.signal(
+        recipientChannel: remoteId,
+        signalName: signal,
+      ),
+    );
+  }
+
+  void sendTerminalWindowChange({
+    required int width,
+    required int height,
+    required int pixelWidth,
+    required int pixelHeight,
+  }) {
+    sendMessage(
+      SSH_Message_Channel_Request.windowChange(
+        recipientChannel: remoteId,
+        termWidth: width,
+        termHeight: height,
+        termPixelWidth: pixelWidth,
+        termPixelHeight: pixelHeight,
+      ),
+    );
+  }
+
+  void handleMessage(SSHMessage message) {
+    if (message is SSH_Message_Channel_Data) {
+      _handleDataMessage(message.data);
+    } else if (message is SSH_Message_Channel_Extended_Data) {
+      _handleDataMessage(message.data, type: message.dataTypeCode);
+    } else if (message is SSH_Message_Channel_Window_Adjust) {
+      _handleWindowAdjustMessage(message.bytesToAdd);
+    } else if (message is SSH_Message_Channel_EOF) {
+      _handleEOFMessage();
+    } else if (message is SSH_Message_Channel_Close) {
+      _handleCloseMessage();
+    } else if (message is SSH_Message_Channel_Request) {
+      _handleRequestMessage(message);
+    } else if (message is SSH_Message_Channel_Success) {
+      _handleRequestSuccessMessage();
+    } else if (message is SSH_Message_Channel_Failure) {
+      _handleRequestFailureMessage();
+    } else {
+      throw UnimplementedError('Unimplemented message: $message');
+    }
+  }
+
+  /// Closes our side of the channel. Returns a [Future] that completes when
+  /// the remote side has closed the channel.
+  Future<void> close() async {
+    if (_done.isCompleted) return;
+
+    _locaStreamConsumer.cancel();
+    _sendEOFIfNeeded();
+
+    if (_remoteStream.isClosed) {
+      _sendCloseIfNeeded();
+      _finish();
+      return;
+    }
+
+    return _done.future;
+  }
+
+  /// Closes the channel immediately in both directions. This may send a close
+  /// message to the remote side. After this no more data can be sent or
+  /// received. [because] is what ended the connection, where that is why the
+  /// channel ends: a request of the channel's that still waits for its reply
+  /// fails with it.
+  void destroy([Object? because]) {
+    if (_done.isCompleted) return;
+    _remoteStream.close();
+    _locaStreamConsumer.cancel();
+    _sendEOFIfNeeded();
+    _sendCloseIfNeeded();
+    _finish(because);
+  }
+
+  void _handleWindowAdjustMessage(int bytesToAdd) {
+
+    if (bytesToAdd < 0) {
+      throw ArgumentError.value(bytesToAdd, 'bytesToAdd', 'must be positive');
+    }
+
+    _remoteWindow += bytesToAdd;
+
+    if (_remoteWindow > 0) {
+      _uploadLoop.activate();
+    }
+  }
+
+  void _handleDataMessage(Uint8List data, {int? type}) {
+
+    if (_remoteStream.isClosed) {
+      printDebug?.call('SSHChannel._handleDataMessage: remote already closed');
+      return;
+    }
+
+    _localWindow -= data.length;
+    if (_localWindow < 0) {
+      // The remote side sent more data than allowed by our receive window.
+      // This violates RFC 4254 Section 5.2. Destroy the channel to prevent
+      // buffer exhaustion attacks.
+      printDebug?.call(
+        'SSHChannel: remote exceeded local window by ${-_localWindow} bytes, '
+        'destroying channel',
+      );
+      destroy();
+      return;
+    }
+
+    _remoteStream.add(SSHChannelData(data, type: type));
+
+    _sendWindowAdjustIfNeeded();
+  }
+
+  void _handleRequestMessage(SSH_Message_Channel_Request request) {
+    printDebug?.call('SSHChannel._handleRequest: ${request.requestType}');
+
+    final success = _requestHandler(request);
+    if (!request.wantReply) return;
+    success ? _sendRequestSuccess() : _sendRequestFailure();
+  }
+
+  void _handleRequestSuccessMessage() {
+    printDebug?.call('SSHChannel._handleRequestSuccessMessage');
+    _reply(true);
+  }
+
+  void _handleRequestFailureMessage() {
+    printDebug?.call('SSHChannel._handleRequestFailureMessage');
+    _reply(false);
+  }
+
+  void _handleEOFMessage() {
+    printDebug?.call('SSHChannel._handleEOFMessage');
+    _remoteStream.close();
+  }
+
+  void _handleCloseMessage() {
+    printDebug?.call('SSHChannel._handleCLoseMessage');
+    _remoteStream.close();
+    close();
+  }
+
+  bool _defaultRequestHandler(SSH_Message_Channel_Request request) {
+    return false;
+  }
+
+  void _sendEOFIfNeeded() {
+    printDebug?.call('SSHChannel._sendEOFIfNeeded');
+    if (_done.isCompleted) return;
+    if (_hasSentEOF) return;
+    _hasSentEOF = true;
+    // The transport may already be dead: an unexpected disconnect tears the
+    // channels down after the transport's done future completes, so the
+    // send can throw SSHStateError. Swallow it exactly as _sendCloseIfNeeded
+    // does, so destroy() always reaches _done.complete() and one dead-transport
+    // drop cannot leave channels 2..N undestroyed with leaked done futures.
+    try {
+      sendMessage(SSH_Message_Channel_EOF(recipientChannel: remoteId));
+    } catch (e) {
+      printDebug?.call('SSHChannelController._sendEOFIfNeeded - error: $e');
+    }
+  }
+
+  void _sendCloseIfNeeded() {
+    printDebug?.call('SSHChannel._sendCloseIfNeeded');
+    if (_done.isCompleted) return;
+    if (_hasSentClose) return;
+    _hasSentClose = true;
+
+    try {
+      sendMessage(SSH_Message_Channel_Close(recipientChannel: remoteId));
+    } catch (e) {
+      printDebug?.call('SSHChannelController._sendCloseIfNeeded - error: $e');
+    }
+  }
+
+  void _sendRequestSuccess() {
+    printDebug?.call('SSHChannel._sendRequestSuccess');
+    sendMessage(SSH_Message_Channel_Success(recipientChannel: remoteId));
+  }
+
+  void _sendRequestFailure() {
+    printDebug?.call('SSHChannel._sendRequestFailure');
+    sendMessage(SSH_Message_Channel_Failure(recipientChannel: remoteId));
+  }
+
+  void _sendWindowAdjustIfNeeded() {
+
+    if (_done.isCompleted) return;
+    if (_remoteStream.isPaused) return;
+
+    // By as much as has come since it was last opened. (A window that was
+    // used up to its last byte was left as it was here: nothing more could
+    // come then, and the channel stood still for good.)
+    final bytesToAdd = localInitialWindowSize - _localWindow;
+    if (bytesToAdd <= 0) return;
+    _localWindow = localInitialWindowSize;
+
+    sendMessage(
+      SSH_Message_Channel_Window_Adjust(
+        recipientChannel: remoteId,
+        bytesToAdd: bytesToAdd,
+      ),
+    );
+  }
+
+  late final _uploadLoop = OnceSimultaneously(() async {
+    var sentSinceYield = 0;
+    var sentBytesSinceYield = 0;
+    final sinceYield = Stopwatch()..start();
+    while (true) {
+      if (_remoteWindow <= 0) {
+        return;
+      }
+
+      final dataToRead = min(_remoteWindow, remoteMaximumPacketSize);
+      if (dataToRead <= 0) {
+        // A remote maximum packet size of 0 would make read(0) return an
+        // empty view WITHOUT consuming anything, so this loop would spin
+        // forever emitting empty CHANNEL_DATA (a hostile or broken server can
+        // advertise 0). The acceptance floor in SSHClient makes this
+        // unreachable; exit rather than continue, since continue would
+        // re-spin on the unconsumed chunk.
+        return;
+      }
+      final data = await _locaStreamConsumer.read(dataToRead);
+
+      if (data == null) {
+        _sendEOFIfNeeded();
+
+        if (_remoteStream.isClosed) {
+          close();
+        }
+        return;
+      }
+
+      if (_hasSentEOF) {
+        return;
+      }
+
+
+      final message = data.isExtendedData
+          ? SSH_Message_Channel_Extended_Data(
+              recipientChannel: remoteId,
+              dataTypeCode: data.type!,
+              data: data.bytes,
+            )
+          : SSH_Message_Channel_Data(
+              recipientChannel: remoteId,
+              data: data.bytes,
+            );
+
+      sendMessage(message);
+
+      _remoteWindow -= data.bytes.length;
+      sentBytesSinceYield += data.bytes.length;
+
+      // Cooperative macrotask yield during a sustained upload burst so the
+      // platform message pump (paint, input, window-restore) gets a slice.
+      // TIME-BUDGETED: yield after 8 packets OR once ~8ms has elapsed since the
+      // last yield, whichever comes first. The packet count alone is not enough
+      // when packets are large or the cipher is slow: 8 full 32KB packets can
+      // occupy the isolate well past a frame's 16ms budget, which is what makes
+      // a big upload visibly janky at low CPU. The elapsed-time cap guarantees
+      // control returns to the pump at least every ~8ms regardless of packet
+      // size. The buffered read above only schedules a microtask (which the pump
+      // does not run between), so yield explicitly with `Duration.zero`.
+      if (++sentSinceYield >= 8 ||
+          sentBytesSinceYield >= _drainAfterBytes ||
+          sinceYield.elapsedMilliseconds >= 8) {
+        sentSinceYield = 0;
+        sentBytesSinceYield = 0;
+        sinceYield.reset();
+        // Bound the socket backlog BEFORE queueing more: wait until the OS has
+        // accepted what is already written. Without this a slow uplink lets
+        // the whole remote window (megabytes) pile up in the Dart-side socket
+        // queue, and every other channel's packet (a directory listing, a
+        // keystroke) waits behind it: seconds of interactive latency during
+        // an upload. The kernel's auto-tuned send buffer keeps the pipe full
+        // while we wait, so throughput does not drop.
+        final drain = drainSocket;
+        if (drain != null) {
+          try {
+            await drain();
+          } catch (_) {
+            // A dead socket surfaces through the transport's own error path;
+            // the loop must not die on the drain itself.
+          }
+        }
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+  });
+}
+
+class SSHChannel {
+  /// The channel id on the local side.
+  SSHChannelId get channelId => _controller.localId;
+
+  /// The channel id on the remote side. (It gave the local one: a channel
+  /// said its own number twice, here and in what it prints.)
+  SSHChannelId get remoteChannelId => _controller.remoteId;
+
+  /// The maximum packet size that the remote side can receive.
+  int get maximumPacketSize => _controller.remoteMaximumPacketSize;
+
+  /// A [Stream] of data received from the remote side.
+  Stream<SSHChannelData> get stream => _controller._remoteStream.stream;
+
+  /// A [StreamSink] that sends data to the remote side. Chucks must be
+  /// equal to or less than [maximumPacketSize].
+  StreamSink<SSHChannelData> get sink => _controller._localStream.sink;
+
+  Future<void> get done => _controller._done.future;
+
+  /// What ended the channel, where that was the end of its connection (what
+  /// the connection ended with); null while the channel is open, and for a
+  /// channel that was closed while its connection went on.
+  Object? get endedBecause => _controller._endedBecause;
+
+  SSHChannel(this._controller);
+
+  final SSHChannelController _controller;
+
+  /// Send data to the remote side.
+  void addData(Uint8List data, {int? type}) {
+    sink.add(SSHChannelData(data, type: type));
+  }
+
+  void setRequestHandler(SSHChannelRequestHandler handler) {
+    _controller._requestHandler = handler;
+  }
+
+  Future<bool> sendExec(String command) async {
+    return await _controller.sendExec(command);
+  }
+
+  Future<bool> sendShell() async {
+    return await _controller.sendShell();
+  }
+
+  Future<bool> sendX11Req({
+    bool singleConnection = false,
+    String authenticationProtocol = 'MIT-MAGIC-COOKIE-1',
+    required String authenticationCookie,
+    int screenNumber = 0,
+  }) async {
+    return await _controller.sendX11Req(
+      singleConnection: singleConnection,
+      authenticationProtocol: authenticationProtocol,
+      authenticationCookie: authenticationCookie,
+      screenNumber: screenNumber,
+    );
+  }
+
+  void sendTerminalWindowChange({
+    required int width,
+    required int height,
+    int pixelWidth = 0,
+    int pixelHeight = 0,
+  }) {
+    _controller.sendTerminalWindowChange(
+      width: width,
+      height: height,
+      pixelWidth: pixelWidth,
+      pixelHeight: pixelHeight,
+    );
+  }
+
+  void sendSignal(String signal) {
+    _controller.sendSignal(signal);
+  }
+
+  /// Closes our side of the channel. Returns a [Future] that completes when
+  /// both sides of the channel are closed.
+  Future<void> close() => _controller.close();
+
+  /// Destroys the channel in both directions. After calling this method,
+  /// no more data can be sent or received.
+  void destroy() => _controller.destroy();
+
+  @override
+  String toString() => 'SSHChannel($channelId:$remoteChannelId)';
+}
+
+class SSHChannelData {
+  /// Type of the data. Not null if the data is extended data. See: [SSHChannelExtendedDataType]
+  final int? type;
+
+  final Uint8List bytes;
+
+  bool get isExtendedData => type != null;
+
+  SSHChannelData(this.bytes, {this.type});
+}
+
+class SSHChannelExtendedDataType {
+  static const stderr = 1;
+}
+
+class SSHChannelDataSplitter
+    extends StreamTransformerBase<SSHChannelData, SSHChannelData> {
+  SSHChannelDataSplitter(this.maxSize);
+
+  final int maxSize;
+
+  @override
+  Stream<SSHChannelData> bind(Stream<SSHChannelData> stream) async* {
+    await for (var chunk in stream) {
+      if (chunk.bytes.length < maxSize) {
+        yield chunk;
+        continue;
+      }
+
+      final blocks = chunk.bytes.length ~/ maxSize;
+
+      for (var i = 0; i < blocks; i++) {
+        yield SSHChannelData(
+          Uint8List.sublistView(chunk.bytes, i * maxSize, (i + 1) * maxSize),
+          type: chunk.type,
+        );
+      }
+
+      if (blocks * maxSize < chunk.bytes.length) {
+        yield SSHChannelData(
+          Uint8List.sublistView(chunk.bytes, blocks * maxSize),
+          type: chunk.type,
+        );
+      }
+    }
+  }
+}
+
+class SSHChannelDataConsumer extends StreamConsumerBase<SSHChannelData> {
+  SSHChannelDataConsumer(super.stream);
+
+  @override
+  int getLength(SSHChannelData chunk) {
+    return chunk.bytes.length;
+  }
+
+  @override
+  SSHChannelData getSublistView(SSHChannelData chunk, int start, int end) {
+    return SSHChannelData(
+      Uint8List.sublistView(chunk.bytes, start, end),
+      type: chunk.type,
+    );
+  }
+}
+
+/// A function that can be invoked at most once simultaneously.
+class OnceSimultaneously {
+  OnceSimultaneously(this._fn);
+
+  final Future Function() _fn;
+
+  var _isRunning = false;
+
+  /// Set when [activate] is called while [_fn] is already running. We MUST
+  /// remember it and re-run once the current pass finishes - dropping it is a
+  /// lost wakeup. In the channel upload pump that manifests as a hung
+  /// transfer: the loop exits on `_remoteWindow <= 0`, the peer's
+  /// WINDOW_ADJUST races back in before `_isRunning` clears (routine on a
+  /// low-latency LAN), the old code's `if (_isRunning) return` swallowed the
+  /// re-activation, and the buffered upload data was never sent again - the
+  /// transfer stalls forever even though window is now available.
+  var _pending = false;
+
+  /// Call the function. If it is already running, mark that it must run again
+  /// as soon as the current pass completes, coalescing any number of
+  /// activations during a run into a single re-run.
+  void activate() async {
+    if (_isRunning) {
+      _pending = true;
+      return;
+    }
+    _isRunning = true;
+    try {
+      do {
+        _pending = false;
+        await _fn();
+      } while (_pending);
+    } finally {
+      _isRunning = false;
+    }
+  }
+}

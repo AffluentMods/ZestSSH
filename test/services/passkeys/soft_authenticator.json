@@ -1,0 +1,212 @@
+{
+  "made_with": "ZestSSH Cloud's src/lib/passkeys.js and test/helpers/soft_authenticator.js",
+  "android_origin": "android:apk-key-hash:vbWQFx_pY76JtfHxZ-zM3QXXmzV3ueQ3Dufm1gl6o9g",
+  "creation_options": {
+    "rp": {
+      "id": "zestssh.com",
+      "name": "ZestSSH"
+    },
+    "user": {
+      "id": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+      "name": "river@example.com",
+      "displayName": "river@example.com"
+    },
+    "challenge": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+    "pubKeyCredParams": [
+      {
+        "type": "public-key",
+        "alg": -7
+      },
+      {
+        "type": "public-key",
+        "alg": -8
+      },
+      {
+        "type": "public-key",
+        "alg": -257
+      }
+    ],
+    "authenticatorSelection": {
+      "residentKey": "preferred",
+      "userVerification": "preferred"
+    },
+    "attestation": "none",
+    "excludeCredentials": [
+      {
+        "type": "public-key",
+        "id": "UFFSU1RVVldYWVpbXF1eXw",
+        "transports": [
+          "nfc",
+          "usb"
+        ]
+      },
+      {
+        "type": "public-key",
+        "id": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "transports": [
+          "hybrid",
+          "internal"
+        ]
+      },
+      {
+        "type": "public-key",
+        "id": "cHFyc3R1dnd4eXp7fH1-f4CBgoM",
+        "transports": [
+          "smart-card"
+        ]
+      }
+    ],
+    "timeout": 300000,
+    "extensions": {
+      "credProps": true
+    }
+  },
+  "web": {
+    "registration": {
+      "id": "LKgu4ntmJd25uJFg7muwgRAcC4mXlVIAZN529_rNVX4",
+      "rawId": "LKgu4ntmJd25uJFg7muwgRAcC4mXlVIAZN529_rNVX4",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiQVFJREJBVUdCd2dKQ2dzTURRNFBFQkVTRXhRVkZoY1lHUm9iSEIwZUh5QSIsIm9yaWdpbiI6Imh0dHBzOi8vemVzdHNzaC5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikNEWpQQrfhoQ8kzIz63badPpF4woGOwyRr3tIfh2zAqhdAAAAAAAAAAAAAAAAAAAAAAAAAAAAICyoLuJ7ZiXdubiRYO5rsIEQHAuJl5VSAGTedvf6zVV-pQECAyYgASFYIFCZMULFXIA65rQ9kwB--37IJeY6Rqh3R4zvpNMembwCIlggdCbA0LWidtmIT9FIRwuzNJSoNtKkFwMKfc7DYb_PjFg",
+        "transports": [
+          "hybrid",
+          "internal"
+        ]
+      },
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {
+        "credProps": {
+          "rk": true
+        }
+      }
+    },
+    "request": {
+      "rpId": "zestssh.com",
+      "challenge": "ISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0A",
+      "allowCredentials": [
+        {
+          "type": "public-key",
+          "id": "LKgu4ntmJd25uJFg7muwgRAcC4mXlVIAZN529_rNVX4",
+          "transports": [
+            "hybrid",
+            "internal"
+          ]
+        }
+      ],
+      "userVerification": "preferred",
+      "timeout": 120000
+    },
+    "authentication": {
+      "id": "LKgu4ntmJd25uJFg7muwgRAcC4mXlVIAZN529_rNVX4",
+      "rawId": "LKgu4ntmJd25uJFg7muwgRAcC4mXlVIAZN529_rNVX4",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSVNJakpDVW1KeWdwS2lzc0xTNHZNREV5TXpRMU5qYzRPVG83UEQwLVAwQSIsIm9yaWdpbiI6Imh0dHBzOi8vemVzdHNzaC5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "authenticatorData": "NEWpQQrfhoQ8kzIz63badPpF4woGOwyRr3tIfh2zAqgdAAAAAA",
+        "signature": "MEUCIQDrSW2QMsX_sNNcG513h-MJ9hoBv20Hce3vjPNj6dV-jgIgbQmnjsXJzlALkwJ71w3mUO27QitxmwZfATVu8T6CBKQ",
+        "userHandle": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8"
+      },
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {}
+    }
+  },
+  "android": {
+    "registration": {
+      "id": "RgK3qQEeV8Cctp_RcLjpr808w0MsetLF0JdlFfNZqdE",
+      "rawId": "RgK3qQEeV8Cctp_RcLjpr808w0MsetLF0JdlFfNZqdE",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiQVFJREJBVUdCd2dKQ2dzTURRNFBFQkVTRXhRVkZoY1lHUm9iSEIwZUh5QSIsIm9yaWdpbiI6ImFuZHJvaWQ6YXBrLWtleS1oYXNoOnZiV1FGeF9wWTc2SnRmSHhaLXpNM1FYWG16VjN1ZVEzRHVmbTFnbDZvOWciLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikNEWpQQrfhoQ8kzIz63badPpF4woGOwyRr3tIfh2zAqhdAAAAAAAAAAAAAAAAAAAAAAAAAAAAIEYCt6kBHlfAnLaf0XC46a_NPMNDLHrSxdCXZRXzWanRpQECAyYgASFYIMXgYoA72Rj6F18-Piw6bq4dusAaM_NrcRa6qRtT1CmIIlggl2hGGJZyqZZk7wm6L3ctMoy5MeUsrGXmZmPZtfJ2lFw",
+        "transports": [
+          "hybrid",
+          "internal"
+        ]
+      },
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {
+        "credProps": {
+          "rk": true
+        }
+      }
+    },
+    "request": {
+      "rpId": "zestssh.com",
+      "challenge": "ISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0A",
+      "allowCredentials": [
+        {
+          "type": "public-key",
+          "id": "RgK3qQEeV8Cctp_RcLjpr808w0MsetLF0JdlFfNZqdE",
+          "transports": [
+            "hybrid",
+            "internal"
+          ]
+        }
+      ],
+      "userVerification": "preferred",
+      "timeout": 120000
+    },
+    "authentication": {
+      "id": "RgK3qQEeV8Cctp_RcLjpr808w0MsetLF0JdlFfNZqdE",
+      "rawId": "RgK3qQEeV8Cctp_RcLjpr808w0MsetLF0JdlFfNZqdE",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSVNJakpDVW1KeWdwS2lzc0xTNHZNREV5TXpRMU5qYzRPVG83UEQwLVAwQSIsIm9yaWdpbiI6ImFuZHJvaWQ6YXBrLWtleS1oYXNoOnZiV1FGeF9wWTc2SnRmSHhaLXpNM1FYWG16VjN1ZVEzRHVmbTFnbDZvOWciLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "authenticatorData": "NEWpQQrfhoQ8kzIz63badPpF4woGOwyRr3tIfh2zAqgdAAAAAA",
+        "signature": "MEUCIDDNJbUNFhsBVkWJAECBejCl4NouGXbCOTK38hLpe-RwAiEA6UYsiExgoacKTMuXwSVbuLBGLpm7WDKTFrYeCeVg0V0",
+        "userHandle": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8"
+      },
+      "authenticatorAttachment": "platform",
+      "clientExtensionResults": {}
+    }
+  },
+  "security_key": {
+    "registration": {
+      "id": "QRhXySuUW8VkjFaD2umVmLNKrZSRuzw2Yq3_NIkiaXM",
+      "rawId": "QRhXySuUW8VkjFaD2umVmLNKrZSRuzw2Yq3_NIkiaXM",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiQVFJREJBVUdCd2dKQ2dzTURRNFBFQkVTRXhRVkZoY1lHUm9iSEIwZUh5QSIsIm9yaWdpbiI6Imh0dHBzOi8vemVzdHNzaC5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVikNEWpQQrfhoQ8kzIz63badPpF4woGOwyRr3tIfh2zAqhFAAAABwAAAAAAAAAAAAAAAAAAAAAAIEEYV8krlFvFZIxWg9rplZizSq2Ukbs8NmKt_zSJImlzpQECAyYgASFYIOJnMUOnwqhgIwxOG872AnkH7BJpuUVbARAQvj0RA9-LIlggUFfrsyCuAAYj4sT-y5z3QzjRUMfadg5N5Rx8j9tXldU",
+        "transports": [
+          "usb"
+        ]
+      },
+      "authenticatorAttachment": "cross-platform",
+      "clientExtensionResults": {
+        "credProps": {
+          "rk": true
+        }
+      }
+    },
+    "request": {
+      "rpId": "zestssh.com",
+      "challenge": "ISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0A",
+      "allowCredentials": [
+        {
+          "type": "public-key",
+          "id": "QRhXySuUW8VkjFaD2umVmLNKrZSRuzw2Yq3_NIkiaXM",
+          "transports": [
+            "usb"
+          ]
+        }
+      ],
+      "userVerification": "preferred",
+      "timeout": 120000
+    },
+    "authentication": {
+      "id": "QRhXySuUW8VkjFaD2umVmLNKrZSRuzw2Yq3_NIkiaXM",
+      "rawId": "QRhXySuUW8VkjFaD2umVmLNKrZSRuzw2Yq3_NIkiaXM",
+      "type": "public-key",
+      "response": {
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiSVNJakpDVW1KeWdwS2lzc0xTNHZNREV5TXpRMU5qYzRPVG83UEQwLVAwQSIsIm9yaWdpbiI6Imh0dHBzOi8vemVzdHNzaC5jb20iLCJjcm9zc09yaWdpbiI6ZmFsc2V9",
+        "authenticatorData": "NEWpQQrfhoQ8kzIz63badPpF4woGOwyRr3tIfh2zAqgFAAAACA",
+        "signature": "MEQCIHwTI_XVPTHdrQYK2XgSEejctY2PxPScviylUalNx4HIAiBz4Ma9AGoSPae5nYOd4twVR1q37ZLyDSoFFKYj5L8uKg",
+        "userHandle": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8"
+      },
+      "authenticatorAttachment": "cross-platform",
+      "clientExtensionResults": {}
+    }
+  }
+}

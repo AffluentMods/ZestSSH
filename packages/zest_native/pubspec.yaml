@@ -1,0 +1,19 @@
+name: zest_native
+description: ZestSSH's native library, written in Rust and built by a Dart build hook (3.4).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  ffi: ^2.2.0
+  # The versions Flutter 3.50's own build tool runs hooks with (flutter_tools pins hooks 2.2.0
+  # and code_assets 2.1.0), which the app's other build hook (objective_c, for path_provider on
+  # iOS and macOS) moves to as well. Raise these with Flutter, and run this package's test and
+  # the app's test/native again (and a Mac build, for objective_c).
+  code_assets: ^2.1.0
+  hooks: ^2.2.0
+
+dev_dependencies:
+  test: ^1.26.0

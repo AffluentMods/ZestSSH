@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        App-level privacy manifest (App Store requirement, iOS 17+).
+        Without this file, submission is rejected with ITMS-91053
+        ("Missing API declaration").
+
+        ZestSSH performs NO tracking and NO analytics/telemetry/crash
+        reporting, so NSPrivacyTracking is false and both the tracking-domains
+        and collected-data-types arrays are empty. Third-party SDKs that DO
+        touch data (Firebase Auth, RevenueCat) ship their OWN
+        PrivacyInfo.xcprivacy inside their frameworks; Xcode aggregates those
+        at archive time, so they are intentionally NOT duplicated here.
+
+        The required-reason API entries below cover the app's own direct usage
+        plus any Flutter plugin that does not yet ship its own manifest:
+          - UserDefaults  (shared_preferences / settings persistence) -> CA92.1
+            and the App Group shared with the home screen widget     -> 1C8F.1
+          - File timestamp (path_provider, dart:io file stat)         -> C617.1
+          - Disk space    (SQLite DB + SFTP transfer sizing)          -> 85F4.1
+          - System boot time (monotonic elapsed-time timers)          -> 35F9.1
+    -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+                <string>1C8F.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>85F4.1</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

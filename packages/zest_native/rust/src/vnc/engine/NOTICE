@@ -1,0 +1,37 @@
+ZestSSH's VNC engine (this folder) is a fork of vnc-rs.
+
+  vnc-rs 0.6.0, https://github.com/HsuJv/vnc-rs
+  commit 41f974dd928bbe521ccc63faf73d9c5d0b230026 (the crates.io package's .cargo_vcs_info.json)
+  Copyright (c) 2022 Jovi Hsu and the vnc-rs contributors (Petr Beneš, Djamel Torche,
+  Peter Rekdal Khan-Sunde and others)
+  Licensed under the MIT license or the Apache License 2.0, at your option: LICENSE-MIT and
+  LICENSE-APACHE beside this file are vnc-rs's own. codec/zlib.rs carries its own MIT notice
+  (whitequark, 2016), kept as it was.
+
+Forked on 7 November 2026 by Affluent Labs LLC for ZestSSH. What came from vnc-rs stays under
+its licence; our additions follow this crate's own licence (Cargo.toml) unless the fork
+is published under vnc-rs's terms. What changed against vnc-rs 0.6.0:
+
+  - Moved from a crate into a module (crate:: paths became crate::vnc::engine::); the wasm
+    paths, the tracing logging (now silent no-op macros), and the futures, tokio-stream,
+    tokio-util and async_io_stream dependencies were removed (a small channel reader replaces
+    the bridge); thiserror 1 became thiserror 2.
+  - New: connect() (client/connect.rs) with ConnectOptions and SessionInfo; security types
+    VeNCrypt (client/vencrypt.rs: X509None, X509Vnc, X509Plain over rustls with ring, the
+    certificate trusted by its SHA-256 pin only) and Apple Remote Desktop (client/ard.rs).
+  - New encodings: RRE, Hextile, Zlib (codec/rre.rs); Tight's JPEG decoded (zune-jpeg); the
+    JPEG quality and compression level pseudo encodings; QEMU extended key events; the
+    extended clipboard (client/clipboard.rs, UTF-8).
+  - New events: Rectangle (each rectangle's encoding), UpdateDone (the end of an update),
+    QemuKeyEvents; new input: ScancodeKey. A layout-only answer before the first pixels is
+    followed by another update request. Plain ServerCutText and ClientCutText are Latin-1, as
+    RFC 6143 says (vnc-rs read them as UTF-8).
+  - VncEncoding carries the level encodings' values; its wire numbers come from wire().
+  - Later in the 4.0 work: continuous updates with fences, a pause (no requests, continuous
+    updates off), close reasons with the stream's end, pixels drawn straight into the app's
+    picture (DrawTarget), receiving without the lock input needs, limits on every size the
+    server sends, TRLE read as RFC 6143 says (no length or zlib, 16-pixel tiles), and the
+    credentials wiped from memory after the handshake.
+
+No code was copied from GPL sources (TigerVNC, LibVNCClient, KasmVNC) or from RoyalVNC;
+TigerVNC was only run, as a test server.

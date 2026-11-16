@@ -1,0 +1,8 @@
+{
+ "name": "reset_linux",
+ "program": "reset",
+ "term": "linux",
+ "rows": 30,
+ "cols": 100,
+ "data": "G2MbXVIN"
+}

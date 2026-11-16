@@ -1,0 +1,22 @@
+/* The Shortcuts actions' words (ZestSSHIntents.swift): titles, descriptions, what a run returns. */
+
+"Run SSH Command" = "运行 SSH 命令";
+"Runs a command on a saved host in ZestSSH." = "在 ZestSSH 中对已保存的主机运行命令。";
+"SSH" = "SSH";
+"Host" = "主机";
+"The name of a saved host, or its id" = "已保存主机的名称或 ID";
+"Command" = "命令";
+"The shell command to execute" = "要运行的 Shell 命令";
+"Timeout (seconds)" = "超时（秒）";
+"API Key" = "API 密钥";
+"An automation API key from ZestSSH (Automation, API keys)" = "ZestSSH 的自动化 API 密钥（自动化，API 密钥）";
+"Error: failed to build automation URL" = "错误：无法创建自动化链接";
+"Command sent to ZestSSH" = "命令已发送到 ZestSSH";
+"Run SSH Snippet" = "运行 SSH 代码片段";
+"Runs a saved snippet on a host in ZestSSH." = "在 ZestSSH 中对主机运行已保存的代码片段。";
+"Snippet Name" = "代码片段名称";
+"The name of the saved snippet to run" = "要运行的已保存代码片段的名称";
+"Snippet sent to ZestSSH" = "代码片段已发送到 ZestSSH";
+"Connect via SSH" = "通过 SSH 连接";
+"Opens ZestSSH and connects to a saved host." = "打开 ZestSSH 并连接到已保存的主机。";
+"Run Snippet" = "运行代码片段";

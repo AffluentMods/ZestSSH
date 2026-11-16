@@ -1,0 +1,35 @@
+ZestSSH credits and trademarks
+
+Names and logos of others
+
+The operating system, distribution and product names and logos the app shows beside a host (Ubuntu, Debian,
+macOS, Windows, Proxmox VE, Raspberry Pi, Arch Linux, Alpine Linux, FreeBSD, NixOS, Home Assistant, Fedora,
+Linux Mint, Pop!_OS, Kali Linux, TrueNAS, Unraid, VMware ESXi, openSUSE, CentOS, and a generic container mark) are
+trademarks or registered trademarks of their owners. The app draws simplified pictures of them
+(lib/core/data/os_logos.dart) only to show which system a host runs. They are not covered by the app's licence,
+and their use implies no endorsement by, or connection with, their owners.
+
+The names of the fonts (Cascadia Code, Fira Code, Geist, Hack, JetBrains Mono, Source Code Pro, Symbols Nerd Font)
+and of the colour schemes below are their owners' as well; each font's licence is given under its own name.
+
+"ZestSSH", "Zest" and the ZestSSH logo are trademarks of Affluent Labs LLC.
+
+Colour schemes
+
+Several of the app's themes and terminal colour schemes take their colours from a published colour scheme, and
+carry its name. With thanks to their authors:
+
+| Theme                                  | Colour scheme by             | Where                                             | Licence        |
+|----------------------------------------|------------------------------|---------------------------------------------------|----------------|
+| Catppuccin Mocha                       | the Catppuccin project       | https://github.com/catppuccin/catppuccin          | MIT            |
+| Dracula                                | the Dracula Theme project    | https://github.com/dracula/dracula-theme          | MIT            |
+| Gruvbox Dark                           | morhetz                      | https://github.com/morhetz/gruvbox                | MIT            |
+| Nord                                   | the Nord project             | https://github.com/nordtheme/nord                 | MIT            |
+| One Dark, One Light                    | the Atom editor's One themes | https://github.com/atom/one-dark-syntax           | MIT            |
+| Solarized Dark                         | Ethan Schoonover             | https://github.com/altercation/solarized          | MIT            |
+| Tokyo Night                            | enkia                        | https://github.com/enkia/tokyo-night-vscode-theme | MIT            |
+| Monokai Pro                            | Monokai                      | https://monokai.pro                               | the name only  |
+| Darcula, IntelliJ Dark, IntelliJ Light | JetBrains' IDE themes        | https://www.jetbrains.com                         | the names only |
+
+The app's own themes (Ember, Daylight, Graphite, Midnight, AMOLED Black and the other terminal schemes) are
+Affluent Labs' own.

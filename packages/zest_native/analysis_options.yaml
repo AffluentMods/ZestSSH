@@ -1,0 +1,5 @@
+# The example is a Flutter app with its own analysis (flutter analyze in example/); the package
+# itself is plain Dart.
+analyzer:
+  exclude:
+    - example/**

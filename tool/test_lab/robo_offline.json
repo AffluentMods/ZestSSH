@@ -1,0 +1,65 @@
+[
+  {
+    "id": 1,
+    "description": "ZestSSH offline crawl: never touch sign-in, sign-up, accounts, purchases or anything that would reach a person or a service. The ignore holds on every screen (condition always). Flutter's semantics labels reach Android as content descriptions, its plain text as text, so each rule is given both ways. The device locale is English (run.sh), which these patterns are written for.",
+    "contextDescriptor": {
+      "condition": "always"
+    },
+    "actions": [
+      {
+        "eventType": "ELEMENT_IGNORED",
+        "ignoreChildren": true,
+        "elementDescriptors": [
+          {
+            "contentDescriptionRegex": "(?is).*(sign in|sign up|signing in|log in|create (an )?account|continue with|google|apple|github|microsoft|passkey|two-step|recovery|password manager).*"
+          }
+        ]
+      },
+      {
+        "eventType": "ELEMENT_IGNORED",
+        "ignoreChildren": true,
+        "elementDescriptors": [
+          {
+            "textRegex": "(?is).*(sign in|sign up|signing in|log in|create (an )?account|continue with|google|apple|github|microsoft|passkey|two-step|recovery|password manager).*"
+          }
+        ]
+      },
+      {
+        "eventType": "ELEMENT_IGNORED",
+        "ignoreChildren": true,
+        "elementDescriptors": [
+          {
+            "contentDescriptionRegex": "(?is).*(subscribe|subscription|upgrade|buy|purchase|restore purchases|redeem|squeezed|juiced|seats|billing|pricing|delete (my )?account|delete everything|reset all).*"
+          }
+        ]
+      },
+      {
+        "eventType": "ELEMENT_IGNORED",
+        "ignoreChildren": true,
+        "elementDescriptors": [
+          {
+            "textRegex": "(?is).*(subscribe|subscription|upgrade|buy|purchase|restore purchases|redeem|squeezed|juiced|seats|billing|pricing|delete (my )?account|delete everything|reset all).*"
+          }
+        ]
+      },
+      {
+        "eventType": "ELEMENT_IGNORED",
+        "ignoreChildren": true,
+        "elementDescriptors": [
+          {
+            "contentDescriptionRegex": "(?is).*(report a bug|suggest|contact support|write to support|support hub|send feedback|support ticket|discord|email us|join (a )?team|invite|orchard|crate).*"
+          }
+        ]
+      },
+      {
+        "eventType": "ELEMENT_IGNORED",
+        "ignoreChildren": true,
+        "elementDescriptors": [
+          {
+            "textRegex": "(?is).*(report a bug|suggest|contact support|write to support|support hub|send feedback|support ticket|discord|email us|join (a )?team|invite|orchard|crate).*"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security config.
+
+  - No cleartext (HTTP) traffic, to any host.
+  - Certificates are checked against the system's store alone (no authority a
+    person installed), for every host.
+
+  No certificate is pinned, here or in Dart (a point a review before
+  4.0 raised). The app's own requests go through dart:io's TLS
+  (lib/services/pinned_http_client.dart), which does not read this file and
+  checks certificates against the system's store. Until 4.0 this file held a
+  pin set for the release's API (a leaf key and one intermediate, expiring
+  2027-01-01): it covered only requests made through Android's own HTTP
+  stack, of which the app makes none to its service, so it protected nothing
+  the app sends, and it would have cut any such request off at a routine
+  certificate change. A pin that is wanted one day belongs in Dart, where the
+  requests are made, with a backup key and a way to replace it.
+  test/docs/android_network_security_test.dart holds this file to that.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

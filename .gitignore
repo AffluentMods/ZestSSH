@@ -1,0 +1,88 @@
+# Environment
+.env
+.env.*
+# The example of the build settings, placeholders only.
+!.env.example
+
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+# Also ignore build output inside the in-tree packages (running
+# `flutter test` in packages/zest_ssh_core creates packages/*/build/,
+# which the root-anchored rule above does not cover).
+packages/*/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Signing keys: NEVER commit these
+android/key.properties
+android/upload-keystore.jks
+*.jks
+*.keystore
+# Windows code signing, Apple's certificates and App Store Connect API keys,
+# provisioning profiles
+*.pfx
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+
+# Firebase config: API keys are technically public but reveal project layout
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+macos/Runner/GoogleService-Info.plist
+
+# Generated localization files
+lib/l10n/generated/
+
+# Build outputs / installers
+/dist/
+
+# Local editor and tool settings
+.claude/
+
+# Obfuscation debug symbols (build artifacts, per-version)
+debug-symbols/
+
+# Git-Bash / Cygwin crash dumps
+*.stackdump

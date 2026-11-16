@@ -1,0 +1,652 @@
+[
+  {
+    "name": "server",
+    "category": "hardware",
+    "file": "server.svg"
+  },
+  {
+    "name": "server-rack",
+    "category": "hardware",
+    "file": "server-rack.svg"
+  },
+  {
+    "name": "vps",
+    "category": "hardware",
+    "file": "vps.svg"
+  },
+  {
+    "name": "desktop",
+    "category": "hardware",
+    "file": "desktop.svg"
+  },
+  {
+    "name": "laptop",
+    "category": "hardware",
+    "file": "laptop.svg"
+  },
+  {
+    "name": "mini-pc",
+    "category": "hardware",
+    "file": "mini-pc.svg"
+  },
+  {
+    "name": "single-board",
+    "category": "hardware",
+    "file": "single-board.svg"
+  },
+  {
+    "name": "microcontroller",
+    "category": "hardware",
+    "file": "microcontroller.svg"
+  },
+  {
+    "name": "nas",
+    "category": "hardware",
+    "file": "nas.svg"
+  },
+  {
+    "name": "storage-array",
+    "category": "hardware",
+    "file": "storage-array.svg"
+  },
+  {
+    "name": "hard-drive",
+    "category": "hardware",
+    "file": "hard-drive.svg"
+  },
+  {
+    "name": "nvme",
+    "category": "hardware",
+    "file": "nvme.svg"
+  },
+  {
+    "name": "cpu",
+    "category": "hardware",
+    "file": "cpu.svg"
+  },
+  {
+    "name": "gpu",
+    "category": "hardware",
+    "file": "gpu.svg"
+  },
+  {
+    "name": "memory",
+    "category": "hardware",
+    "file": "memory.svg"
+  },
+  {
+    "name": "ups",
+    "category": "hardware",
+    "file": "ups.svg"
+  },
+  {
+    "name": "power",
+    "category": "hardware",
+    "file": "power.svg"
+  },
+  {
+    "name": "keyboard",
+    "category": "hardware",
+    "file": "keyboard.svg"
+  },
+  {
+    "name": "phone",
+    "category": "hardware",
+    "file": "phone.svg"
+  },
+  {
+    "name": "tablet",
+    "category": "hardware",
+    "file": "tablet.svg"
+  },
+  {
+    "name": "tv",
+    "category": "hardware",
+    "file": "tv.svg"
+  },
+  {
+    "name": "printer",
+    "category": "hardware",
+    "file": "printer.svg"
+  },
+  {
+    "name": "printer-3d",
+    "category": "hardware",
+    "file": "printer-3d.svg"
+  },
+  {
+    "name": "camera",
+    "category": "hardware",
+    "file": "camera.svg"
+  },
+  {
+    "name": "game-controller",
+    "category": "hardware",
+    "file": "game-controller.svg"
+  },
+  {
+    "name": "headphones",
+    "category": "hardware",
+    "file": "headphones.svg"
+  },
+  {
+    "name": "radio",
+    "category": "hardware",
+    "file": "radio.svg"
+  },
+  {
+    "name": "router",
+    "category": "network",
+    "file": "router.svg"
+  },
+  {
+    "name": "switch",
+    "category": "network",
+    "file": "switch.svg"
+  },
+  {
+    "name": "access-point",
+    "category": "network",
+    "file": "access-point.svg"
+  },
+  {
+    "name": "modem",
+    "category": "network",
+    "file": "modem.svg"
+  },
+  {
+    "name": "firewall",
+    "category": "network",
+    "file": "firewall.svg"
+  },
+  {
+    "name": "ethernet",
+    "category": "network",
+    "file": "ethernet.svg"
+  },
+  {
+    "name": "wifi",
+    "category": "network",
+    "file": "wifi.svg"
+  },
+  {
+    "name": "antenna",
+    "category": "network",
+    "file": "antenna.svg"
+  },
+  {
+    "name": "globe",
+    "category": "network",
+    "file": "globe.svg"
+  },
+  {
+    "name": "network",
+    "category": "network",
+    "file": "network.svg"
+  },
+  {
+    "name": "vpn",
+    "category": "network",
+    "file": "vpn.svg"
+  },
+  {
+    "name": "tunnel",
+    "category": "network",
+    "file": "tunnel.svg"
+  },
+  {
+    "name": "dns",
+    "category": "network",
+    "file": "dns.svg"
+  },
+  {
+    "name": "load-balancer",
+    "category": "network",
+    "file": "load-balancer.svg"
+  },
+  {
+    "name": "proxy",
+    "category": "network",
+    "file": "proxy.svg"
+  },
+  {
+    "name": "cdn",
+    "category": "network",
+    "file": "cdn.svg"
+  },
+  {
+    "name": "bastion",
+    "category": "network",
+    "file": "bastion.svg"
+  },
+  {
+    "name": "link",
+    "category": "network",
+    "file": "link.svg"
+  },
+  {
+    "name": "blocker",
+    "category": "network",
+    "file": "blocker.svg"
+  },
+  {
+    "name": "cloud",
+    "category": "cloud",
+    "file": "cloud.svg"
+  },
+  {
+    "name": "cloud-server",
+    "category": "cloud",
+    "file": "cloud-server.svg"
+  },
+  {
+    "name": "vm",
+    "category": "cloud",
+    "file": "vm.svg"
+  },
+  {
+    "name": "hypervisor",
+    "category": "cloud",
+    "file": "hypervisor.svg"
+  },
+  {
+    "name": "container",
+    "category": "cloud",
+    "file": "container.svg"
+  },
+  {
+    "name": "containers",
+    "category": "cloud",
+    "file": "containers.svg"
+  },
+  {
+    "name": "cluster",
+    "category": "cloud",
+    "file": "cluster.svg"
+  },
+  {
+    "name": "node",
+    "category": "cloud",
+    "file": "node.svg"
+  },
+  {
+    "name": "package",
+    "category": "cloud",
+    "file": "package.svg"
+  },
+  {
+    "name": "hpc",
+    "category": "cloud",
+    "file": "hpc.svg"
+  },
+  {
+    "name": "ai-chip",
+    "category": "cloud",
+    "file": "ai-chip.svg"
+  },
+  {
+    "name": "terminal",
+    "category": "services",
+    "file": "terminal.svg"
+  },
+  {
+    "name": "code",
+    "category": "services",
+    "file": "code.svg"
+  },
+  {
+    "name": "git-branch",
+    "category": "services",
+    "file": "git-branch.svg"
+  },
+  {
+    "name": "workflow",
+    "category": "services",
+    "file": "workflow.svg"
+  },
+  {
+    "name": "database",
+    "category": "services",
+    "file": "database.svg"
+  },
+  {
+    "name": "database-replica",
+    "category": "services",
+    "file": "database-replica.svg"
+  },
+  {
+    "name": "cache",
+    "category": "services",
+    "file": "cache.svg"
+  },
+  {
+    "name": "queue",
+    "category": "services",
+    "file": "queue.svg"
+  },
+  {
+    "name": "web",
+    "category": "services",
+    "file": "web.svg"
+  },
+  {
+    "name": "api",
+    "category": "services",
+    "file": "api.svg"
+  },
+  {
+    "name": "mail",
+    "category": "services",
+    "file": "mail.svg"
+  },
+  {
+    "name": "chat",
+    "category": "services",
+    "file": "chat.svg"
+  },
+  {
+    "name": "media-server",
+    "category": "services",
+    "file": "media-server.svg"
+  },
+  {
+    "name": "music",
+    "category": "services",
+    "file": "music.svg"
+  },
+  {
+    "name": "photos",
+    "category": "services",
+    "file": "photos.svg"
+  },
+  {
+    "name": "folder",
+    "category": "services",
+    "file": "folder.svg"
+  },
+  {
+    "name": "download",
+    "category": "services",
+    "file": "download.svg"
+  },
+  {
+    "name": "backup",
+    "category": "services",
+    "file": "backup.svg"
+  },
+  {
+    "name": "archive",
+    "category": "services",
+    "file": "archive.svg"
+  },
+  {
+    "name": "sync",
+    "category": "services",
+    "file": "sync.svg"
+  },
+  {
+    "name": "clock",
+    "category": "services",
+    "file": "clock.svg"
+  },
+  {
+    "name": "calendar",
+    "category": "services",
+    "file": "calendar.svg"
+  },
+  {
+    "name": "monitoring",
+    "category": "services",
+    "file": "monitoring.svg"
+  },
+  {
+    "name": "metrics",
+    "category": "services",
+    "file": "metrics.svg"
+  },
+  {
+    "name": "gauge",
+    "category": "services",
+    "file": "gauge.svg"
+  },
+  {
+    "name": "logs",
+    "category": "services",
+    "file": "logs.svg"
+  },
+  {
+    "name": "search",
+    "category": "services",
+    "file": "search.svg"
+  },
+  {
+    "name": "dashboard",
+    "category": "services",
+    "file": "dashboard.svg"
+  },
+  {
+    "name": "remote-desktop",
+    "category": "services",
+    "file": "remote-desktop.svg"
+  },
+  {
+    "name": "wiki",
+    "category": "services",
+    "file": "wiki.svg"
+  },
+  {
+    "name": "cms",
+    "category": "services",
+    "file": "cms.svg"
+  },
+  {
+    "name": "shop",
+    "category": "services",
+    "file": "shop.svg"
+  },
+  {
+    "name": "billing",
+    "category": "services",
+    "file": "billing.svg"
+  },
+  {
+    "name": "notifications",
+    "category": "services",
+    "file": "notifications.svg"
+  },
+  {
+    "name": "surveillance",
+    "category": "services",
+    "file": "surveillance.svg"
+  },
+  {
+    "name": "game-server",
+    "category": "services",
+    "file": "game-server.svg"
+  },
+  {
+    "name": "robot",
+    "category": "services",
+    "file": "robot.svg"
+  },
+  {
+    "name": "settings",
+    "category": "services",
+    "file": "settings.svg"
+  },
+  {
+    "name": "tools",
+    "category": "services",
+    "file": "tools.svg"
+  },
+  {
+    "name": "shield",
+    "category": "security",
+    "file": "shield.svg"
+  },
+  {
+    "name": "lock",
+    "category": "security",
+    "file": "lock.svg"
+  },
+  {
+    "name": "key",
+    "category": "security",
+    "file": "key.svg"
+  },
+  {
+    "name": "certificate",
+    "category": "security",
+    "file": "certificate.svg"
+  },
+  {
+    "name": "vault",
+    "category": "security",
+    "file": "vault.svg"
+  },
+  {
+    "name": "user",
+    "category": "security",
+    "file": "user.svg"
+  },
+  {
+    "name": "users",
+    "category": "security",
+    "file": "users.svg"
+  },
+  {
+    "name": "id-card",
+    "category": "security",
+    "file": "id-card.svg"
+  },
+  {
+    "name": "bug",
+    "category": "security",
+    "file": "bug.svg"
+  },
+  {
+    "name": "alert",
+    "category": "security",
+    "file": "alert.svg"
+  },
+  {
+    "name": "home",
+    "category": "places",
+    "file": "home.svg"
+  },
+  {
+    "name": "home-lab",
+    "category": "places",
+    "file": "home-lab.svg"
+  },
+  {
+    "name": "smart-home",
+    "category": "places",
+    "file": "smart-home.svg"
+  },
+  {
+    "name": "office",
+    "category": "places",
+    "file": "office.svg"
+  },
+  {
+    "name": "datacenter",
+    "category": "places",
+    "file": "datacenter.svg"
+  },
+  {
+    "name": "location",
+    "category": "places",
+    "file": "location.svg"
+  },
+  {
+    "name": "lightbulb",
+    "category": "places",
+    "file": "lightbulb.svg"
+  },
+  {
+    "name": "thermometer",
+    "category": "places",
+    "file": "thermometer.svg"
+  },
+  {
+    "name": "smart-plug",
+    "category": "places",
+    "file": "smart-plug.svg"
+  },
+  {
+    "name": "production",
+    "category": "tags",
+    "file": "production.svg"
+  },
+  {
+    "name": "staging",
+    "category": "tags",
+    "file": "staging.svg"
+  },
+  {
+    "name": "star",
+    "category": "tags",
+    "file": "star.svg"
+  },
+  {
+    "name": "heart",
+    "category": "tags",
+    "file": "heart.svg"
+  },
+  {
+    "name": "bolt",
+    "category": "tags",
+    "file": "bolt.svg"
+  },
+  {
+    "name": "flame",
+    "category": "tags",
+    "file": "flame.svg"
+  },
+  {
+    "name": "leaf",
+    "category": "tags",
+    "file": "leaf.svg"
+  },
+  {
+    "name": "anchor",
+    "category": "tags",
+    "file": "anchor.svg"
+  },
+  {
+    "name": "flag",
+    "category": "tags",
+    "file": "flag.svg"
+  },
+  {
+    "name": "tag",
+    "category": "tags",
+    "file": "tag.svg"
+  },
+  {
+    "name": "sparkles",
+    "category": "tags",
+    "file": "sparkles.svg"
+  },
+  {
+    "name": "moon",
+    "category": "tags",
+    "file": "moon.svg"
+  },
+  {
+    "name": "sun",
+    "category": "tags",
+    "file": "sun.svg"
+  },
+  {
+    "name": "coffee",
+    "category": "tags",
+    "file": "coffee.svg"
+  },
+  {
+    "name": "ghost",
+    "category": "tags",
+    "file": "ghost.svg"
+  }
+]

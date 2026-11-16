@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://zestssh.com/security-disclosure
+    about: Please do not open a public issue for a vulnerability. Email support@zestssh.com instead.
+  - name: Help with using ZestSSH
+    url: https://docs.zestssh.com
+    about: Guides, and answers to common errors by their code (ZS-nnnn).
+  - name: Account, purchase or ZestSSH Cloud problem
+    url: https://zestssh.com
+    about: Use Help and Support inside the app, so the report reaches us with your account. Never post account details here.

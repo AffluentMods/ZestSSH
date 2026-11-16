@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_connection"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_new_connection"
+        android:shortcutLongLabel="@string/shortcut_new_connection_long"
+        android:icon="@drawable/ic_shortcut_add">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.affluentlabs.zestssh"
+            android:targetClass="com.affluentlabs.zestssh.MainActivity"
+            android:data="zestssh://connection/new" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="import_config"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_import"
+        android:shortcutLongLabel="@string/shortcut_import_long"
+        android:icon="@drawable/ic_shortcut_import">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.affluentlabs.zestssh"
+            android:targetClass="com.affluentlabs.zestssh.MainActivity"
+            android:data="zestssh://import/ssh-config" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="snippets"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_snippets"
+        android:shortcutLongLabel="@string/shortcut_snippets_long"
+        android:icon="@drawable/ic_shortcut_code">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.affluentlabs.zestssh"
+            android:targetClass="com.affluentlabs.zestssh.MainActivity"
+            android:data="zestssh://snippets" />
+    </shortcut>
+</shortcuts>

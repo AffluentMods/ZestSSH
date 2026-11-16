@@ -1,0 +1,10 @@
+/* The Siri phrases of the Shortcuts actions (ZestSSHIntents.swift, ZestSSHShortcutsProvider). */
+
+"Run SSH command with ${applicationName}" = "Exécuter une commande SSH avec ${applicationName}";
+"Execute command on server with ${applicationName}" = "Exécuter une commande sur le serveur avec ${applicationName}";
+"Run command with ${applicationName}" = "Exécuter une commande avec ${applicationName}";
+"Run SSH snippet with ${applicationName}" = "Exécuter un snippet SSH avec ${applicationName}";
+"Execute snippet with ${applicationName}" = "Exécuter un snippet avec ${applicationName}";
+"Connect to server with ${applicationName}" = "Se connecter au serveur avec ${applicationName}";
+"SSH connect with ${applicationName}" = "Connexion SSH avec ${applicationName}";
+"Open SSH connection with ${applicationName}" = "Ouvrir une connexion SSH avec ${applicationName}";

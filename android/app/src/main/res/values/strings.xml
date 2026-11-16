@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZestSSH</string>
+    <string name="shortcut_new_connection">New host</string>
+    <string name="shortcut_new_connection_long">Create a new host</string>
+    <string name="shortcut_import">Import</string>
+    <string name="shortcut_import_long">Import SSH config</string>
+    <string name="shortcut_snippets">Snippets</string>
+    <string name="shortcut_snippets_long">Manage snippets</string>
+    <string name="widget_description">Connect to your hosts in one tap</string>
+    <string name="notification_channel_name">SSH sessions</string>
+    <string name="notification_channel_description">Shown while SSH sessions are open, so they keep running</string>
+    <string name="notification_active_one">One active SSH session</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="one">%d active SSH session</item>
+        <item quantity="other">%d active SSH sessions</item>
+    </plurals>
+    <string name="scheduled_channel_name">Scheduled tasks</string>
+    <string name="scheduled_channel_description">Asks you to run a scheduled task when Android does not let ZestSSH start it by itself</string>
+    <string name="scheduled_ready_title">A scheduled task is ready</string>
+    <string name="scheduled_ready_text">Tap to run it. Android lets ZestSSH start a task by itself only while the app is open.</string>
+    <string name="widget_empty">No hosts yet. Tap + to add one.</string>
+    <string name="widget_locked">App lock is on\nOpen ZestSSH to connect.</string>
+</resources>

@@ -1,0 +1,29 @@
+# The Rust toolchain every build of the app uses (native_toolchain_rust refuses a bare channel name:
+# a version keeps builds reproducible). rustup installs it, with every target below, the first time
+# a build runs in this folder. Raise it on purpose, in its own commit.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"
+
+# The targets ZestSSH ships (native_toolchain_rust refuses one not listed here).
+targets = [
+  # Android (Play's app bundle: phones and tablets, and the x86_64 emulator)
+  "aarch64-linux-android",
+  "armv7-linux-androideabi",
+  "x86_64-linux-android",
+
+  # iOS: devices, and the simulator on Apple silicon and on Intel Macs
+  "aarch64-apple-ios",
+  "aarch64-apple-ios-sim",
+  "x86_64-apple-ios",
+
+  # macOS (a universal build: Apple silicon and Intel)
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+
+  # Windows
+  "x86_64-pc-windows-msvc",
+
+  # Linux
+  "x86_64-unknown-linux-gnu",
+]

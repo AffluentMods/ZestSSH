@@ -1,0 +1,25 @@
+name: zest_ssh_core
+description: >-
+  Pure-Dart SSH and SFTP client, forked from dartssh2 and hardened for ZestSSH.
+  Weak algorithms off by default, Terrapin strict KEX, MIT licensed.
+version: 0.3.0
+repository: https://github.com/AffluentMods/zest_ssh_core
+# NOTE: `publish_to: none` is kept for the in-monorepo copy (consumed via a
+# path dependency). Remove it in the standalone public repo before publishing
+# to pub.dev.
+publish_to: 'none'
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  asn1lib: ^1.5.8
+  convert: ^3.1.2
+  meta: ^1.16.0
+  pointycastle: ^4.0.0
+  pinenacl: ^0.6.0
+  sign_dart: ^1.0.0
+
+dev_dependencies:
+  lints: ">=4.0.0 <6.0.0"
+  test: ^1.25.15

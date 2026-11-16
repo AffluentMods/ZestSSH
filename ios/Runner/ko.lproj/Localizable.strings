@@ -1,0 +1,22 @@
+/* The Shortcuts actions' words (ZestSSHIntents.swift): titles, descriptions, what a run returns. */
+
+"Run SSH Command" = "SSH 명령어 실행";
+"Runs a command on a saved host in ZestSSH." = "ZestSSH에 저장된 호스트에서 명령어를 실행합니다.";
+"SSH" = "SSH";
+"Host" = "호스트";
+"The name of a saved host, or its id" = "저장된 호스트의 이름 또는 ID";
+"Command" = "명령어";
+"The shell command to execute" = "실행할 셸 명령어";
+"Timeout (seconds)" = "시간 제한(초)";
+"API Key" = "API 키";
+"An automation API key from ZestSSH (Automation, API keys)" = "ZestSSH의 자동화 API 키(자동화, API 키)";
+"Error: failed to build automation URL" = "오류: 자동화 링크를 만들지 못했습니다";
+"Command sent to ZestSSH" = "명령어를 ZestSSH로 보냈습니다";
+"Run SSH Snippet" = "SSH 스니펫 실행";
+"Runs a saved snippet on a host in ZestSSH." = "ZestSSH에 저장된 스니펫을 호스트에서 실행합니다.";
+"Snippet Name" = "스니펫 이름";
+"The name of the saved snippet to run" = "실행할 저장된 스니펫의 이름";
+"Snippet sent to ZestSSH" = "스니펫을 ZestSSH로 보냈습니다";
+"Connect via SSH" = "SSH로 연결";
+"Opens ZestSSH and connects to a saved host." = "ZestSSH를 열고 저장된 호스트에 연결합니다.";
+"Run Snippet" = "스니펫 실행";

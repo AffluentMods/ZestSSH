@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">Nuovo host</string>
+    <string name="shortcut_new_connection_long">Crea un nuovo host</string>
+    <string name="shortcut_import">Importa</string>
+    <string name="shortcut_import_long">Importa la configurazione SSH</string>
+    <string name="shortcut_snippets">Snippet</string>
+    <string name="shortcut_snippets_long">Gestisci gli snippet</string>
+    <string name="widget_description">Connettiti ai tuoi host con un tocco</string>
+    <string name="notification_channel_name">Sessioni SSH</string>
+    <string name="notification_channel_description">Mostrata finché ci sono sessioni SSH aperte, perché restino attive</string>
+    <string name="notification_active_one">Una sessione SSH attiva</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="one">%d sessione SSH attiva</item>
+        <item quantity="many">%d sessioni SSH attive</item>
+        <item quantity="other">%d sessioni SSH attive</item>
+    </plurals>
+    <string name="scheduled_channel_name">Attività pianificate</string>
+    <string name="scheduled_channel_description">Ti chiede di eseguire un\'attività pianificata quando Android non permette a ZestSSH di avviarla da solo</string>
+    <string name="scheduled_ready_title">Un\'attività pianificata è pronta</string>
+    <string name="scheduled_ready_text">Tocca per eseguirla. Android permette a ZestSSH di avviare un\'attività da solo solo mentre l\'app è aperta.</string>
+    <string name="widget_empty">Ancora nessun host. Tocca + per aggiungerne uno.</string>
+    <string name="widget_locked">Il blocco app è attivo\nApri ZestSSH per connetterti.</string>
+</resources>

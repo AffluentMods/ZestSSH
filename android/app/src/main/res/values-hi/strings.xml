@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">नया होस्ट</string>
+    <string name="shortcut_new_connection_long">नया होस्ट बनाएं</string>
+    <string name="shortcut_import">आयात करें</string>
+    <string name="shortcut_import_long">SSH कॉन्फ़िगरेशन आयात करें</string>
+    <string name="shortcut_snippets">स्निपेट्स</string>
+    <string name="shortcut_snippets_long">स्निपेट्स प्रबंधित करें</string>
+    <string name="widget_description">एक टैप में अपने होस्ट से जुड़ें</string>
+    <string name="notification_channel_name">SSH सत्र</string>
+    <string name="notification_channel_description">SSH सत्र खुले रहने तक दिखाई देता है, ताकि वे चलते रहें</string>
+    <string name="notification_active_one">एक सक्रिय SSH सत्र</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="one">%d सक्रिय SSH सत्र</item>
+        <item quantity="other">%d सक्रिय SSH सत्र</item>
+    </plurals>
+    <string name="scheduled_channel_name">शेड्यूल किए गए कार्य</string>
+    <string name="scheduled_channel_description">जब Android ZestSSH को कोई शेड्यूल किया गया कार्य खुद शुरू नहीं करने देता, तब आपसे उसे चलाने को कहता है</string>
+    <string name="scheduled_ready_title">एक शेड्यूल किया गया कार्य तैयार है</string>
+    <string name="scheduled_ready_text">चलाने के लिए टैप करें। Android, ZestSSH को कोई कार्य खुद तभी शुरू करने देता है जब ऐप खुला हो।</string>
+    <string name="widget_empty">अभी कोई होस्ट नहीं है। जोड़ने के लिए + पर टैप करें।</string>
+    <string name="widget_locked">ऐप लॉक चालू है\nकनेक्ट करने के लिए ZestSSH खोलें।</string>
+</resources>

@@ -1,0 +1,55 @@
+# Local bring-your-own sync test stack.
+#
+#   docker compose -f docker/sync-test/docker-compose.yml up -d
+#
+# Gives you a MinIO S3-compatible store and a WebDAV server to point ZestSSH
+# at (Profile -> Sync storage). Exact app settings are in README.md.
+#
+# Everything runs on localhost, so ZestSSH's plain-http guard allows it
+# (loopback is treated as a trusted LAN).
+
+services:
+  # ── S3-compatible (MinIO) ──────────────────────────────────────────
+  minio:
+    image: quay.io/minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000" # S3 API  -> ZestSSH endpoint
+      - "9001:9001" # Web console (http://localhost:9001)
+    environment:
+      MINIO_ROOT_USER: zestadmin
+      MINIO_ROOT_PASSWORD: zestadmin123
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+  # One-shot: wait for MinIO, then create the sync bucket.
+  minio-init:
+    image: quay.io/minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 zestadmin zestadmin123; do
+        echo 'waiting for minio...'; sleep 1;
+      done;
+      mc mb -p local/zestssh-sync || true;
+      echo 'MinIO ready: bucket zestssh-sync';
+      "
+
+  # ── WebDAV (Apache mod_dav) ────────────────────────────────────────
+  webdav:
+    image: bytemark/webdav
+    ports:
+      - "8088:80"
+    environment:
+      AUTH_TYPE: Basic
+      USERNAME: zest
+      PASSWORD: zestpass
+    volumes:
+      - webdav-data:/var/lib/dav
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+  webdav-data:

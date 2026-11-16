@@ -1,0 +1,187 @@
+// SPDX-License-Identifier: MIT
+import 'dart:typed_data';
+
+import 'package:zest_ssh_core/src/ssh_errors.dart';
+import 'package:zest_ssh_core/src/ssh_kex.dart';
+import 'package:zest_ssh_core/src/utils/bigint.dart';
+import 'package:zest_ssh_core/src/utils/list.dart';
+
+/// The Diffie-Hellman (DH) key exchange provides a shared secret that
+/// cannot be determined by either party alone.
+/// https://tools.ietf.org/html/rfc4253#section-8
+class SSHKexDH implements SSHKex {
+  /// The shortest group that is asked for in a group exchange, and taken,
+  /// in bits. A group of 1024 bits, which was the least here, can be broken
+  /// by whoever has the means, and with it everything that was recorded of
+  /// the sessions under it; OpenSSH takes none under 2048 either.
+  static const gexMin = 2048;
+
+  /// The shortest group that is asked for and taken where whoever connects
+  /// has said that an old server may have one that short
+  /// (`SSHAlgorithms.minDhGroupBits`): 1024 bits, the least RFC 4419 lets
+  /// a client ask for. An old OpenSSH, or a device whose SSH server cannot
+  /// be updated, may have no longer group. Nothing shorter is ever taken.
+  static const gexMinOldServers = 1024;
+
+  /// How long a group this client would like. A server picks the shortest
+  /// group it has that is at least this long, so this is the length a
+  /// server that has a choice will name. 3072 bits is about 128 bits of
+  /// work to break, which is where every other key exchange this client
+  /// offers stands (curve25519, the NIST curves), and what the secret it
+  /// brings to a group exchange is made for (256 bits, where the transport
+  /// takes the group a server names). It asked for 2048, the shortest it
+  /// takes at all and about 112 bits: a server with longer groups too named
+  /// its weakest. A longer group than this would add nothing while the
+  /// secret is 256 bits long.
+  static const gexPref = 3072;
+  static const gexMax = 8192;
+
+  /// The shortest group a client asks for, and takes, where it was told
+  /// [wanted] (`SSHAlgorithms.minDhGroupBits`): never under
+  /// [gexMinOldServers], and never over [gexPref], since a request whose
+  /// shortest is longer than the one it would like is no request.
+  static int shortestAskedFor(int wanted) => wanted.clamp(gexMinOldServers, gexPref);
+
+  /// Refuses the group of the modulus [p] and the generator [g] that a
+  /// server named in a group exchange, where it cannot be used: of a length
+  /// other than was asked for ([shortest] to [gexMax] bits), a modulus that
+  /// is an even number (which is no prime), or a generator that is none.
+  /// With a generator of nought or one every secret is nought or one,
+  /// whatever either side does; with the modulus less one it is one of two
+  /// numbers; and anything from the modulus on is one of those again.
+  ///
+  /// [shortest] is the shortest group that was asked for: [gexMin], or
+  /// [gexMinOldServers] where an old server may have a shorter group. (A
+  /// [shortest] under [gexMinOldServers] is taken as [gexMinOldServers]:
+  /// no group shorter than that is ever taken.)
+  ///
+  /// (Whether [p] is a prime is not found out: that costs as much as the
+  /// exchange itself, and no client does.)
+  static void requireGroupOfAnExchange(BigInt p, BigInt g, {int shortest = gexMin}) {
+    final least = shortestAskedFor(shortest);
+    final bits = p.bitLength;
+    SSHKexGroupError refused(String why) => SSHKexGroupError(
+          'The server named a group for the key exchange $why',
+          bits: bits,
+          shortestTaken: least,
+        );
+    if (bits < least) {
+      throw refused('of $bits bits, and none under $least bits is taken');
+    }
+    if (bits > gexMax) {
+      throw refused('of $bits bits, and none over $gexMax bits was asked for');
+    }
+    if (p.isEven) {
+      throw refused('whose modulus is an even number, which is no prime');
+    }
+    if (g <= BigInt.one || g >= p - BigInt.one) {
+      throw refused('with a generator that is none: it has to be more than '
+          'one, and less than the modulus less one');
+    }
+  }
+
+  /// p is a large safe prime
+  final BigInt p;
+
+  /// g is a generator for a subgroup of GF(p)
+  final BigInt g;
+
+  /// Length of the random number x
+  final int secretBits;
+
+  /// Random number, used as private key
+  late final BigInt x;
+
+  /// e = g^x mod p, used as public key
+  late final BigInt e;
+
+  SSHKexDH({required this.p, required this.g, required this.secretBits}) {
+    if (secretBits % 8 != 0) {
+      throw ArgumentError('secretBits must be a multiple of 8');
+    }
+    x = decodeBigIntWithSign(1, randomBytes(secretBits ~/ 8));
+    // (Not with BigInt.modPow, which answers wrong for numbers that are
+    // picked for it, and in a group exchange the other side names the
+    // generator and the modulus: see modPowExact.)
+    e = modPowExact(g, x, p);
+  }
+
+  /// https://tools.ietf.org/html/rfc2409 Second Oakley Group
+  factory SSHKexDH.group1() {
+    return SSHKexDH(p: _group1Prime, g: BigInt.from(2), secretBits: 160);
+  }
+
+  /// https://tools.ietf.org/html/rfc3526 Oakley Group 14
+  factory SSHKexDH.group14() {
+    return SSHKexDH(p: _group14Prime, g: BigInt.from(2), secretBits: 224);
+  }
+
+  /// Compute the shared secret K
+  BigInt computeSecret(BigInt f) {
+    // Reject a server public value outside the safe range [2, p-2]. Values
+    // like 0, 1, or p-1 produce a degenerate/known shared secret (a
+    // small-subgroup / invalid-value attack); RFC 4253 §8 requires
+    // 1 < f < p-1. A legitimate server always sends f in range, so this
+    // has no effect on real connections.
+    if (f <= BigInt.one || f >= p - BigInt.one) {
+      // SSHError (not FormatException) so the transport's `on SSHError`
+      // handler tears the connection down cleanly and rejects the pending
+      // handshake futures instead of leaking an uncaught async error.
+      throw SSHStateError(
+          'DH server public value out of range (expected 1 < f < p-1)');
+    }
+    // (The other side picks its public value: see modPowExact.)
+    return modPowExact(f, x, p);
+  }
+}
+
+final _group1Prime = decodeBigIntWithSign(
+  1,
+  Uint8List.fromList([
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xc9, 0x0f, //
+    0xda, 0xa2, 0x21, 0x68, 0xc2, 0x34, 0xc4, 0xc6, 0x62, 0x8b, //
+    0x80, 0xdc, 0x1c, 0xd1, 0x29, 0x02, 0x4e, 0x08, 0x8a, 0x67, //
+    0xcc, 0x74, 0x02, 0x0b, 0xbe, 0xa6, 0x3b, 0x13, 0x9b, 0x22, //
+    0x51, 0x4a, 0x08, 0x79, 0x8e, 0x34, 0x04, 0xdd, 0xef, 0x95, //
+    0x19, 0xb3, 0xcd, 0x3a, 0x43, 0x1b, 0x30, 0x2b, 0x0a, 0x6d, //
+    0xf2, 0x5f, 0x14, 0x37, 0x4f, 0xe1, 0x35, 0x6d, 0x6d, 0x51, //
+    0xc2, 0x45, 0xe4, 0x85, 0xb5, 0x76, 0x62, 0x5e, 0x7e, 0xc6, //
+    0xf4, 0x4c, 0x42, 0xe9, 0xa6, 0x37, 0xed, 0x6b, 0x0b, 0xff, //
+    0x5c, 0xb6, 0xf4, 0x06, 0xb7, 0xed, 0xee, 0x38, 0x6b, 0xfb, //
+    0x5a, 0x89, 0x9f, 0xa5, 0xae, 0x9f, 0x24, 0x11, 0x7c, 0x4b, //
+    0x1f, 0xe6, 0x49, 0x28, 0x66, 0x51, 0xec, 0xe6, 0x53, 0x81, //
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  ]),
+);
+
+final _group14Prime = decodeBigIntWithSign(
+  1,
+  Uint8List.fromList([
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xc9, 0x0f, //
+    0xda, 0xa2, 0x21, 0x68, 0xc2, 0x34, 0xc4, 0xc6, 0x62, 0x8b, //
+    0x80, 0xdc, 0x1c, 0xd1, 0x29, 0x02, 0x4e, 0x08, 0x8a, 0x67, //
+    0xcc, 0x74, 0x02, 0x0b, 0xbe, 0xa6, 0x3b, 0x13, 0x9b, 0x22, //
+    0x51, 0x4a, 0x08, 0x79, 0x8e, 0x34, 0x04, 0xdd, 0xef, 0x95, //
+    0x19, 0xb3, 0xcd, 0x3a, 0x43, 0x1b, 0x30, 0x2b, 0x0a, 0x6d, //
+    0xf2, 0x5f, 0x14, 0x37, 0x4f, 0xe1, 0x35, 0x6d, 0x6d, 0x51, //
+    0xc2, 0x45, 0xe4, 0x85, 0xb5, 0x76, 0x62, 0x5e, 0x7e, 0xc6, //
+    0xf4, 0x4c, 0x42, 0xe9, 0xa6, 0x37, 0xed, 0x6b, 0x0b, 0xff, //
+    0x5c, 0xb6, 0xf4, 0x06, 0xb7, 0xed, 0xee, 0x38, 0x6b, 0xfb, //
+    0x5a, 0x89, 0x9f, 0xa5, 0xae, 0x9f, 0x24, 0x11, 0x7c, 0x4b, //
+    0x1f, 0xe6, 0x49, 0x28, 0x66, 0x51, 0xec, 0xe4, 0x5b, 0x3d, //
+    0xc2, 0x00, 0x7c, 0xb8, 0xa1, 0x63, 0xbf, 0x05, 0x98, 0xda, //
+    0x48, 0x36, 0x1c, 0x55, 0xd3, 0x9a, 0x69, 0x16, 0x3f, 0xa8, //
+    0xfd, 0x24, 0xcf, 0x5f, 0x83, 0x65, 0x5d, 0x23, 0xdc, 0xa3, //
+    0xad, 0x96, 0x1c, 0x62, 0xf3, 0x56, 0x20, 0x85, 0x52, 0xbb, //
+    0x9e, 0xd5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6d, 0x67, 0x0c, //
+    0x35, 0x4e, 0x4a, 0xbc, 0x98, 0x04, 0xf1, 0x74, 0x6c, 0x08, //
+    0xca, 0x18, 0x21, 0x7c, 0x32, 0x90, 0x5e, 0x46, 0x2e, 0x36, //
+    0xce, 0x3b, 0xe3, 0x9e, 0x77, 0x2c, 0x18, 0x0e, 0x86, 0x03, //
+    0x9b, 0x27, 0x83, 0xa2, 0xec, 0x07, 0xa2, 0x8f, 0xb5, 0xc5, //
+    0x5d, 0xf0, 0x6f, 0x4c, 0x52, 0xc9, 0xde, 0x2b, 0xcb, 0xf6, //
+    0x95, 0x58, 0x17, 0x18, 0x39, 0x95, 0x49, 0x7c, 0xea, 0x95, //
+    0x6a, 0xe5, 0x15, 0xd2, 0x26, 0x18, 0x98, 0xfa, 0x05, 0x10, //
+    0x15, 0x72, 0x8e, 0x5a, 0x8a, 0xac, 0xaa, 0x68, 0xff, 0xff, //
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  ]),
+);

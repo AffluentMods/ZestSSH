@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">مضيف جديد</string>
+    <string name="shortcut_new_connection_long">إنشاء مضيف جديد</string>
+    <string name="shortcut_import">استيراد</string>
+    <string name="shortcut_import_long">استيراد إعدادات SSH</string>
+    <string name="shortcut_snippets">المقتطفات</string>
+    <string name="shortcut_snippets_long">إدارة المقتطفات</string>
+    <string name="widget_description">اتصل بمضيفيك بلمسة واحدة</string>
+    <string name="notification_channel_name">جلسات SSH</string>
+    <string name="notification_channel_description">يظهر ما دامت جلسات SSH مفتوحة، كي تبقى قيد التشغيل</string>
+    <string name="notification_active_one">جلسة SSH نشطة واحدة</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="zero">%d جلسة SSH نشطة</item>
+        <item quantity="one">%d جلسة SSH نشطة</item>
+        <item quantity="two">جلستا SSH نشطتان</item>
+        <item quantity="few">%d جلسات SSH نشطة</item>
+        <item quantity="many">%d جلسة SSH نشطة</item>
+        <item quantity="other">%d جلسة SSH نشطة</item>
+    </plurals>
+    <string name="scheduled_channel_name">المهام المجدولة</string>
+    <string name="scheduled_channel_description">يطلب منك تشغيل مهمة مجدولة عندما لا يسمح Android لـ ZestSSH ببدئها تلقائيًا</string>
+    <string name="scheduled_ready_title">مهمة مجدولة جاهزة</string>
+    <string name="scheduled_ready_text">انقر لتشغيلها. يسمح Android لـ ZestSSH ببدء مهمة تلقائيًا فقط أثناء فتح التطبيق.</string>
+    <string name="widget_empty">لا توجد مضيفات بعد. انقر على + لإضافة واحد.</string>
+    <string name="widget_locked">قفل التطبيق مفعّل\nافتح ZestSSH للاتصال.</string>
+</resources>

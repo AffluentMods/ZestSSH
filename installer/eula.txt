@@ -1,0 +1,49 @@
+ZestSSH: licence and terms
+
+Last updated: 16 November 2026
+
+ZestSSH is made by Affluent Labs LLC ("we", "us"). This notice says under
+which terms you get the program, and which terms apply to the services
+that come with it.
+
+1. The program is free software. ZestSSH is licensed under the GNU General
+Public License version 3, as published by the Free Software Foundation,
+with an additional permission under section 7 of that licence (the file
+LICENSE-EXCEPTION.txt that comes with its source code). You may run,
+copy, change and share the program under that licence. You do not have to
+accept the licence to install or run ZestSSH. The full text of the licence
+is in the app, under About, Open source licenses, and at
+https://www.gnu.org/licenses/gpl-3.0.html. The source code of each release
+is published by Affluent Labs LLC; https://zestssh.com says where.
+
+2. No warranty. The program is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE, as sections 15 and
+16 of the GNU General Public License set out. Nothing in this notice takes
+away a right that the law where you live gives consumers and does not
+allow a contract to remove.
+
+3. Other components. ZestSSH contains open-source components by others,
+each under its own licence. The app lists them under About, Open source
+licenses.
+
+4. Names and logos. "ZestSSH", the ZestSSH logo and app icon are
+trademarks of Affluent Labs LLC, as is its company name. The licence above
+does not grant any right to them. A changed or rebuilt program that you
+give to others must use its own name and icon (see TRADEMARKS.md with the
+source code).
+
+5. Services. The paid features (the plans and licences you buy), ZestSSH
+Cloud, accounts, Teams and support are services of Affluent Labs LLC.
+When you use them, the ZestSSH Terms of Service, the Privacy Policy and
+the Acceptable Use Policy apply, published at https://zestssh.com/terms,
+https://zestssh.com/privacy and https://zestssh.com/acceptable-use. For
+the services, where this notice and the Terms of Service differ, the Terms
+of Service govern. They do not limit your rights in the program under the
+GNU General Public License.
+
+6. Privacy. The program has no analytics, no crash reporting and no usage
+telemetry. What leaves your device, and why, is described in the Privacy
+Policy.
+
+Contact: Affluent Labs LLC, support@zestssh.com

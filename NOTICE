@@ -1,0 +1,34 @@
+ZestSSH
+Copyright © 2026 Affluent Labs LLC
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 3 as published by
+the Free Software Foundation, with the additional permission under section 7
+of that licence given in LICENSE-EXCEPTION.txt.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License in
+LICENSE for more details.
+
+SPDX: GPL-3.0-only, with the additional permission in LICENSE-EXCEPTION.txt.
+
+Versions of ZestSSH released before 4.0 were not published under this
+licence.
+
+The packages under packages/ that carry a LICENSE file of their own stay
+under it: zest_ssh_core and xterm (MIT), desktop_multi_window (Apache-2.0),
+lucide_icons (ISC) and speech_to_text_windows (BSD-3-Clause). So do the code
+kept with its own licence files in packages/zest_native/rust, the Rust
+crates listed in packages/zest_native/NOTICES, and the fonts and copied
+code that third_party/ describes. The app lists every licence it carries
+under About, Open source licenses.
+
+Contributions are accepted under the ZestSSH Contributor License Agreement
+(CLA.md); see CONTRIBUTING.md.
+
+"ZestSSH", "Zest", the ZestSSH logo and app icon, "Orchards" and "Affluent
+Labs" are trademarks of Affluent Labs LLC. The licences above license the
+code; they grant no right to these marks. The image files that show the
+logo or the app icon (TRADEMARKS.md lists where they are) are not licensed
+under the GNU General Public License. See TRADEMARKS.md.

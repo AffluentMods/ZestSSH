@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Required by sign_in_with_apple (auth_service.dart). Enable "Sign in with
+	     Apple" on the App ID + provisioning profile too. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- Passkeys for zestssh.com (3.3, PasskeyChannel.swift): the site names
+	     this app in /.well-known/apple-app-site-association (webcredentials,
+	     D52P6T66KW.com.affluentlabs.zestssh), and the App ID's Associated
+	     Domains capability and its profiles carry it. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:zestssh.com</string>
+	</array>
+	<!-- App Group (4.0): the home screen widget (ios/ZestSSHWidget) reads the
+	     hosts the app gives it from here. ZEST_APP_GROUP in the Xcode project
+	     names it (group.com.affluentlabs.zestssh). It must be registered in the
+	     Developer portal and ticked on this App ID and on the widget's
+	     (com.affluentlabs.zestssh.widget) before a signed build: their
+	     provisioning profiles must carry it, or signing refuses the build. -->
+	<!-- NFC Tag Reading (4.0, FidoChannel.swift): a FIDO2 security key held to
+	     the iPhone signs for an SSH key that lives on it. The capability must
+	     be ticked on this App ID in the Developer portal and its profiles must
+	     carry it before a signed build, as for the App Group below. -->
+	<key>com.apple.developer.nfc.readersession.formats</key>
+	<array>
+		<string>TAG</string>
+	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(ZEST_APP_GROUP)</string>
+	</array>
+</dict>
+</plist>

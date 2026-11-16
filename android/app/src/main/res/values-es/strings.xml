@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">Nuevo host</string>
+    <string name="shortcut_new_connection_long">Crear un host nuevo</string>
+    <string name="shortcut_import">Importar</string>
+    <string name="shortcut_import_long">Importar configuración SSH</string>
+    <string name="shortcut_snippets">Snippets</string>
+    <string name="shortcut_snippets_long">Gestionar snippets</string>
+    <string name="widget_description">Conéctate a tus hosts con un toque</string>
+    <string name="notification_channel_name">Sesiones SSH</string>
+    <string name="notification_channel_description">Se muestra mientras hay sesiones SSH abiertas, para que sigan activas</string>
+    <string name="notification_active_one">Una sesión SSH activa</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="one">%d sesión SSH activa</item>
+        <item quantity="many">%d sesiones SSH activas</item>
+        <item quantity="other">%d sesiones SSH activas</item>
+    </plurals>
+    <string name="scheduled_channel_name">Tareas programadas</string>
+    <string name="scheduled_channel_description">Te pide ejecutar una tarea programada cuando Android no deja que ZestSSH la inicie por sí solo</string>
+    <string name="scheduled_ready_title">Una tarea programada está lista</string>
+    <string name="scheduled_ready_text">Toca para ejecutarla. Android solo deja que ZestSSH inicie una tarea por sí solo mientras la app está abierta.</string>
+    <string name="widget_empty">Aún no hay hosts. Toca + para añadir uno.</string>
+    <string name="widget_locked">El bloqueo de la app está activado\nAbre ZestSSH para conectarte.</string>
+</resources>

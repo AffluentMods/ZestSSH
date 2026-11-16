@@ -1,0 +1,28 @@
+name: Feature request
+description: An idea, or a change to how something works
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task, not the solution. What do you do today instead?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where would you use it?
+      multiple: true
+      options: [Phone, Tablet, Computer]
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Before you send
+      options:
+        - label: I searched the open and closed issues for this.
+          required: true

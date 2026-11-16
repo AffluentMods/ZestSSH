@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in the app does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Before you send this: remove host names, addresses, user names, keys and passwords from
+        everything you paste. Never post a private key, a password or a sync password here.
+  - type: dropdown
+    id: build
+    attributes:
+      label: Which build is it?
+      options:
+        - The official app (store, zestssh.com download, package repository)
+        - A build I made from this source
+        - Someone else's build or fork
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and build number
+      description: Settings, About. For example 4.0.0 and its build number.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options: [Android, iOS, iPadOS, Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: System version and device
+      description: For example Android 16 on a Pixel 8, Windows 11 24H2, Ubuntu 24.04 with GNOME.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen again
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Error details
+      description: If the app showed an error, press Copy details and paste it here. It is scrubbed of names and secrets, but read it before posting.
+      render: text
+  - type: input
+    id: server
+    attributes:
+      label: The other end, if it matters
+      description: For a connection problem, the server software and version (OpenSSH 9.9, Dropbear, vsftpd, TigerVNC). No host names or addresses.

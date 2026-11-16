@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">新しいホスト</string>
+    <string name="shortcut_new_connection_long">新しいホストを作成</string>
+    <string name="shortcut_import">インポート</string>
+    <string name="shortcut_import_long">SSH 設定をインポート</string>
+    <string name="shortcut_snippets">スニペット</string>
+    <string name="shortcut_snippets_long">スニペットを管理</string>
+    <string name="widget_description">ワンタップでホストに接続</string>
+    <string name="notification_channel_name">SSH セッション</string>
+    <string name="notification_channel_description">SSH セッションが開いている間、動作を続けるために表示されます</string>
+    <string name="notification_active_one">アクティブな SSH セッションが一つあります</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="other">アクティブな SSH セッション %d 件</item>
+    </plurals>
+    <string name="scheduled_channel_name">スケジュールされたタスク</string>
+    <string name="scheduled_channel_description">Android が ZestSSH にタスクを自動で開始させないときに、実行するよう知らせます</string>
+    <string name="scheduled_ready_title">スケジュールされたタスクの準備ができました</string>
+    <string name="scheduled_ready_text">タップすると実行します。Android では、ZestSSH がタスクを自動で開始できるのはアプリを開いているときだけです。</string>
+    <string name="widget_empty">ホストはまだありません。+ をタップして追加します。</string>
+    <string name="widget_locked">アプリロックがオンです\n接続するには ZestSSH を開いてください。</string>
+</resources>

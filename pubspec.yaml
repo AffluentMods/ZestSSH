@@ -1,0 +1,342 @@
+name: zestssh
+description: "ZestSSH - The Fresh SSH Client"
+publish_to: 'none'
+version: 3.4.2+306
+
+environment:
+  sdk: ^3.10.7
+  flutter: ">=3.50.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Native code in Rust (3.4), built for each platform by its build hook: needs rustup on the
+  # build machine (BUILDING.md).
+  zest_native:
+    path: packages/zest_native
+
+  # SSH & Terminal
+  zest_ssh_core:
+    path: packages/zest_ssh_core
+  xterm:
+    path: packages/xterm
+  # On-device Android PTY for the local shell: the forkpty-backed sibling to
+  # the vendored xterm, so an interactive shell gets a real controlling tty
+  # (line editing, job control, signals, window resize, full-screen TUIs).
+  flutter_pty: ^0.4.1
+
+  # Database
+  drift: ^2.22.1
+  sqlite3: ^2.9.4
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  sqlcipher_flutter_libs: ^0.6.7
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Secure storage
+  flutter_secure_storage: ^9.2.4
+  # The keychain's own store on Windows and a Mac (lib/services/profiles/): the
+  # plugin's interface, and its Windows class over a file that is safe to stop.
+  # Exact: the Windows one is reached through its src folder, and its format is
+  # what this keeps to.
+  flutter_secure_storage_platform_interface: 1.1.2
+  flutter_secure_storage_windows: 3.1.2
+
+  # Auth / biometrics
+  local_auth: ^2.3.0
+
+  # Hardware-backed key store (Android Keystore / iOS Secure Enclave), used for
+  # the opt-in "Hardware-backed encryption" layer over the at-rest vault.
+  biometric_storage: ^5.0.1
+
+  # Crypto (key generation + hashing)
+  pointycastle: ^4.0.0
+  cryptography: ^2.7.0
+  crypto: ^3.0.6
+
+  # Unicode NFC normalisation for SFTP sync filename comparison (macOS stores
+  # decomposed/NFD, Linux composed/NFC; the same name must compare equal).
+  unorm_dart: ^0.3.0
+
+  # Firebase + Auth
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.1
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
+
+  # HTTP (sync API calls)
+  http: ^1.2.2
+
+  # XML (cloud import: AWS EC2 answers). Already in the app through pdf,
+  # image and dbus; named here because lib/ imports it.
+  xml: ^6.6.1
+
+  # File picker (key import, SFTP downloads)
+  file_picker: ^8.1.7
+
+  # Utilities
+  uuid: ^4.5.1
+  intl: ^0.20.2
+  shared_preferences: ^2.3.4
+  logging: ^1.3.0
+  purchases_flutter: ^9.14.0
+  purchases_ui_flutter: ^9.14.0
+  share_plus: ^10.1.4
+  speech_to_text: ^7.5.0
+  # 22.3: Windows toasts (19 added Windows) for the computer's "Also show as system
+  # notifications" (4.0). Not 23: it compiles against Android SDK 37, the app is on 36.
+  flutter_local_notifications: ^22.3.3
+  package_info_plus: ^8.0.0
+  pdf: ^3.11.2
+  printing: ^5.13.4
+  url_launcher: ^6.3.1
+  # Opens the OS app-notification settings page from the permission-denied
+  # banner (flutter_local_notifications cannot open settings itself).
+  # 7.0: compiled against Android API 36 (5.1 was 33, which AGP 9, needed by Flutter 3.50,
+  # refuses beside AndroidX libraries that need 34). 8.0 and later drop CocoaPods on iOS and macOS.
+  app_settings: ^7.0.0
+  screen_retriever: ^0.2.0
+  window_manager: ^0.5.1
+  tray_manager: ^0.5.2
+  desktop_drop: ^0.7.0
+  # Vendored (patched) - see packages/desktop_multi_window/windows/
+  # desktop_multi_window_plugin.cpp: the public registrar no longer nulls a
+  # sub-window's inter-window channel, which broke every child->main call
+  # (popped-out editor / detached-terminal input).
+  desktop_multi_window:
+    path: packages/desktop_multi_window
+  quick_actions: ^1.1.0
+  # lucide_icons 0.257.0, vendored (packages/lucide_icons): its icons subclassed IconData, which
+  # is final since Flutter 3.44, and the package has had no release since 2023.
+  lucide_icons:
+    path: packages/lucide_icons
+
+  # Inline SVG renderer for brand-accurate OS logos. Used by the OS
+  # catalog (lib/core/data/os_catalog.dart) so we get proper Ubuntu /
+  # Apple / Proxmox / etc. marks instead of hand-rolled CustomPainter
+  # approximations.
+  flutter_svg: ^2.0.10+1
+
+  # v1.6 Networks: connectivity detection + (optional) wifi SSID lookup
+  connectivity_plus: ^6.1.5
+  network_info_plus: ^7.0.0
+
+  # QR-based connection sharing (v1.5.12). qr_flutter renders the
+  # outgoing QR on the share sheet; mobile_scanner provides the
+  # camera-side scanner for ingesting a code from another device.
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.0
+
+  ffi: ^2.2.0
+
+  # Crop / zoom / orient step for the profile photo (native UCrop on Android,
+  # TOCropViewController on iOS; unsupported on desktop, where the picked image
+  # is used as-is).
+  image_cropper: ^12.2.1
+  pasteboard: ^0.6.0
+
+  # OS screen wakelock behind the "Keep Screen Awake" setting: held only while
+  # a terminal session is connected (lib/services/keep_awake_controller.dart).
+  wakelock_plus: ^1.3.3
+  in_app_review: ^2.0.12
+
+  # A Linux desktop's idle time and lock state for the idle lock
+  # (lib/services/presence/linux_presence.dart; found in a security
+  # review). Already in the build through connectivity_plus,
+  # wakelock_plus and flutter_local_notifications on Linux; named here
+  # because the app now imports it itself.
+  dbus: ^0.7.12
+
+  # The file editor's code view (lib/ui/screens/editor/): its own render
+  # object over a list of lines, so a 4 MB file stays fast, line numbers stay
+  # with their lines when wrapped, highlighting runs off the UI isolate, and
+  # find, folding and undo come with it. MIT, by Reqable; re_highlight (MIT,
+  # the same authors) is its highlighter, and only the languages the editor
+  # imports are built in.
+  re_editor: ^0.10.0
+  re_highlight: ^0.0.3
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.22.1
+  build_runner: ^2.4.13
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
+  msix: ^3.16.13
+  # Parses the inline host-icon SVGs in a plain test, catching an icon that
+  # flutter_svg would draw empty (already a transitive dep of flutter_svg).
+  vector_graphics_compiler: ^1.2.1
+  # The vendored Windows speech plugin (below), named here too so its tests can import it.
+  speech_to_text_windows:
+    path: packages/speech_to_text_windows
+
+# speech_to_text_windows 1.0.1, vendored (packages/speech_to_text_windows), the Windows plugin
+# speech_to_text uses: 1.0.1 dropped a phrase with a quote mark in it (its JSON was written
+# unescaped), called the platform channel from its recognition thread, and printed every phrase it
+# recognised to stdout. Its CHANGELOG.md lists the changes.
+dependency_overrides:
+  speech_to_text_windows:
+    path: packages/speech_to_text_windows
+
+# The native library's cargo features (4.0), which packages/zest_native/hook/build.dart passes to
+# cargo: vnc, the remote screen engine for VNC (our engine, a fork of vnc-rs), and rdp, the same
+# for RDP (built on IronRDP, a fork of some of its crates in rust/vendor), and mosh, the built-in
+# Mosh client (rust/src/mosh, written from the protocol's description). "probes" is for the
+# developer example only (test/native/screen_symbols_test.dart checks the built library has none).
+# tool/rust_notices.dart reads this list too, so the licences page lists the crates each feature
+# brings, and tool/rust_advisories.dart checks them.
+hooks:
+  user_defines:
+    zest_native:
+      cargo_features: [vnc, rdp, mosh, sound]
+
+# ── App Icon Configuration ────────────────────────────────────────
+flutter_launcher_icons:
+  android: true
+  ios: true
+  macos:
+    generate: true
+    image_path: "assets/ZestSSH.png"
+  image_path: "assets/ZestSSH.png"
+  adaptive_icon_background: "#0A0A0A"
+  adaptive_icon_foreground: "assets/ZestSSH.png"
+  min_sdk_android: 24
+  remove_alpha_ios: true
+
+# ── Splash Screen Configuration ──────────────────────────────────
+flutter_native_splash:
+  color: "#0A0A0A"
+  image: "assets/ZestSSH.png"
+  image_dark: "assets/ZestSSH.png"
+  color_dark: "#0A0A0A"
+  android_12:
+    color: "#0A0A0A"
+    image: "assets/ZestSSH_splash.png"
+    color_dark: "#0A0A0A"
+    image_dark: "assets/ZestSSH_splash.png"
+    icon_background_color: "#0A0A0A"
+  ios: true
+  android: true
+
+flutter:
+  generate: true
+  uses-material-design: true
+
+  config:
+    # Flutter 3.50 builds iOS and macOS with Swift Package Manager by default,
+    # and the iOS packages do not resolve under it (image_cropper wants
+    # TOCropViewController 3, file_picker's DKImagePickerController wants 2):
+    # stay on CocoaPods, as before 3.50.
+    enable-swift-package-manager: false
+
+  assets:
+    - assets/
+    - assets/fonts/
+    # The native libraries' licences, one file per platform (tool/native_notices.dart).
+    - assets/licenses/
+    - assets/app_icon.ico
+    - assets/app_icon_critical.ico
+
+  fonts:
+    - family: GeistSans
+      fonts:
+        - asset: assets/fonts/GeistSans-Regular.ttf
+        - asset: assets/fonts/GeistSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/GeistSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/GeistSans-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
+    - family: FiraCode
+      fonts:
+        - asset: assets/fonts/FiraCode-Regular.ttf
+        - asset: assets/fonts/FiraCode-Bold.ttf
+          weight: 700
+    - family: SourceCodePro
+      fonts:
+        - asset: assets/fonts/SourceCodePro-Regular.ttf
+        - asset: assets/fonts/SourceCodePro-Bold.ttf
+          weight: 700
+    # TODO: Add bold weights (-Bold.otf / -Bold.ttf) for CascadiaCode and Hack
+    - family: CascadiaCode
+      fonts:
+        - asset: assets/fonts/CascadiaCode-Regular.otf
+    - family: Hack
+      fonts:
+        - asset: assets/fonts/Hack-Regular.ttf
+    # Nerd Fonts' "Symbols Only" font (4.0), unchanged from the v3.5.1 release: the terminal's
+    # last fallback (lib/theme/terminal_fonts.dart), so powerline prompts and file icons in the
+    # Private Use Area draw in every terminal font. Licences: third_party/symbols-nerd-font.
+    - family: SymbolsNerdFontMono
+      fonts:
+        - asset: assets/fonts/SymbolsNerdFontMono-Regular.ttf
+
+  # Added to the app's licences (Settings > Licences) as they are, on every platform: the app's own
+  # licence (third_party/zestssh: LICENSE-EXCEPTION.txt and LICENSE as they are), the bundled
+  # symbol font's own licence and those of the icon sets in it, the other bundled fonts' licences,
+  # the notices of code copied into this repository (zest_ssh_core's bcrypt), and the credits and
+  # trademark note. The native libraries' licences differ by platform: assets/licenses/, added at
+  # start by lib/services/platform_licences.dart.
+  licenses:
+    - third_party/zestssh/NOTICES.txt
+    - third_party/symbols-nerd-font/NOTICES.txt
+    - third_party/fonts/NOTICES.txt
+    - third_party/bcrypt/NOTICES.txt
+    - third_party/wayland-protocols/NOTICES.txt
+    - third_party/credits/NOTICES.txt
+
+msix_config:
+  display_name: ZestSSH
+  publisher_display_name: Affluent Labs
+  identity_name: AffluentLabs.ZestSSH
+  publisher: CN=0DD23BD3-21D8-4FFB-9634-06D26A8DFA90
+  logo_path: assets/ZestSSH.png
+  capabilities: internetClient,privateNetworkClientServer
+  install_certificate: false
+  # What the Inno installer writes into the registry, a package has to
+  # declare: the zestssh:// links (automation, widgets), and the name the
+  # app is started by from a command line.
+  protocol_activation: zestssh
+  execution_alias: zestssh
+  # A click on one of ZestSSH's Windows notifications (4.0, Settings > Notifications >
+  # Also show as system notifications) starts this class in the running app, which
+  # brings its window forward; ZestSSH not running, Windows starts it with these
+  # arguments, which the app passes over. The class id is the one the app registers
+  # (NotificationService._windowsActivatorGuid); the website copy writes its own to the
+  # registry when the switch is turned on.
+  toast_activator:
+    clsid: a2586286-9f6f-4075-9000-b58c7e3fb834
+    arguments: "-ToastActivated"
+    display_name: ZestSSH notifications
+  # ── Microsoft Store ────────────────────────────────────────────
+  # The Store's package is built with ZEST_STORE=true, which turns off the
+  # app's own check for updates (the Store installs the next version):
+  #   flutter pub run msix:create --release --store \
+  #     --windows-build-args "--dart-define-from-file=.env --dart-define=ZEST_STORE=true --obfuscate --split-debug-info=build/debug-symbols"
+  # identity_name, publisher and publisher_display_name above are Partner
+  # Center's own values (Product identity, 30 October 2026); the Store signs
+  # the package, so nothing below is needed for it.
+  # ── Code Signing (Production) ──────────────────────────────────
+  # To sign the MSIX for production distribution:
+  # 1. Obtain a code signing certificate (.pfx) from a trusted CA
+  # 2. Set the path and password below (or use environment variables):
+  #    certificate_path: C:\certs\zestssh_signing.pfx
+  #    certificate_password: (use MSIX_CERTIFICATE_PASSWORD env var)
+  # 3. Build with: flutter pub run msix:create --release
+  # 4. The publisher field above MUST match the certificate's Subject CN

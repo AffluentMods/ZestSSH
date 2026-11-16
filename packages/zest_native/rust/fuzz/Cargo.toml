@@ -1,0 +1,354 @@
+# Fuzz targets for the native library's remote screen engine (4.0).
+#
+# Never built by the app: its own workspace and its own Cargo.lock, so nothing here enters the
+# app's dependency tree, Cargo.lock or NOTICES. The library is compiled from the same source
+# (../src/lib.rs) as an rlib, which the app's crate (staticlib and cdylib only) cannot give.
+# The [features] and [dependencies] below repeat ../Cargo.toml's (same versions); keep them in
+# step when that file changes (`fuzz/run.sh check` compares them).
+#
+# How to run: fuzz/run.sh (its header).
+
+[package]
+name = "zest_native_fuzz"
+version = "0.1.0"
+edition = "2024"
+publish = false
+# GPL-3.0-only, with the additional permission in LICENSE-EXCEPTION.txt at the repository root.
+license = "GPL-3.0-only"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+# As ../Cargo.toml: the fuzz targets build the app's own fork (check_manifest.py compares).
+[patch.crates-io]
+ironrdp-graphics = { path = "../vendor/ironrdp-graphics" }
+ironrdp-session = { path = "../vendor/ironrdp-session" }
+
+[lib]
+name = "zest_native"
+path = "../src/lib.rs"
+crate-type = ["rlib"]
+test = false
+doctest = false
+bench = false
+
+[features]
+default = ["vnc", "rdp", "mosh", "sound", "harness"]
+# Only for the targets: tokio's paused test clock (time jumps ahead when everything waits, so a
+# timeout in the engine never makes a run wait for real).
+harness = ["tokio/test-util", "tokio/sync", "tokio/macros"]
+rdp = [
+  "dep:ironrdp-connector",
+  "dep:ironrdp-session",
+  "dep:ironrdp-graphics",
+  "dep:ironrdp-pdu",
+  "dep:ironrdp-tokio",
+  "dep:ironrdp-dvc",
+  "dep:ironrdp-svc",
+  "dep:ironrdp-displaycontrol",
+  "dep:ironrdp-egfx",
+  "dep:tokio",
+  "tokio/macros",
+  "dep:tokio-rustls",
+  "dep:x509-cert",
+  "dep:windows",
+]
+sound = ["rdp", "dep:ironrdp-rdpsnd", "dep:cpal"]
+vnc = [
+  "dep:tokio",
+  "tokio/sync",
+  "tokio/macros",
+  "dep:flate2",
+  "dep:thiserror",
+  "dep:zune-jpeg",
+  "dep:zune-core",
+  "dep:tokio-rustls",
+  "dep:ring",
+  "dep:num-bigint",
+  "dep:md-5",
+  "dep:aes",
+  "dep:x509-cert",
+]
+mosh = [
+  "dep:tokio",
+  "tokio/sync",
+  "tokio/macros",
+  "dep:ocb3",
+  "dep:aes",
+  "aes/zeroize",
+  "dep:flate2",
+  "dep:ring",
+]
+probes = []
+
+[dependencies]
+# The fuzzing harness (libFuzzer, built from source by its build script).
+libfuzzer-sys = "0.4"
+# Windows: the coverage sections' bounds (sancov_bounds/src/lib.rs says why).
+sancov_bounds = { path = "sancov_bounds" }
+# The server's side of an RDP sign-in for the RDP targets (harness/rdp.rs), from IronRDP itself,
+# at the connector's version; async-trait for the one trait of it the harness implements.
+ironrdp-acceptor = "=0.12.0"
+async-trait = "0.1"
+
+# The rest: as ../Cargo.toml.
+suppaftp = { version = "=12.2.1", default-features = false, features = ["rustls-ring", "deprecated"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+zeroize = "1"
+ironrdp-connector = { version = "=0.12.0", optional = true }
+ironrdp-session = { version = "=0.13.0", optional = true }
+ironrdp-graphics = { version = "=0.11.0", optional = true }
+ironrdp-pdu = { version = "=0.11.0", optional = true }
+ironrdp-tokio = { version = "=0.12.0", optional = true }
+ironrdp-dvc = { version = "=0.10.0", optional = true }
+ironrdp-svc = { version = "=0.10.0", optional = true }
+ironrdp-displaycontrol = { version = "=0.10.0", optional = true }
+ironrdp-egfx = { version = "=0.5.0", optional = true, default-features = false }
+ironrdp-rdpsnd = { version = "=0.11.0", optional = true, default-features = false }
+cpal = { version = "=0.18.2", optional = true, default-features = false }
+x509-cert = { version = "=0.3.0", optional = true, default-features = false, features = ["std"] }
+tokio = { version = "1.52", optional = true, default-features = false, features = ["rt", "net", "time", "io-util"] }
+flate2 = { version = "1", optional = true }
+thiserror = { version = "2", optional = true }
+zune-jpeg = { version = "0.5", optional = true, default-features = false, features = ["std", "x86", "neon"] }
+zune-core = { version = "0.5", optional = true, default-features = false, features = ["std"] }
+tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring", "tls12"] }
+ring = { version = "0.17", optional = true }
+num-bigint = { version = "0.4", optional = true, default-features = false, features = ["std"] }
+md-5 = { version = "0.11", optional = true, default-features = false }
+aes = { version = "0.9", optional = true, default-features = false }
+ocb3 = { version = "=0.2.0", optional = true, default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+rustls-platform-verifier = "=0.7.1"
+windows = { version = "=0.62.2", optional = true, default-features = false, features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_Media_MediaFoundation",
+] }
+
+[profile.release]
+debug = 1
+# libFuzzer reports a panic as a crash (its abort). The app's library unwinds since 4.0's RDP
+# (../Cargo.toml: a panic ends the screen session it happens in), but a fuzz build must not: a
+# panic is what a run is there to find, and on Windows the coverage pass's compare tracing puts
+# calls into the unwinder's cleanup code that the compiler turns into traps (tried 13 November
+# 2026: a caught panic ended the process with an illegal instruction).
+panic = "abort"
+opt-level = 3
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
+# No fuzz target: the library's own RDP session against a real test server (tools/rdp_live.rs
+# says how to build and run it). fuzz/run.sh lists fuzz_targets/ only, so it is not built there.
+[[bin]]
+name = "rdp_live"
+path = "tools/rdp_live.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "certificate"
+path = "fuzz_targets/certificate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jpeg"
+path = "fuzz_targets/jpeg.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_connector"
+path = "fuzz_targets/rdp_connector.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_credssp"
+path = "fuzz_targets/rdp_credssp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_fastpath"
+path = "fuzz_targets/rdp_fastpath.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_clipboard"
+path = "fuzz_targets/rdp_clipboard.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_sound"
+path = "fuzz_targets/rdp_sound.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_gateway"
+path = "fuzz_targets/rdp_gateway.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_gfx"
+path = "fuzz_targets/rdp_gfx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rdp_session"
+path = "fuzz_targets/rdp_session.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mosh_datagram"
+path = "fuzz_targets/mosh_datagram.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_copyrect"
+path = "fuzz_targets/rect_copyrect.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_cursor"
+path = "fuzz_targets/rect_cursor.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_desktop_size"
+path = "fuzz_targets/rect_desktop_size.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_hextile"
+path = "fuzz_targets/rect_hextile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_raw"
+path = "fuzz_targets/rect_raw.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_rre"
+path = "fuzz_targets/rect_rre.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_tight"
+path = "fuzz_targets/rect_tight.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_trle"
+path = "fuzz_targets/rect_trle.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_zlib"
+path = "fuzz_targets/rect_zlib.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rect_zrle"
+path = "fuzz_targets/rect_zrle.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "screen_feed"
+path = "fuzz_targets/screen_feed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "screen_open"
+path = "fuzz_targets/screen_open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vnc_ard"
+path = "fuzz_targets/vnc_ard.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vnc_clipboard"
+path = "fuzz_targets/vnc_clipboard.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vnc_handshake"
+path = "fuzz_targets/vnc_handshake.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vnc_messages"
+path = "fuzz_targets/vnc_messages.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vnc_vencrypt"
+path = "fuzz_targets/vnc_vencrypt.rs"
+test = false
+doc = false
+bench = false

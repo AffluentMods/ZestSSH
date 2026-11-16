@@ -1,0 +1,35 @@
+name: zest_screen_example
+description: >-
+  ZestSSH 4.0, developer only: the measuring harness for remote screens (VNC or RDP) drawn in
+  Flutter, carried over zest_ssh_core's own SSH channel into the Rust screen engine. Never shipped.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.7
+  flutter: ">=3.50.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.2.0
+  zest_native:
+    path: ..
+  zest_ssh_core:
+    path: ../../zest_ssh_core
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# This app is the root package of its own builds, so its user-defines reach zest_native's build
+# hook: the library is built with the features "vnc" and "rdp" here. The app's pubspec turns on
+# "vnc" only (RDP comes later); neither turns on "probes".
+hooks:
+  user_defines:
+    zest_native:
+      cargo_features: [vnc, rdp]

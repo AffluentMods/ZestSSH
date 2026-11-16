@@ -1,0 +1,20 @@
+name: lucide_icons
+description: Lucide icons for Flutter (lucide_icons 0.257.0 from pub.dev, vendored for Flutter 3.50).
+version: 0.257.0+zest.1
+publish_to: none
+homepage: https://lucide.dev
+repository: https://github.com/lucide-icons/lucide
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.50.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  fonts:
+    - family: Lucide
+      fonts:
+        - asset: assets/lucide.ttf

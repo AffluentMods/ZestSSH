@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_new_connection">새 호스트</string>
+    <string name="shortcut_new_connection_long">새 호스트 만들기</string>
+    <string name="shortcut_import">가져오기</string>
+    <string name="shortcut_import_long">SSH 설정 가져오기</string>
+    <string name="shortcut_snippets">스니펫</string>
+    <string name="shortcut_snippets_long">스니펫 관리</string>
+    <string name="widget_description">한 번의 탭으로 호스트에 연결</string>
+    <string name="notification_channel_name">SSH 세션</string>
+    <string name="notification_channel_description">SSH 세션이 열려 있는 동안 계속 실행되도록 표시됩니다</string>
+    <string name="notification_active_one">활성 SSH 세션 한 개</string>
+    <plurals name="notification_active_sessions">
+        <item quantity="other">활성 SSH 세션 %d개</item>
+    </plurals>
+    <string name="scheduled_channel_name">예약된 작업</string>
+    <string name="scheduled_channel_description">Android가 ZestSSH의 자동 시작을 허용하지 않을 때 예약된 작업을 실행하도록 알려 줍니다</string>
+    <string name="scheduled_ready_title">예약된 작업이 준비되었습니다</string>
+    <string name="scheduled_ready_text">탭하여 실행하세요. Android에서는 앱이 열려 있을 때만 ZestSSH가 작업을 자동으로 시작할 수 있습니다.</string>
+    <string name="widget_empty">아직 호스트가 없습니다. +를 탭해 추가하세요.</string>
+    <string name="widget_locked">앱 잠금이 켜져 있습니다\n연결하려면 ZestSSH를 여세요.</string>
+</resources>

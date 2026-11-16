@@ -1,0 +1,10 @@
+/* The home screen widget's words (ZestSSHWidget.swift). */
+
+"Quick Connect" = "빠른 연결";
+"Connect to your hosts in one tap" = "한 번의 탭으로 호스트에 연결";
+"Open ZestSSH once to list your hosts here." = "ZestSSH를 한 번 열면 여기에 호스트가 표시됩니다.";
+"App lock is on" = "앱 잠금이 켜져 있습니다";
+"Open ZestSSH to connect." = "연결하려면 ZestSSH를 여세요.";
+"No hosts yet. Tap + to add one." = "아직 호스트가 없습니다. +를 탭해 추가하세요.";
+"New host" = "새 호스트";
+"Connect to %@" = "%@에 연결";

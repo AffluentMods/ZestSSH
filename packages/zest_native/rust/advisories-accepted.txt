@@ -1,0 +1,7 @@
+# Advisories for Rust crates of the native library that were looked at and taken as they are.
+# One a line: ID | crate | why. tool/rust_advisories.dart fails on any advisory not listed here.
+# An entry goes when the crate is raised past it. None of these crates is in a build of the app
+# until the cargo feature `rdp` is (4.0).
+
+RUSTSEC-2023-0071 | rsa | Fixed in rsa 0.10.0 (8 November 2026). sspi 0.23, picky 7.0.0-rc.26 and winscard 0.4 each pin rsa to exactly 0.10.0-rc.18, so it cannot be raised without forking all three. The advisory is about an RSA private key leaking through the timing of operations made with it. An RDP session here holds no RSA private key: it signs in with a name and a password (NTLM inside CredSSP) and never with a smart card or a client certificate (rdp::connector_config gives no other kind of credentials, no Kerberos settings are passed, rdp::NoNetwork refuses to reach a KDC). The code that works with a private key (winscard's card emulation, picky's signing, Kerberos PKINIT) is in the library and not reached. Looked at 13 November 2026 and accepted the same day; look again when sspi and picky release on rsa 0.10.0.
+RUSTSEC-2026-0441 | pin-utils | A notice that the crate is unmaintained, not a vulnerability. Two small macros for pinning a value. It is in macOS and iOS builds only, through async-dnssd, which sspi uses to find a Kerberos KDC, which a session here never does. Looked at 13 November 2026 and accepted the same day.

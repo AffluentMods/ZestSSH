@@ -1,0 +1,8 @@
+{
+ "name": "tput_init_xterm",
+ "program": "tput init",
+ "term": "xterm-256color",
+ "rows": 30,
+ "cols": 100,
+ "data": "G1shcBtbPzM7NGwbWzRsGz4bWz82OWw="
+}

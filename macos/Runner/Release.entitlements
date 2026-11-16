@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        ZestSSH is distributed outside the Mac App Store as a developer / sysadmin
+        tool.  The previous sandbox-on configuration produced
+        errSecMissingEntitlement (-34018) on every keychain read whenever the
+        signing Team ID didn't match what $(AppIdentifierPrefix) resolved to:
+        i.e. on every dev build, every non-Apple-signed distribution, and every
+        machine where the user re-signed locally.  Sandboxing is also the reason
+        we couldn't read ~/.ssh natively (a key requirement for an SSH client).
+
+        Disabling the sandbox is the usual approach for SSH clients on macOS,
+        which read and write the user's own ~/.ssh.  It removes the keychain
+        entitlement requirement entirely AND gives the user access to their
+        existing ~/.ssh/config and known_hosts files.
+
+        Without the sandbox, Keychain access just uses the app's bundle id as
+        the access group automatically: no $(AppIdentifierPrefix) gymnastics.
+    -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <!--
+        Speech to text in the terminal (4.0): the hardened runtime keeps the
+        microphone from an app without this entitlement, sandboxed or not
+        (Info.plist's NSMicrophoneUsageDescription is what macOS shows when
+        it asks).
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>

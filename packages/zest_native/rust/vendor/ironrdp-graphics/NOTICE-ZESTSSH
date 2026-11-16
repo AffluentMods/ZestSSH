@@ -1,0 +1,28 @@
+ZestSSH's copy of ironrdp-graphics (this folder) is a fork of the crate as published.
+
+  ironrdp-graphics 0.11.0, https://github.com/Devolutions/IronRDP (crates/ironrdp-graphics)
+  Copyright (c) Devolutions Inc. and the IronRDP contributors; Teleport
+  Licensed under the MIT license or the Apache License 2.0, at your option: LICENSE-MIT and
+  LICENSE-APACHE beside this file are the crate's own.
+
+Forked on 12 November 2026 by Affluent Labs LLC for ZestSSH (4.0, RDP), and used in place of the
+crates.io package through [patch.crates-io] in zest_native's Cargo.toml. What came from the crate
+stays under its licence; our change follows this folder's licence too (MIT or Apache-2.0), so
+it can go upstream as it is.
+
+What changed against 0.11.0, and nothing else:
+
+  - src/zgfx/mod.rs: the decompressor's two ceilings are lower. MAX_DECOMPRESSED_PER_SEGMENT is
+    1 MiB (was 64 MiB) and MAX_DECOMPRESSED_TOTAL is the largest picture the app holds plus
+    1 MiB, about 32.6 MiB (was 256 MiB). Upstream's are fixed inside the crate, so an app that
+    wants less than 256 MiB taken on a server's word cannot say so: a few hundred bytes from a
+    server made the app allocate 256 MiB (found by ZestSSH's fuzzing, 8 November 2026, and by
+    a review before 4.0), which a phone may not have.
+  - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
+    not used by a build from a path.
+  - Six long dashes in comments (src/dwt_extrapolate.rs, src/progressive.rs,
+    src/zgfx/compressor.rs) are plain hyphens: this repository keeps none. No code changed.
+
+Upstream was not yet asked to make the two ceilings parameters; when it has them, this folder
+goes and the app sets them. Until then, a new IronRDP release means this folder is made again
+from that release with the same change.

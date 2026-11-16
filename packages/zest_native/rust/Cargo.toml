@@ -1,0 +1,200 @@
+[package]
+name = "zest_native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+# GPL-3.0-only, with the additional permission in LICENSE-EXCEPTION.txt at the repository root.
+license = "GPL-3.0-only"
+description = "ZestSSH's native library: Rust code the app loads through Dart build hooks."
+
+# Both kinds, as native_toolchain_rust asks: a static library where the platform links statically
+# (iOS), a dynamic one elsewhere.
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[features]
+# Off by default. The app turns features on through its pubspec (hooks: user_defines: zest_native:
+# cargo_features), which hook/build.dart passes to cargo; 4.0 ships `vnc`, `rdp` and `mosh`.
+default = []
+# RDP through IronRDP (4.0): the `rdp` module and the screen module's RDP
+# session (src/screen/rdp_session.rs). TLS is ours for both (rdp::tls_upgrade:
+# tokio-rustls with ring, the certificate trusted by its SHA-256), not ironrdp-tls (its rustls config
+# writes TLS secrets where SSLKEYLOGFILE says). The display control channel through ironrdp-dvc and
+# ironrdp-displaycontrol, the graphics pipeline (src/screen/rdp_graphics.rs) through ironrdp-egfx, the
+# certificate's public key for CredSSP through x509-cert.
+rdp = [
+  "dep:ironrdp-connector",
+  "dep:ironrdp-session",
+  "dep:ironrdp-graphics",
+  "dep:ironrdp-pdu",
+  "dep:ironrdp-tokio",
+  "dep:ironrdp-dvc",
+  "dep:ironrdp-svc",
+  "dep:ironrdp-displaycontrol",
+  "dep:ironrdp-egfx",
+  "dep:tokio",
+  "tokio/macros",
+  "dep:tokio-rustls",
+  "dep:x509-cert",
+  "dep:windows",
+]
+# The remote's sound in an RDP session (4.0): RDP's sound channel (MS-RDPEA,
+# playback only, plain PCM) through ironrdp-rdpsnd, played through cpal (WASAPI, CoreAudio,
+# ALSA on Linux, AAudio on Android). Not in the app's cargo features until the session plays
+# it; Linux then needs libasound at build and at run time.
+sound = ["rdp", "dep:ironrdp-rdpsnd", "dep:cpal"]
+# VNC (4.0): our RFB engine, src/vnc/engine (a fork of vnc-rs 0.6.0, MIT or Apache-2.0, its
+# NOTICE beside it), the `vnc` module and the screen module's VNC session.
+vnc = [
+  "dep:tokio",
+  "tokio/sync",
+  "tokio/macros",
+  "dep:flate2",
+  "dep:thiserror",
+  "dep:zune-jpeg",
+  "dep:zune-core",
+  "dep:tokio-rustls",
+  "dep:ring",
+  "dep:num-bigint",
+  "dep:md-5",
+  "dep:aes",
+  "dep:x509-cert",
+]
+# Mosh, built in (4.0): a client of the Mobile Shell protocol written from its published
+# description (src/mosh, no code of mosh's), so a Mosh host opens without a mosh program on the
+# device. AES-128-OCB3 through RustCrypto's ocb3 over aes (MIT or Apache-2.0), zlib through
+# flate2, UDP and timers through tokio, the padding's random bytes through ring.
+mosh = [
+  "dep:tokio",
+  "tokio/sync",
+  "tokio/macros",
+  "dep:ocb3",
+  "dep:aes",
+  "aes/zeroize",
+  "dep:flate2",
+  "dep:ring",
+]
+# Developer probes, never in the app's builds: `zest_vnc_probe` and `zest_rdp_probe` (with `vnc` or
+# `rdp`) and examples/*.rs. Only for measuring against the test servers
+# (tool/remote_screens_test_servers.sh); a test in the app checks its library has no probe symbol.
+probes = []
+
+# Connects to an RDP server, logs in and waits for the first screen update (4.0 spike):
+# tool/remote_screens_test_servers.sh starts one in WSL. See the example's header.
+[[example]]
+name = "rdp_probe"
+required-features = ["rdp", "probes"]
+
+# Connects to a VNC server, authenticates and waits for the first framebuffer update (4.0 spike):
+# tool/remote_screens_test_servers.sh starts one in WSL. See the example's header.
+[[example]]
+name = "vnc_probe"
+required-features = ["vnc", "probes"]
+
+[dependencies]
+# FTPS (3.4): suppaftp's client over rustls with ring, as measured before it was chosen.
+# The "deprecated" feature carries implicit TLS
+# (port 990), which suppaftp marks deprecated only because RFC 4217 prefers explicit.
+suppaftp = { version = "=12.2.1", default-features = false, features = ["rustls-ring", "deprecated"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+# Certificates a public authority signed are checked against Mozilla's roots, the same on every
+# platform; any other is trusted only by the fingerprint the person accepted.
+webpki-roots = "1"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# A small file read into memory or written from it (the editor's), carried in the JSON; a
+# screen's certificate in its CLOSED event.
+base64 = "0.22"
+# Secrets wiped from memory once used (a remote screen's password after its handshake). Already in
+# the build through rustls.
+zeroize = "1"
+
+# RDP (4.0, feature "rdp"): IronRDP (Devolutions, MIT or Apache-2.0), pinned to exact
+# crates.io versions here and in Cargo.lock. TLS is ours (tokio-rustls with the ring FTPS uses; see
+# the feature above), so no aws-lc-rs, which needs CMake and NASM on every target. Where we change
+# IronRDP itself, the crate is forked into vendor/ and used through [patch.crates-io] below
+# (today: ironrdp-graphics, for the ZGFX decompressor's ceilings, and ironrdp-session, for what
+# fuzzing finds in its reading of a server's updates).
+ironrdp-connector = { version = "=0.12.0", optional = true }
+ironrdp-session = { version = "=0.13.0", optional = true }
+ironrdp-graphics = { version = "=0.11.0", optional = true }
+ironrdp-pdu = { version = "=0.11.0", optional = true }
+ironrdp-tokio = { version = "=0.12.0", optional = true }
+ironrdp-dvc = { version = "=0.10.0", optional = true }
+# The static channels' own crate, already in the tree through the others: named here for the
+# trait a channel of ours implements (the clipboard) and the tests that drive the dynamic
+# channels' carrier.
+ironrdp-svc = { version = "=0.10.0", optional = true }
+ironrdp-displaycontrol = { version = "=0.10.0", optional = true }
+# The graphics pipeline (MS-RDPEGFX) client: already in the tree through ironrdp-session; its
+# openh264 features stay off (no OpenH264 in our builds).
+ironrdp-egfx = { version = "=0.5.0", optional = true, default-features = false }
+# RDP's sound channel (feature "sound"): the version of the IronRDP set above (it takes
+# ironrdp-core 0.3, ironrdp-pdu 0.11, ironrdp-svc 0.10, ironrdp-dvc 0.10).
+ironrdp-rdpsnd = { version = "=0.11.0", optional = true, default-features = false }
+# The speaker (feature "sound"): output only; no ASIO, JACK, PulseAudio or PipeWire backend.
+cpal = { version = "=0.18.2", optional = true, default-features = false }
+# A certificate's public key for CredSSP (RDP), and its subject and validity for the question a
+# screen's certificate asks (VNC and RDP).
+x509-cert = { version = "=0.3.0", optional = true, default-features = false, features = ["std"] }
+tokio = { version = "1.52", optional = true, default-features = false, features = ["rt", "net", "time", "io-util"] }
+# VNC (4.0, feature "vnc"): what our engine (src/vnc/engine) needs. zlib streams (Zlib, Tight,
+# ZRLE and the extended clipboard) through flate2's pure Rust backend; Tight's JPEG through
+# zune-jpeg; VeNCrypt's TLS through tokio-rustls with ring (the rustls FTPS uses); Apple Remote
+# Desktop's Diffie-Hellman, MD5 and AES-128 through num-bigint, md-5 and aes (RustCrypto);
+# random numbers through ring.
+flate2 = { version = "1", optional = true }
+thiserror = { version = "2", optional = true }
+zune-jpeg = { version = "0.5", optional = true, default-features = false, features = ["std", "x86", "neon"] }
+zune-core = { version = "0.5", optional = true, default-features = false, features = ["std"] }
+tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring", "tls12"] }
+ring = { version = "0.17", optional = true }
+num-bigint = { version = "0.4", optional = true, default-features = false, features = ["std"] }
+md-5 = { version = "0.11", optional = true, default-features = false }
+aes = { version = "0.9", optional = true, default-features = false }
+# Mosh (4.0, feature "mosh"): OCB3 (RFC 7253), the mode Mosh seals its datagrams with.
+ocb3 = { version = "=0.2.0", optional = true, default-features = false }
+
+# Windows (3.4, stage 2): a certificate Windows trusts for the host (its store, with the roots a
+# company deploys through Group Policy, and its own revocation checks) counts as an authority's,
+# beside Mozilla's roots. Windows only for now: on Android the crate needs a Kotlin component and a
+# JNI start with the app's Context, and its macOS, iOS and Linux builds could not be checked here (no
+# Mac; ring needs each target's C compiler). Those keep Mozilla's roots and trust on first use.
+[target.'cfg(windows)'.dependencies]
+rustls-platform-verifier = "=0.7.1"
+# RDP's H.264 (feature "rdp", Windows): Windows' own decoder through Media Foundation
+# (src/screen/h264_mf.rs), no OpenH264. Already in the tree with `rdp` (sspi uses it), MIT OR
+# Apache-2.0; these are only the API modules it needs. mfplat.dll is loaded at run time, so the
+# library still loads on Windows editions without Media Foundation (N and KN).
+windows = { version = "=0.62.2", optional = true, default-features = false, features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_Media_MediaFoundation",
+] }
+
+# ZestSSH's forks of crates, used in place of the crates.io packages. ironrdp-graphics (feature
+# "rdp"): the ZGFX decompressor's ceilings, which upstream fixes inside the crate, lowered to
+# what the app's largest picture needs (vendor/ironrdp-graphics/NOTICE-ZESTSSH). ironrdp-session
+# (feature "rdp"): fixes for inputs from a server that made it panic, each listed in
+# vendor/ironrdp-session/NOTICE-ZESTSSH.
+[patch.crates-io]
+ironrdp-graphics = { path = "vendor/ironrdp-graphics" }
+ironrdp-session = { path = "vendor/ironrdp-session" }
+
+# `cfg(fuzzing)`: set only by the fuzz targets' builds (fuzz/run.sh), never the app's.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+# A panic unwinds (it was "abort" until 4.0's RDP). It still never crosses into Dart: a panic
+# that reaches the edge of an `extern "C"` function ends the process, as Rust defines it. What
+# unwinding buys is the one place that catches: a remote screen session's thread
+# (screen::run_session), where a panic in the code that reads a server's bytes (IronRDP, sspi,
+# the VNC engine) now closes that session instead of ending the app.
+panic = "unwind"
+strip = true

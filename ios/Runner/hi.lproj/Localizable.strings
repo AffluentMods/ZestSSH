@@ -1,0 +1,22 @@
+/* The Shortcuts actions' words (ZestSSHIntents.swift): titles, descriptions, what a run returns. */
+
+"Run SSH Command" = "SSH कमांड चलाएं";
+"Runs a command on a saved host in ZestSSH." = "ZestSSH में सहेजे गए होस्ट पर कमांड चलाता है।";
+"SSH" = "SSH";
+"Host" = "होस्ट";
+"The name of a saved host, or its id" = "सहेजे गए होस्ट का नाम, या उसकी ID";
+"Command" = "कमांड";
+"The shell command to execute" = "चलाने के लिए शेल कमांड";
+"Timeout (seconds)" = "टाइमआउट (सेकंड)";
+"API Key" = "API कुंजी";
+"An automation API key from ZestSSH (Automation, API keys)" = "ZestSSH की ऑटोमेशन API कुंजी (ऑटोमेशन, API कुंजियां)";
+"Error: failed to build automation URL" = "त्रुटि: ऑटोमेशन लिंक नहीं बनाया जा सका";
+"Command sent to ZestSSH" = "कमांड ZestSSH को भेजा गया";
+"Run SSH Snippet" = "SSH स्निपेट चलाएं";
+"Runs a saved snippet on a host in ZestSSH." = "ZestSSH में होस्ट पर सहेजा गया स्निपेट चलाता है।";
+"Snippet Name" = "स्निपेट का नाम";
+"The name of the saved snippet to run" = "चलाने के लिए सहेजे गए स्निपेट का नाम";
+"Snippet sent to ZestSSH" = "स्निपेट ZestSSH को भेजा गया";
+"Connect via SSH" = "SSH से कनेक्ट करें";
+"Opens ZestSSH and connects to a saved host." = "ZestSSH खोलता है और सहेजे गए होस्ट से कनेक्ट करता है।";
+"Run Snippet" = "स्निपेट चलाएं";

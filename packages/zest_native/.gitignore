@@ -1,0 +1,3 @@
+# Rust build output (cargo run by hand; the build hook builds under .dart_tool)
+rust/target/
+.dart_tool/

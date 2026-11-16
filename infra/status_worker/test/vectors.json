@@ -1,0 +1,46 @@
+{
+  "about": "Statements of the ZestSSH status service, signed with a key whose seed is the bytes 1 to 32. Written by test/statement.test.mjs (UPDATE_VECTORS=1); read by the Worker's tests and by the app's.",
+  "domain": "zestssh.status.v1",
+  "publicKey": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+  "statements": [
+    {
+      "canonical": "zestssh.status.v1\napi.zestssh.com\ndown\n1791474000\n1791474900\n1791452400\nk1",
+      "signed": {
+        "v": 1,
+        "service": "api.zestssh.com",
+        "state": "down",
+        "at": 1791474000,
+        "until": 1791474900,
+        "since": 1791452400,
+        "key": "k1",
+        "sig": "unMQAwREFxHzEFb0zB5C0HISC1oBMZZEb1tQ4Hh7GfYFvHqT9x17BI19k7iXSMvVqdit8om9JZHuWCXcA/9UBQ=="
+      }
+    },
+    {
+      "canonical": "zestssh.status.v1\napi.zestssh.com\nup\n1791474030\n1791474930\n0\nk1",
+      "signed": {
+        "v": 1,
+        "service": "api.zestssh.com",
+        "state": "up",
+        "at": 1791474030,
+        "until": 1791474930,
+        "since": 0,
+        "key": "k1",
+        "sig": "UhjmyWJ68KF+AbQ+6rzJW9kwLZXIL8F8l3wF1laN9JIah/gPqAf8uMPvKfBzRDiqacldNinFDxXXsbhcSSKFAg=="
+      }
+    },
+    {
+      "canonical": "zestssh.status.v1\napi.zestssh.com\ndown\n1791474000\n1791474900\n1791474000\nk1",
+      "signed": {
+        "v": 1,
+        "service": "api.zestssh.com",
+        "state": "down",
+        "at": 1791474000,
+        "until": 1791474900,
+        "since": 1791474000,
+        "key": "k1",
+        "sig": "OKvgt5u+RMnyk9qBgHeUwCCY47a7j70aKaz07AFyX03aBNT0TnlJei5H8nDUO+48uCLIJd7CZY53vhKDPTjwCw=="
+      }
+    }
+  ]
+}

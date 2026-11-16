@@ -1,0 +1,44 @@
+# The ZestSSH status service: says, signed, whether the ZestSSH Cloud API
+# answers, and since when it has not. See README.md for what it is for and
+# how to put it up, and src/worker.js for what it does.
+name = "zestssh-status"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+
+# The host name the app asks. It has to be on a zone of this Cloudflare
+# account. If another name is chosen, change it here AND tell whoever builds
+# the app: the name is compiled into it.
+routes = [
+  { pattern = "status.zestssh.com", custom_domain = true }
+]
+
+# It looks at the API once a minute, so that an outage counts from when it
+# began and not from when a device first asked.
+[triggers]
+crons = ["* * * * *"]
+
+# The one line it keeps (since when the API has been down). Make the
+# namespace once and put the id it prints here:
+#   npx wrangler kv namespace create STATUS_KV
+[[kv_namespaces]]
+binding = "STATUS_KV"
+id = "PUT_THE_ID_HERE"
+
+[vars]
+# The host a statement is about, as the app expects it, letter for letter.
+SERVICE = "api.zestssh.com"
+# What is asked. The API answers 200 {"status":"ok"} when all is well.
+HEALTH_URL = "https://api.zestssh.com/v1/health"
+# The name of the key that signs (the secret below is its private half).
+STATUS_KEY_ID = "k1"
+# How long a statement may be believed, in seconds (60 to 3600).
+VALID_SECONDS = "900"
+
+# One secret, never written in this file:
+#   npx wrangler secret put STATUS_SIGNING_KEY
+# (the PRIVATE line of the key named above, from: node tool/make_keys.mjs)
+
+# Nothing about who asks is kept: no logs of requests.
+[observability]
+enabled = false

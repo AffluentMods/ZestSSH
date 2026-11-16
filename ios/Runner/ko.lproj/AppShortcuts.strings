@@ -1,0 +1,10 @@
+/* The Siri phrases of the Shortcuts actions (ZestSSHIntents.swift, ZestSSHShortcutsProvider). */
+
+"Run SSH command with ${applicationName}" = "${applicationName}에서 SSH 명령어 실행";
+"Execute command on server with ${applicationName}" = "${applicationName}에서 서버 명령어 실행";
+"Run command with ${applicationName}" = "${applicationName}에서 명령어 실행";
+"Run SSH snippet with ${applicationName}" = "${applicationName}에서 SSH 스니펫 실행";
+"Execute snippet with ${applicationName}" = "${applicationName}에서 스니펫 실행";
+"Connect to server with ${applicationName}" = "${applicationName}에서 서버에 연결";
+"SSH connect with ${applicationName}" = "${applicationName}에서 SSH 연결";
+"Open SSH connection with ${applicationName}" = "${applicationName}에서 SSH 연결 열기";

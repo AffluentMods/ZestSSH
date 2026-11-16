@@ -1,0 +1,12 @@
+tags:
+  # Tests with this tag sign in to public SSH test hosts on the internet that
+  # belong to other people (test.rebex.net and honeypot.terminal.studio, see
+  # test/test_utils.dart). A plain `dart test` must never do that, so they
+  # are skipped unless asked for by name:
+  #
+  #   dart test --run-skipped -t integration
+  #
+  # (Nothing skipped them before: every `dart test` in this package went out
+  # to both hosts. Found in a review before ZestSSH 4.0.)
+  integration:
+    skip: "Signs in to public hosts on the internet. Run on purpose with: dart test --run-skipped -t integration"

@@ -1,0 +1,25 @@
+# The licence texts stay byte for byte as published (LICENSE is the FSF's GPL version 3 text).
+LICENSE text eol=lf
+LICENSE-EXCEPTION.txt text eol=lf
+
+# Shell scripts are run by bash (Linux, macOS, WSL), which does not take
+# Windows line endings: keep them as they are on every checkout.
+*.sh text eol=lf
+
+# Flutter reads a package NOTICES file split by lines of 80 hyphens with LF line ends
+# (flutter_tools license_collector.dart): the Rust crates' licences (tool/rust_notices.dart).
+packages/zest_native/NOTICES text eol=lf
+
+# Added to the app's NOTICES as it is, split by lines of 80 hyphens with LF line ends
+# (pubspec flutter: licenses:, flutter_tools license_collector.dart).
+third_party/symbols-nerd-font/NOTICES.txt text eol=lf
+
+# The same for the other licence files the app lists (pubspec flutter: licenses:): the bundled
+# fonts', the notices of copied code, the credits; and the native libraries' licences per platform,
+# which lib/services/platform_licences.dart splits the same way (tool/native_notices.dart).
+third_party/zestssh/NOTICES.txt text eol=lf
+third_party/fonts/NOTICES.txt text eol=lf
+third_party/bcrypt/NOTICES.txt text eol=lf
+third_party/wayland-protocols/NOTICES.txt text eol=lf
+third_party/credits/NOTICES.txt text eol=lf
+assets/licenses/*.txt text eol=lf

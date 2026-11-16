@@ -1,0 +1,16 @@
+{
+  "name": "zestssh-status",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The ZestSSH status service: says, signed, whether the ZestSSH Cloud API answers.",
+  "type": "module",
+  "main": "src/worker.js",
+  "scripts": {
+    "test": "node --test",
+    "keys": "node tool/make_keys.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

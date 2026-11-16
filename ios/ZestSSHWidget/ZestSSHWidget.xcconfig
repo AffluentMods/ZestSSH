@@ -1,0 +1,5 @@
+// The widget's build settings: the app's version and build number
+// (FLUTTER_BUILD_NAME, FLUTTER_BUILD_NUMBER, which its Info.plist names), so
+// the two always match, as the App Store requires. Generated.xcconfig is
+// written by flutter (pub get, build) and is not in git.
+#include? "../Flutter/Generated.xcconfig"

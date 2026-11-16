@@ -1,0 +1,33 @@
+# The licences the app's dependencies may come under, for tool/licence_check.dart.
+#
+# The app is GPL-3.0-only (LICENSE, LICENSE-EXCEPTION.txt). Every licence allowed here is permissive or
+# file-level copyleft, and fits the licences in question for it (a GPL-3.0 licence among them):
+# nothing here asks for the app's own source to be under its terms. GPL, LGPL and AGPL code of
+# others is not allowed: it would bind the whole app to it and take away what the owner alone may
+# permit. A licence is added here on purpose, with its reason, never to make a check pass.
+#
+# Format: SPDX ids under "allowed", one per line; under "packages", a package whose licence file
+# the check cannot read by itself, with the SPDX expression read by a person, and why.
+allowed:
+  - MIT
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - Zlib
+  - 0BSD
+  - Unlicense
+  - BSL-1.0
+  - CC0-1.0
+  # Unicode's data licence (ICU4X's crates, which the URL parser uses for international names).
+  - Unicode-3.0
+  # Mozilla's root certificates as data (webpki-roots).
+  - CDLA-Permissive-2.0
+  # File-level copyleft (dbus and nm on Linux): a changed file of theirs is published under it.
+  - MPL-2.0
+# Not checked here: OpenSSL, which comes from the build machine on Windows and Linux (the database
+# links its libcrypto). OpenSSL 3 is Apache-2.0; windows/CMakeLists.txt and linux/CMakeLists.txt
+# refuse 1.1.1 and older, whose OpenSSL and SSLeay licence (SPDX: OpenSSL) would not fit.
+packages:
+  dart:
+  rust:

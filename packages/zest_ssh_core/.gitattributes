@@ -1,0 +1,6 @@
+# Shell scripts are run by bash (Linux, macOS, WSL), which does not take
+# Windows line endings: keep them as they are on every checkout.
+*.sh text eol=lf
+# The keys the tests read are compared byte for byte with what the library
+# writes: no checkout may give them other line endings.
+test/fixtures/** -text

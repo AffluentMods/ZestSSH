@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "purpose": "test vector: the app checks its built-in release key against it; it is older than every release",
+  "notes": "Not a release.",
+  "url": "https://zestssh.com/download",
+  "critical": false,
+  "platforms": {
+    "windows": {
+      "url": "https://zestssh.com/downloads/ZestSSH-0.0.1-Setup.exe",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size": 1
+    }
+  },
+  "signature": "v1jnwTsZaBqf6J5xAgU/9cGIPW5GEy6n0w3+QOETSaQJdnYvVsKTBxSMUX/DwPwHtjMB+rKiWfAx8saELtW+Bg=="
+}

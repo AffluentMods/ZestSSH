@@ -1,0 +1,43 @@
+ZestSSH's copy of ironrdp-session (this folder) is a fork of the crate as published.
+
+  ironrdp-session 0.13.0, https://github.com/Devolutions/IronRDP (crates/ironrdp-session)
+  Copyright (c) Devolutions Inc. and the IronRDP contributors; Teleport
+  Licensed under the MIT license or the Apache License 2.0, at your option: LICENSE-MIT and
+  LICENSE-APACHE beside this file are the crate's own.
+
+Forked on 13 November 2026 by Affluent Labs LLC for ZestSSH (4.0, RDP), and used in place of the
+crates.io package through [patch.crates-io] in zest_native's Cargo.toml. What came from the crate
+stays under its licence; our changes follow this folder's licence too (MIT or Apache-2.0), so
+they can go upstream as they are.
+
+Why a fork: this crate reads what a server sends once a session is up (screen updates, pointers,
+the channels), and ZestSSH's fuzzing of it (fuzz/fuzz_targets/rdp_session.rs) finds inputs that
+make it panic. The app's library ends the whole app on a panic, so each is fixed here, at its
+source, the day it is found, and listed below to be sent upstream. The same for what a server can
+make it keep in memory without limit, where the place to say no is inside this crate.
+
+What changed against 0.13.0, and nothing else (each line marked "ZestSSH" in the source):
+
+  - src/fast_path.rs, process_surface_commands: a Set Surface Bits or Stream Surface Bits command
+    whose destination rectangle is empty or inverted (right <= left or bottom <= top) is an
+    error. Its right and bottom edges had 1 taken off unchecked: with right 0 that wrapped to
+    65535 (and panicked where overflow is checked). Found 13 November 2026 by the first seed of
+    rdp_session, 31 bytes after the sign-in.
+  - src/fast_path.rs, CompleteData::append_data: a fast-path update sent in fragments may come
+    to MAX_FRAGMENTED_UPDATE (8 MiB, the MaxRequestSize the client's capabilities say) and no
+    more; a longer one is an error. Fragments that never ended with a last one were kept without
+    any limit, for as long as a server sent them. Found by reading, 13 November 2026.
+  - src/fast_path.rs, process_pointer_update: a pointer shape larger than MAX_POINTER_SIDE (384
+    pixels a side, the protocol's largest) or for a cache index of POINTER_CACHE_SIZE (32, what
+    the client's capabilities say) or more is not decoded and not kept; the default pointer is
+    reported instead (refuse_pointer). The decoder took any size and the cache any of 65,536
+    indexes, so a server could have the client keep thousands of large shapes, each 16 times
+    the bytes sent for it at 1 bit a pixel. Only reached where the application turns the
+    server's pointer on (enable_server_pointer). Found by reading, 13 November 2026.
+  - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
+    not used by a build from a path.
+  - One long dash in a comment (src/active_stage.rs) is a plain hyphen: this repository keeps
+    none. No code changed by that.
+
+Nothing here has been sent upstream yet. A new IronRDP release means this folder is made again
+from that release with the changes it still needs.
