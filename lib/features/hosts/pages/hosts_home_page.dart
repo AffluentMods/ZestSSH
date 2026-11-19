@@ -1,3 +1,4 @@
+import 'package:zestssh/services/connection_share_service.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
@@ -85,6 +86,7 @@ import 'package:zestssh/ui/screens/connection/share_link_add.dart'
 import 'package:zestssh/features/cloud_import/cloud_plan.dart';
 import 'package:zestssh/features/cloud_import/ui/import_hosts_entry.dart';
 import 'package:zestssh/features/hosts/host_attention.dart';
+import 'package:zestssh/features/hosts/host_screens.dart';
 import 'package:zestssh/features/hosts/host_share_file.dart';
 import 'package:zestssh/features/shortcuts/shortcut_action.dart';
 import 'package:zestssh/providers/shortcut_overrides_provider.dart';
@@ -426,7 +428,11 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
       child: CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () {
-          if (_bulkEditOpen) {
+          // The host menu first (opened with the mouse, the keyboard stays
+          // on the page, not in the menu).
+          if (_hostMenu.isOpen) {
+            _hostMenu.close();
+          } else if (_bulkEditOpen) {
             _closeBulkEdit();
           } else if (ref.read(hostArrangeModeProvider)) {
             ref.read(hostArrangeModeProvider.notifier).exit();
@@ -949,6 +955,8 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
                   : null,
               onOpenMonitor: () => ref.read(activeSidebarNavProvider.notifier).state = NavSection.monitor,
               onOpenHistory: () => ref.read(activeSidebarNavProvider.notifier).state = NavSection.commandHistory,
+              // Its own screens (4.0): a screen host opens as any host does.
+              onOpenScreen: widget.onConnectTo,
               // Touch sized: the host's menu under a more button at its foot.
               onMore: (at) => _showHostContextMenu(at, selectedEntry),
             );
@@ -1052,23 +1060,28 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
           onPressed: mayAdd ? () => ConnectionEditScreen.showAdaptive(context) : null,
           onMenu: _openNewMenu,
         ),
-        BandButton(
-          key: const ValueKey('hosts-terminal'),
-          label: l10n.hostsToolbarTerminal,
-          icon: LucideIcons.terminalSquare,
-          tooltip: l10n.hostsToolbarTerminalTip,
-          onPressed: _openLocalTerminal,
-        ),
+        // Only where this device has a shell of its own: not an iPhone or an
+        // iPad, also in the computer's layout.
+        if (localTerminalOnThisDevice)
+          BandButton(
+            key: const ValueKey('hosts-terminal'),
+            label: l10n.hostsToolbarTerminal,
+            icon: LucideIcons.terminalSquare,
+            tooltip: l10n.hostsToolbarTerminalTip,
+            onPressed: _openLocalTerminal,
+          ),
       ],
       // With the panel or the editor open: its icon, so the views keep
       // their place at the end of the one row.
-      leadCompact: BandButton(
-        key: const ValueKey('hosts-terminal-compact'),
-        label: l10n.hostsToolbarTerminal,
-        icon: LucideIcons.terminalSquare,
-        iconOnly: true,
-        onPressed: _openLocalTerminal,
-      ),
+      leadCompact: localTerminalOnThisDevice
+          ? BandButton(
+              key: const ValueKey('hosts-terminal-compact'),
+              label: l10n.hostsToolbarTerminal,
+              icon: LucideIcons.terminalSquare,
+              iconOnly: true,
+              onPressed: _openLocalTerminal,
+            )
+          : null,
       field: HostsQuickField(
         controller: _searchController,
         focusNode: _searchFocusNode,
@@ -1115,12 +1128,28 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
       toggles: HostsViewToggle(mode: _viewMode, onChanged: (m) => _viewMode = m),
     );
 
-    return MenuAnchor(
-      key: _hostMenuAnchor,
-      controller: _hostMenu,
-      style: _menuStyle,
-      menuChildren: _hostMenuItems,
-      child: Column(
+    // The host menu's anchor is a layer over the page that takes no pointer,
+    // not the page's parent: a MenuAnchor counts its child as part of the
+    // menu (one tap region group), so with the page as its child a click
+    // anywhere on the page was inside the menu and left it open.
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: MenuAnchor(
+              key: _hostMenuAnchor,
+              controller: _hostMenu,
+              style: _menuStyle,
+              // The click that closes the menu does nothing else, as with the
+              // app's other right-click menus (a route with a barrier).
+              consumeOutsideTap: true,
+              menuChildren: _hostMenuItems,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+        Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         band,
@@ -1370,6 +1399,7 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
         ),
       ],
     ),
+      ],
     );
   }
 
@@ -1769,7 +1799,7 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
   }
 
   /// Whether the docked editor, where it is open on another host than
-  /// [id], has given way: asked as its own Cancel asks (about unsaved
+  /// [id], has given way: asked as its own close button asks (about unsaved
   /// changes), and closed. True where none is open.
   Future<bool> _editorMayGive(String id) async {
     final target = ref.read(connectionEditorTargetProvider);
@@ -1869,6 +1899,9 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
     setState(() => _hostMenuItems = many ? _selectionMenu(l10n, select.count) : _hostMenuOf(l10n, entry, connectAs));
     final box = _hostMenuAnchor.currentContext?.findRenderObject();
     if (box is! RenderBox) return;
+    // The page takes the keyboard (off the search field too), so Esc reaches
+    // the page's key that closes the menu.
+    _takeKeyboard();
     _hostMenu.open(position: box.globalToLocal(position));
   }
 
@@ -1966,6 +1999,7 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
     final sftpOnly = conn.protocol == 'sftp';
     final name = Redactable.host(entry.data.name).displayIn(ref);
     final offer = transferOffer(ref, TransferKinds.host, [connId]);
+    final screens = ref.read(screensOfHostProvider(connId));
     return [
       if (isActive) ...[
         _menuItem('open', LucideIcons.arrowRight, l10n.hostsHomeMenuOpen, () => pick('open'),
@@ -1986,6 +2020,18 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
       ]),
       if (widget.onOpenSftp != null && (ssh || sftpOnly))
         _menuItem('sftp', LucideIcons.folderOpen, 'SFTP', () => pick('sftp')),
+      // Its own screens (4.0): the screen hosts reached through it.
+      if (screens.length == 1)
+        _menuItem('screen:${screens.single.connection.id}', LucideIcons.monitor, l10n.hostScreenOpen,
+            () => pick('screen:${screens.single.connection.id}'),
+            key: const ValueKey('host-menu-screen'))
+      else if (screens.length > 1)
+        _submenu('screen', LucideIcons.monitor, l10n.hostScreenOpen, [
+          for (final s in screens)
+            _menuItem('screen:${s.connection.id}', LucideIcons.monitor,
+                '${hostScreenKind(s)} · ${Redactable.host(hostScreenName(s)).displayIn(ref)}',
+                () => pick('screen:${s.connection.id}')),
+        ]),
       const Divider(height: 9),
       _menuItem('edit', LucideIcons.pencil, l10n.edit, () => pick('edit'),
           shortcut: const SingleActivator(LogicalKeyboardKey.keyE)),
@@ -2014,7 +2060,7 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
         if (mayAddScreenSpace(ref, watch: false))
           _menuItem('duplicate', LucideIcons.copyPlus, l10n.commonDuplicate, () => pick('duplicate')),
         // The host as a file to send to someone, as a phone's Share makes.
-        if (mayExportScreenSpace(ref))
+        if (mayExportScreenSpace(ref) && ConnectionShareService.canShare(conn.protocol))
           _menuItem('share_file', LucideIcons.fileOutput, l10n.hostShareSaveFile, () => pick('share_file')),
         _menuItem('select', LucideIcons.checkSquare, l10n.hostsHomeMenuSelect, () => pick('select'),
             keys: mac ? 'Cmd+click' : 'Ctrl+click'),
@@ -2122,6 +2168,11 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
       widget.onConnectAs?.call(entry.connectionWithDetails, value.substring(3));
       return;
     }
+    if (value.startsWith('screen:')) {
+      final screen = ref.read(screensOfHostProvider(connId)).where((s) => s.connection.id == value.substring(7)).firstOrNull;
+      if (screen != null) widget.onConnectTo(screen);
+      return;
+    }
     switch (value) {
       case 'connect':
       case 'open':
@@ -2144,8 +2195,7 @@ class _HostsHomePageState extends ConsumerState<HostsHomePage> {
               context, AppLocalizations.of(context)!.sftpForgetLastFolderDone);
         }
       case 'add_screen':
-        await ConnectionEditScreen.showAdaptive(context,
-            initialProtocol: ConnectionProtocol.vnc, initialVia: connId);
+        await addScreenForHost(context, ref, conn);
       case 'console':
         widget.onOpenConsole?.call(entry.connectionWithDetails);
       case 'x_program':

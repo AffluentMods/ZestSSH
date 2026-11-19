@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -375,6 +376,10 @@ class _Sessions extends ActiveSessionsNotifier {
   @override
   bool isScreen(String sessionId) => screens.contains(sessionId);
 
+  // What the tab strip reads (screenSessionsProvider): a screen's tab shows its kind.
+  @override
+  Set<String> get screenSessionIds => Set.unmodifiable(screens);
+
   @override
   bool isXProgram(String sessionId) => xPrograms.contains(sessionId);
 
@@ -553,12 +558,19 @@ void main() {
 
   /// The computer's whole window, the app's shell in Graphite, as
   /// shell_shots_test's pumpShell draws it.
-  Future<_Harness> pumpShell(WidgetTester tester, {Map<String, Object> prefsExtra = const {}}) async {
+  Future<_Harness> pumpShell(WidgetTester tester,
+      {Map<String, Object> prefsExtra = const {}, String themeId = 'graphite'}) async {
     _stubPlugins();
     realShadows();
+    // Another theme than the pictures' own (Graphite) for this one, and Graphite back after it.
+    final theme = BuiltInThemes.getById(themeId);
+    if (themeId != 'graphite') {
+      AppColors.applyTheme(theme.colorScheme);
+      addTearDown(() => AppColors.applyTheme(graphite.colorScheme));
+    }
     SharedPreferences.setMockInitialValues({
-      'app_theme_id': 'graphite',
-      if (kAppToTerminalThemeId['graphite'] != null) 'terminal_theme': kAppToTerminalThemeId['graphite']!,
+      'app_theme_id': themeId,
+      if (kAppToTerminalThemeId[themeId] != null) 'terminal_theme': kAppToTerminalThemeId[themeId]!,
       ..._osKinds,
       ...prefsExtra,
     });
@@ -580,7 +592,7 @@ void main() {
       syncedAvatarUrlProvider.overrideWith((ref) => SyncedAvatarNotifier()),
       authStateProvider.overrideWith((_) => const Stream.empty()),
       accountSetupNeedsAttentionProvider.overrideWith((_) async => false),
-      appThemeIdProvider.overrideWith((ref) => 'graphite'),
+      appThemeIdProvider.overrideWith((ref) => themeId),
       activeSessionsProvider.overrideWith(_Sessions.new),
       connectionHealthProvider.overrideWith((ref) => _Health()),
       syncHealthClockProvider.overrideWith((ref) => Stream.value(DateTime(2026, 11, 9, 10, 42))),
@@ -592,7 +604,7 @@ void main() {
         container: container,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: graphite.toThemeData(),
+          theme: theme.toThemeData(),
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -708,6 +720,32 @@ void main() {
     await tearDownShell(tester);
   }, variant: _computer);
 
+  for (final themeId in const ['graphite', 'default_light']) {
+    testWidgets('computer: a screen in full screen, its line about the way out, and its bar at the top edge ($themeId)',
+        (tester) async {
+      if (!shotsEnabled) return;
+      ScreenPane.debugSetWindowFullScreen = (_) async {};
+      addTearDown(() => ScreenPane.debugSetWindowFullScreen = null);
+      final h = await pumpShell(tester, themeId: themeId);
+      await openDesk(tester, h);
+      await tester.tap(find.byKey(const ValueKey('screen-toolbar-fullScreen')));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('screen-full-screen')), findsOneWidget);
+      await snap(tester, h.key, 'computer-screen-full-screen-$themeId');
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(location: const Offset(700, 400));
+      await tester.pump();
+      await pointer.moveTo(const Offset(700, 1));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('screen-full-screen-bar')), findsOneWidget);
+      await snap(tester, h.key, 'computer-screen-full-screen-bar-$themeId');
+      await pointer.removePointer();
+      await tester.tap(find.byKey(const ValueKey('screen-full-screen-exit')));
+      await settle(tester);
+      await tearDownShell(tester);
+    }, variant: _computer);
+  }
+
   testWidgets('computer: a screen tab under recording mode', (tester) async {
     if (!shotsEnabled) return;
     final h = await pumpShell(tester);
@@ -790,6 +828,10 @@ void main() {
     await settle(tester);
     expect(find.byKey(const ValueKey('host-edit-screen-reach'), skipOffstage: false), findsOneWidget);
     await snap(tester, h.key, 'computer-host-editor-vnc');
+    // What is not needed to connect is behind More options, closed: opened for its picture.
+    await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-more'), skipOffstage: false));
+    await tester.tap(find.byKey(const ValueKey('host-edit-screen-more')));
+    await settle(tester);
     final options = find.byKey(const ValueKey('host-edit-screen-view-only'), skipOffstage: false);
     await tester.ensureVisible(options);
     await settle(tester);
@@ -823,11 +865,31 @@ void main() {
     h.container.read(connectionEditorWidthProvider.notifier).state = 760;
     h.container.read(connectionEditorTargetProvider.notifier).state = const ConnectionEditorTarget(connectionId: 'c-pc');
     await settle(tester);
-    expect(find.byKey(const ValueKey('host-edit-rdp-without-nla'), skipOffstage: false), findsOneWidget);
+    expect(find.byKey(const ValueKey('host-edit-rdp-without-nla'), skipOffstage: false), findsNothing);
+    expect(find.byKey(const ValueKey('host-edit-screen-more'), skipOffstage: false), findsOneWidget);
     await snap(tester, h.key, 'computer-host-editor-rdp');
+    // What is not needed to connect is behind More options, closed: opened for its picture.
+    await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-more'), skipOffstage: false));
+    await tester.tap(find.byKey(const ValueKey('host-edit-screen-more')));
+    await settle(tester);
     await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-view-only'), skipOffstage: false));
     await settle(tester);
     await snap(tester, h.key, 'computer-host-editor-rdp-options');
+    await tearDownShell(tester);
+  }, variant: _computer);
+
+  testWidgets('computer: the host editor of an RDP host, in the light theme', (tester) async {
+    if (!shotsEnabled) return;
+    final h = await pumpShell(tester, themeId: 'default_light');
+    await _addRdpHost(h.container.read(databaseProvider));
+    h.container.read(connectionEditorWidthProvider.notifier).state = 760;
+    h.container.read(connectionEditorTargetProvider.notifier).state = const ConnectionEditorTarget(connectionId: 'c-pc');
+    await settle(tester);
+    await snap(tester, h.key, 'computer-host-editor-rdp-light');
+    await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-more'), skipOffstage: false));
+    await tester.tap(find.byKey(const ValueKey('host-edit-screen-more')));
+    await settle(tester);
+    await snap(tester, h.key, 'computer-host-editor-rdp-options-light');
     await tearDownShell(tester);
   }, variant: _computer);
 
@@ -1021,6 +1083,10 @@ void main() {
     await settle(tester);
     expect(find.byKey(const ValueKey('host-edit-screen-reach'), skipOffstage: false), findsOneWidget);
     await snap(tester, key, 'phone-host-editor-vnc', pixelRatio: 2);
+    // What is not needed to connect is behind More options, closed: opened for its picture.
+    await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-more'), skipOffstage: false));
+    await tester.tap(find.byKey(const ValueKey('host-edit-screen-more')));
+    await settle(tester);
     await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-view-only'), skipOffstage: false));
     await settle(tester);
     await snap(tester, key, 'phone-host-editor-vnc-options', pixelRatio: 2);
@@ -1068,6 +1134,10 @@ void main() {
     await settle(tester);
     expect(find.byKey(const ValueKey('host-edit-screen-reach'), skipOffstage: false), findsOneWidget);
     await snap(tester, key, 'phone-host-editor-rdp', pixelRatio: 2);
+    // What is not needed to connect is behind More options, closed: opened for its picture.
+    await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-more'), skipOffstage: false));
+    await tester.tap(find.byKey(const ValueKey('host-edit-screen-more')));
+    await settle(tester);
     await tester.ensureVisible(find.byKey(const ValueKey('host-edit-screen-view-only'), skipOffstage: false));
     await settle(tester);
     await snap(tester, key, 'phone-host-editor-rdp-options', pixelRatio: 2);

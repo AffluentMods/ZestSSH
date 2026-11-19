@@ -71,6 +71,19 @@ class ScreenWindows {
     }
   }
 
+  /// What to do when the window showing [sessionId], in front, says its
+  /// person pastes into the picture (the tab sends this computer's clipboard
+  /// to the remote, and the window's key waits for that); null takes it away.
+  void onWindowPaste(String sessionId, Future<void> Function()? then) {
+    if (then == null) {
+      _onPaste.remove(sessionId);
+    } else {
+      _onPaste[sessionId] = then;
+    }
+  }
+
+  final _onPaste = <String, Future<void> Function()>{};
+
   /// The sessions shown in a window of their own now, by the tab's session
   /// id: a tab listens and shows "in its own window" in the picture's place.
   final ValueNotifier<Set<String>> shown = ValueNotifier(const {});
@@ -162,6 +175,9 @@ class ScreenWindows {
     } else if (method == kScreenWindowFocusMethod) {
       // The keyboard taken by a window that is not in front moves nothing.
       if (_shown[sessionId]!.front) _onFocus[sessionId]?.call();
+    } else if (method == kScreenWindowPasteMethod) {
+      // As the keyboard taken: a window that is not in front moves nothing.
+      if (_shown[sessionId]!.front) await _onPaste[sessionId]?.call();
     }
     return '';
   }

@@ -233,10 +233,10 @@ void main() {
       );
       expect(unsaved(tester), isTrue);
 
-      // Cancel asks, as before; Discard goes back to the key's details.
+      // Close asks, as Cancel did; Discard goes back to the key's details.
       tester
           .widget<ZestDetailScaffold>(find.byType(ZestDetailScaffold))
-          .onCancel!();
+          .onClose!();
       await settle(tester);
       await tester.tap(find.text(en.zestDiscardDiscard).last);
       await settle(tester);

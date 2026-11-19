@@ -581,7 +581,10 @@ async fn session_loop(session: &Session, request: OpenRequest, notifier: Notifie
     // The name and the password stay out of the connector until TLS is up (its connection
     // request would carry the name in the clear).
     let credentials = crate::rdp::hold_credentials(&mut config);
-    let h264 = H264Mode::parse(request.rdp_h264.as_deref()).map_err(|e| Closed::new(CloseReason::Internal, e))?;
+    let h264 = h264_for_displays(
+        layout.count(),
+        H264Mode::parse(request.rdp_h264.as_deref()).map_err(|e| Closed::new(CloseReason::Internal, e))?,
+    );
     let stats: SharedStats = Arc::new(std::sync::Mutex::new(Stats::new(graphics.name())));
     // The display control channel (resize to the view) and the graphics pipeline ride the dynamic
     // channels. Both from factories: after a resize xrdp resets the core (a Deactivation-
@@ -634,9 +637,22 @@ async fn session_loop(session: &Session, request: OpenRequest, notifier: Notifie
     // Where the gateway ended the channel, its reason, not the session's view of it.
     let said = gateway_end.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
     match (ran, said) {
-        (Err(_), Some(gateway_said)) => Err(gateway_said),
+        (Err(ours), Some(gateway_said)) => Err(end_through_gateway(ours, gateway_said)),
         (ran, _) => ran,
     }
+}
+
+/// Which end a session through a gateway is said to have had, where both the session and the
+/// gateway gave one. The gateway's where the session only saw its stream end (the gateway knows
+/// why: its policy, the PC out of reach). The session's own where it says more: a sign-in the PC
+/// refused, the PC's certificate, a server's own reason. (A PC that refuses a password then
+/// closes, the gateway closes the channel for that, and "the gateway closed the channel" took
+/// the place of the refusal: the password was not asked for again.)
+fn end_through_gateway(ours: Closed, gateway: Closed) -> Closed {
+    let only_ended = matches!(ours.reason, CloseReason::Network | CloseReason::ServerClosed)
+        && ours.detail.is_none()
+        && ours.certificate.is_none();
+    if only_ended { gateway } else { ours }
 }
 
 /// The connection request, TLS to the PC and the rest, over `stream`: the pipe itself, or the
@@ -675,6 +691,15 @@ where
         TlsFailure::Failed(t) => Closed::new(CloseReason::Tls, format!("TLS: {t}")),
     })?;
     after_tls(session, secured, should_upgrade, connector, start, notifier).await
+}
+
+/// H.264 for a session of `count` displays: none where there are several. A Windows server sends
+/// each display's picture as an H.264 stream of its own, and the pipeline's one decoder took them
+/// all, so a session of two or more displays broke off within a second (IronRDP issue #2033; its
+/// fix, a decoder for each surface, is in a release after the one built here). Such a session is
+/// drawn with the other codecs the pipeline offers instead.
+fn h264_for_displays(count: usize, asked: H264Mode) -> H264Mode {
+    if count > 1 { H264Mode::Off } else { asked }
 }
 
 /// What the session keeps from before TLS.
@@ -1233,6 +1258,29 @@ fn open_sound(asked: Option<&str>) -> Result<(SoundParts, serde_json::Value), Cl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn through_a_gateway_the_sessions_own_reason_is_kept_and_a_bare_end_is_the_gateways() {
+        let gateway = || Closed::new(CloseReason::ServerClosed, "RD Gateway: the gateway closed the channel to the PC");
+        let reach = || Closed::new(CloseReason::Network, "RD Gateway: the gateway could not reach the PC").with_detail("gateway_target");
+        // The PC refused the sign-in, and the gateway then closed the channel: the refusal.
+        let refused = Closed::new(CloseReason::Auth, "the server refused the sign-in").with_detail("password_expired");
+        let e = end_through_gateway(refused, gateway());
+        assert_eq!((e.reason, e.detail), (CloseReason::Auth, Some("password_expired")));
+        let e = end_through_gateway(Closed::new(CloseReason::Auth, "the server refused the sign-in"), gateway());
+        assert_eq!(e.reason, CloseReason::Auth);
+        // The PC's certificate, to be asked about.
+        let e = end_through_gateway(Closed::certificate(&[0x30, 0x03, 0x02, 0x01, 0x01]), reach());
+        assert_eq!(e.reason, CloseReason::Certificate);
+        // A server's own reason for ending the session.
+        let e = end_through_gateway(Closed::new(CloseReason::ServerClosed, "signed out").with_detail("signed_out"), gateway());
+        assert_eq!(e.detail, Some("signed_out"));
+        // The stream only ended: the gateway says why.
+        let e = end_through_gateway(Closed::new(CloseReason::ServerClosed, "the connection ended"), reach());
+        assert_eq!(e.detail, Some("gateway_target"));
+        let e = end_through_gateway(Closed::new(CloseReason::Network, "reading: broken pipe"), reach());
+        assert_eq!(e.detail, Some("gateway_target"));
+    }
 
     #[test]
     fn a_session_the_server_ended_is_closed_by_the_name_of_its_reason() {
@@ -1972,6 +2020,15 @@ mod tests {
         let (closed, sent) = closed_after_as(&five, b"");
         assert!(closed["message"].as_str().unwrap().contains("at most 4"), "{closed}");
         assert!(sent.is_empty());
+    }
+
+    #[test]
+    fn a_session_of_several_displays_is_offered_no_h264() {
+        assert_eq!(h264_for_displays(1, H264Mode::Avc444), H264Mode::Avc444);
+        assert_eq!(h264_for_displays(1, H264Mode::Avc420), H264Mode::Avc420);
+        assert_eq!(h264_for_displays(2, H264Mode::Avc444), H264Mode::Off);
+        assert_eq!(h264_for_displays(4, H264Mode::Avc420), H264Mode::Off);
+        assert_eq!(h264_for_displays(2, H264Mode::Off), H264Mode::Off);
     }
 
     #[test]

@@ -15,6 +15,9 @@ import 'package:zestssh/providers/purchase_providers.dart';
 import 'package:zestssh/theme/app_theme.dart';
 import 'package:zestssh/theme/zest_tokens.dart';
 import 'package:zestssh/ui/screens/connection/connection_edit_screen.dart';
+import 'package:zestssh/ui/widgets/zest_button_group.dart';
+import 'package:zestssh/ui/widgets/zest_close_button.dart';
+import 'package:zestssh/ui/widgets/zest_pane_footer.dart';
 import 'package:zestssh/ui/widgets/zest_select.dart';
 
 /// A design review of the host editor on a computer:
@@ -226,6 +229,29 @@ void main() {
     await finish(tester);
     await open(tester, 'web');
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack).first).index, 0, reason: 'Basic where none is named');
+    await finish(tester);
+  });
+  testWidgets('the footer: the two tests as one group at the left, Save alone at the right, no Cancel; the '
+      "header's close is red and named Close", (tester) async {
+    await open(tester, 'web');
+    final reach = find.byKey(const ValueKey('host-edit-test-reachability'));
+    final full = find.byKey(const ValueKey('host-edit-test-full'));
+    expect(reach, findsOneWidget);
+    expect(full, findsOneWidget);
+    expect(find.descendant(of: reach, matching: find.text(en.zestHostTestReachability)), findsOneWidget);
+    expect(find.descendant(of: full, matching: find.text(en.zestHostTestFull)), findsOneWidget);
+    expect(find.descendant(of: find.byType(ZestPaneFooter), matching: find.byType(ZestButtonGroup)), findsOneWidget);
+    // At the editor's usual width, side by side, and Save to their right.
+    expect(tester.getCenter(reach).dy, moreOrLessEquals(tester.getCenter(full).dy));
+    expect(tester.getRect(find.text(en.connectionSaveChanges)).left, greaterThan(tester.getRect(full).right));
+    expect(find.descendant(of: find.byType(ZestPaneFooter), matching: find.text(en.cancel)), findsNothing);
+    expect(find.descendant(of: find.byType(ZestPaneFooter), matching: find.text('Cancel')), findsNothing);
+    final close = find.byKey(const ValueKey('host-edit-close'));
+    expect(tester.widget(close), isA<ZestCloseButton>());
+    expect(find.byTooltip(en.close), findsWidgets);
+    final glyph = tester.widget<Icon>(find.descendant(of: close, matching: find.byType(Icon)));
+    expect(glyph.color, ZestTokens.statusCritical);
+    expect(tester.getSize(close).width, greaterThanOrEqualTo(32));
     await finish(tester);
   });
 }

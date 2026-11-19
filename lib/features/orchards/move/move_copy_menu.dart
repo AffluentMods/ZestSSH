@@ -6,23 +6,20 @@ import 'package:zestssh/features/orchards/move/move_copy_dialog.dart';
 import 'package:zestssh/features/orchards/orchard_providers.dart';
 import 'package:zestssh/features/orchards/spaces.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
-import 'package:zestssh/models/redactable.dart';
 import 'package:zestssh/providers/core_providers.dart';
 import 'package:zestssh/theme/ui_density.dart' show touchSizedAt;
 import 'package:zestssh/theme/zest_tokens.dart';
-import 'package:zestssh/ui/widgets/redacted_text.dart' show RedactableDisplay;
 import 'package:zestssh/ui/widgets/top_snackbar.dart';
 
-// An editor's Move or copy (4.0: a dropdown at the top right
-// of the places there is access to, Personal and each team, a team picked
-// and then a vault, then move or duplicate): a button in
-// the header of the editor of a saved item opens a menu of the places it can
-// go, Personal and each team with its vaults, the place it is in marked and
-// not offered; under a place, Move here and Copy here. Either opens the one
-// place picker's dialog with the place picked already (showMoveCopyDialog),
-// so the questions, the rules and the line that says what was done are the
-// ones Move to... and Copy to... have. "Copy", not "Duplicate": Duplicate is
-// the app's word for a copy in the same place, Copy to... for one elsewhere.
+// An editor's Move or copy (4.0): a button in the header of the editor of a
+// saved item opens a short menu, Move to... and Copy to..., the words the
+// host list's own menu uses; either opens the one place picker's dialog
+// (showMoveCopyDialog), which lists Personal and each team's vaults with the
+// place the item is in marked, so the questions, the rules and the line that
+// says what was done are the ones Move to... and Copy to... have everywhere.
+// (It was a menu of places, a team's vaults in a menu of their own and Move
+// here and Copy here in a third: three menus deep, hard to follow.) "Copy",
+// not "Duplicate": Duplicate is the app's word for a copy in the same place.
 
 /// Builds the button the menu hangs from, in the look of the editor's header:
 /// [open] opens the menu, [label] is its tooltip and what a screen reader
@@ -101,9 +98,8 @@ class _MoveCopyMenuButtonState extends ConsumerState<MoveCopyMenuButton> {
     }
   }
 
-  Future<void> _go(PlaceChoice place, TransferMode mode) async {
-    final result = await showMoveCopyDialog(context, ref,
-        kind: widget.kind, keys: [widget.itemKey], mode: mode, to: place);
+  Future<void> _go(TransferMode mode) async {
+    final result = await showMoveCopyDialog(context, ref, kind: widget.kind, keys: [widget.itemKey], mode: mode);
     if (!mounted) return;
     if (mode == TransferMode.move && result != null && result.done > 0) widget.onMoved?.call();
   }
@@ -117,18 +113,15 @@ class _MoveCopyMenuButtonState extends ConsumerState<MoveCopyMenuButton> {
     ref.watch(activeOrchardProvider);
     ref.watch(itemCratesProvider(widget.kind));
     final l10n = AppLocalizations.of(context)!;
-    final places = savePlaces(ref, l10n);
     final offer = transferOffer(ref, widget.kind, [widget.itemKey]);
     if (!offer.move && !offer.copy) return const SizedBox.shrink();
-    final here = placesOf(ref, widget.kind, [widget.itemKey]);
-    final current = here.length == 1 ? here.single : null;
     final label = l10n.moveCopyMenuButton;
     return MenuAnchor(
       controller: _menu,
       childFocusNode: _buttonFocus,
       alignmentOffset: const Offset(0, 4),
       style: _menuStyle,
-      menuChildren: _items(context, l10n, places, current, offer),
+      menuChildren: _items(context, l10n, offer),
       child: KeyedSubtree(
         key: const ValueKey('move-copy-button'),
         child: widget.builder?.call(context, _open, label, _buttonFocus) ??
@@ -152,98 +145,26 @@ class _MoveCopyMenuButtonState extends ConsumerState<MoveCopyMenuButton> {
         )),
       );
 
-  List<Widget> _items(
-    BuildContext context,
-    AppLocalizations l10n,
-    List<PlaceChoice> places,
-    SavePlace? current,
-    ({bool move, bool copy}) offer,
-  ) {
+  List<Widget> _items(BuildContext context, AppLocalizations l10n, ({bool move, bool copy}) offer) {
     final touch = touchSizedAt(context);
-    final itemSize = Size(touch ? 240 : 220, touch ? 48 : 34);
+    final itemSize = Size(touch ? 220 : 180, touch ? 48 : 34);
     final textStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: touch ? 15 : 13);
-    var first = true;
-    FocusNode? firstNode() {
-      if (!first) return null;
-      first = false;
-      return _firstFocus;
-    }
-
-    String id(SavePlace p) => '${p.orchardId ?? 'personal'}-${p.crateId ?? ''}';
-
-    Widget placeEntry(PlaceChoice p) {
-      final icon = Icon(
-        p.team == null ? LucideIcons.user : (p.ownersOnly ? LucideIcons.lock : LucideIcons.package),
-        size: 15,
-      );
-      final name = Text(Redactable.freeText(p.name).displayIn(ref), maxLines: 1, overflow: TextOverflow.ellipsis);
-      // Where it is now: said, not offered.
-      if (p.place == current) {
-        return MenuItemButton(
-          key: ValueKey('move-copy-place-${id(p.place)}'),
-          leadingIcon: icon,
-          trailingIcon: Text(l10n.transferHere, style: TextStyle(fontSize: 11.5, color: ZestTokens.textTertiary)),
-          style: MenuItemButton.styleFrom(textStyle: textStyle, minimumSize: itemSize),
-          onPressed: null,
-          child: name,
-        );
-      }
-      return SubmenuButton(
-        key: ValueKey('move-copy-place-${id(p.place)}'),
-        focusNode: firstNode(),
-        leadingIcon: icon,
-        menuStyle: _menuStyle,
-        style: SubmenuButton.styleFrom(textStyle: textStyle, minimumSize: itemSize),
-        menuChildren: [
-          MenuItemButton(
-            key: ValueKey('move-copy-move-${id(p.place)}'),
-            leadingIcon: const Icon(LucideIcons.folderInput, size: 15),
-            style: MenuItemButton.styleFrom(textStyle: textStyle, minimumSize: itemSize),
-            onPressed: offer.move ? () => _go(p, TransferMode.move) : null,
-            child: Text(l10n.moveCopyMenuMoveHere),
-          ),
-          MenuItemButton(
-            key: ValueKey('move-copy-copy-${id(p.place)}'),
-            leadingIcon: const Icon(LucideIcons.copyPlus, size: 15),
-            style: MenuItemButton.styleFrom(textStyle: textStyle, minimumSize: itemSize),
-            onPressed: offer.copy ? () => _go(p, TransferMode.copy) : null,
-            child: Text(l10n.moveCopyMenuCopyHere),
-          ),
-        ],
-        child: name,
-      );
-    }
-
-    // Personal, then each team (in the picker's order) with its vaults.
-    final teams = <String, List<PlaceChoice>>{};
-    final children = <Widget>[
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
-        child: Text(
-          l10n.moveCopyMenuHead.toUpperCase(),
-          style: TextStyle(fontSize: 10.5, letterSpacing: 0.8, fontWeight: FontWeight.w600, color: ZestTokens.textTertiary),
-        ),
+    return [
+      MenuItemButton(
+        key: const ValueKey('move-copy-move'),
+        focusNode: _firstFocus,
+        leadingIcon: const Icon(LucideIcons.folderInput, size: 15),
+        style: MenuItemButton.styleFrom(textStyle: textStyle, minimumSize: itemSize),
+        onPressed: offer.move ? () => _go(TransferMode.move) : null,
+        child: Text(l10n.transferMoveTo),
+      ),
+      MenuItemButton(
+        key: const ValueKey('move-copy-copy'),
+        leadingIcon: const Icon(LucideIcons.copyPlus, size: 15),
+        style: MenuItemButton.styleFrom(textStyle: textStyle, minimumSize: itemSize),
+        onPressed: offer.copy ? () => _go(TransferMode.copy) : null,
+        child: Text(l10n.transferCopyTo),
       ),
     ];
-    for (final p in places) {
-      final team = p.place.orchardId;
-      if (team == null) {
-        children.add(placeEntry(p));
-      } else {
-        teams.putIfAbsent(team, () => []).add(p);
-      }
-    }
-    for (final MapEntry(key: team, value: vaults) in teams.entries) {
-      children.add(SubmenuButton(
-        key: ValueKey('move-copy-team-$team'),
-        focusNode: firstNode(),
-        leadingIcon: const Icon(LucideIcons.users, size: 15),
-        menuStyle: _menuStyle,
-        style: SubmenuButton.styleFrom(textStyle: textStyle, minimumSize: itemSize),
-        menuChildren: [for (final v in vaults) placeEntry(v)],
-        child: Text(Redactable.freeText(vaults.first.team!).displayIn(ref), maxLines: 1, overflow: TextOverflow.ellipsis),
-      ));
-    }
-    return children;
   }
 }

@@ -19,8 +19,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:zest_native/screen.dart' show ScreenProtocol, ScreenSession;
+import 'package:zestssh/providers/shortcut_overrides_provider.dart';
+import 'package:zestssh/features/shortcuts/shortcut_key.dart';
+import 'package:zestssh/features/screens/displays/screen_display_keys.dart';
 import 'package:zestssh/core/theme/zest_colors.dart';
 import 'package:zestssh/features/screens/model/screen_options.dart';
+import 'package:zestssh/features/screens/view/screen_full_screen.dart';
 import 'package:zestssh/features/screens/session/screen_clipboard.dart';
 import 'package:zestssh/features/screens/session/screen_round_trip.dart';
 import 'package:zestssh/features/screens/details/screen_session_details.dart';
@@ -32,8 +36,10 @@ import 'package:zestssh/features/screens/menu/screen_session_panel.dart';
 import 'package:zestssh/features/screens/screen_settings.dart';
 import 'package:zestssh/features/screens/view/screen_display_preview.dart';
 import 'package:zestssh/features/screens/session/screen_shell_service.dart';
+import 'package:zestssh/features/screens/session/screen_target.dart' show DirectTlsTarget;
 import 'package:zestssh/features/screens/view/screen_controller.dart';
 import 'package:zestssh/features/screens/view/screen_privacy_cover.dart';
+import 'package:zestssh/features/screens/view/screen_sound_gate.dart';
 import 'package:zestssh/features/screens/view/screen_view.dart';
 import 'package:zestssh/features/screens/view/screen_viewport.dart';
 import 'package:zestssh/features/screens/window/screen_window_protocol.dart';
@@ -89,6 +95,11 @@ class ScreenPane extends ConsumerStatefulWidget {
   /// Turns tiles into images in widget tests (which have no engine thread).
   @visibleForTesting
   static ScreenTileDecoder? debugDecodeTile;
+
+  /// Puts the window into the system's full screen or takes it out, in
+  /// place of the window itself: a test's window, which notes what was asked.
+  @visibleForTesting
+  static Future<void> Function(bool on)? debugSetWindowFullScreen;
 
   /// This computer's clipboard, for widget tests.
   @visibleForTesting
@@ -163,8 +174,14 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
     // The picture of its own window took the keyboard: this computer's
     // clipboard goes to the remote, as when the tab's picture takes it.
     ScreenWindows.instance.onWindowFocus(widget.sessionId, () {
-      if (!mounted || !_inOwnWindow || _covered || (_viewOnly ?? false)) return;
+      if (!mounted || !_inOwnWindow || _covered || (_viewOnly ?? false) || _sendsOnPaste) return;
       unawaited(_clip?.sendLocal());
+    });
+    // Its person pastes into the picture of its own window: the same, and
+    // the window's key waits for it.
+    ScreenWindows.instance.onWindowPaste(widget.sessionId, () async {
+      if (!mounted || !_inOwnWindow) return;
+      await _sendForPaste();
     });
   }
 
@@ -214,7 +231,9 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
         displayCount: c.displayCount,
         smoothScaling: c.smoothScaling,
         commandAsControl: c.keyboard.commandAsControl,
+        clipboardOnPaste: _sendsOnPaste,
         panelFolded: [for (final g in ref.read(screenPanelFoldedProvider)) g.name],
+        displayKeys: _displayKeys(),
       ),
     );
     if (!opened && mounted) showTopSnackBar(context, AppLocalizations.of(context)!.screenOwnWindowFailed);
@@ -224,8 +243,20 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
   /// remote if it changed since it last went (not in view only, not under
   /// recording mode's cover, which takes the keyboard away anyway).
   void _onFocus() {
-    if (!_focus.hasFocus || _covered || (_viewOnly ?? false)) return;
+    if (!_focus.hasFocus || _covered || (_viewOnly ?? false) || _sendsOnPaste) return;
     unawaited(_clip?.sendLocal());
+  }
+
+  /// This host's clipboard goes to the remote only when its person pastes
+  /// into the screen (ScreenOptions.clipboardOnPaste), not as the picture
+  /// takes the keyboard.
+  bool get _sendsOnPaste => _shell?.options.clipboardOnPaste ?? false;
+
+  /// A paste into the picture: this computer's clipboard goes to the remote
+  /// first, where it is shared (not in view only, not under a cover).
+  Future<void> _sendForPaste() async {
+    if (_covered || (_viewOnly ?? false)) return;
+    await _clip?.sendLocal();
   }
 
   void _setWindowHidden(bool hidden) {
@@ -234,7 +265,99 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
   }
 
   void _onFullscreen() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // The window left full screen another way (the system's own button or
+    // key, the app's own shortcut): the screen is back in its tab.
+    if (_fullScreen && !WindowService.fullscreen.value) {
+      _enteredWindowFullScreen = false;
+      _portal.hide();
+      _fullScreen = false;
+      _sayFullScreen(false);
+    }
+    setState(() {});
+  }
+
+  // Full screen (4.0): the picture alone on the whole monitor. The window
+  // goes into the system's own full screen, and the picture, with whatever
+  // covers it, is drawn over everything the window shows (the app's bars,
+  // tabs and side bar are under it and take no pointer), through the
+  // window's top overlay. The bar at the top edge, the menu key and
+  // Ctrl+Alt+Break lead out (ScreenFullScreenFrame).
+  final _portal = OverlayPortalController();
+  final _bodyKey = GlobalKey(debugLabel: 'screen-pane-body');
+  bool _fullScreen = false;
+
+  /// Whether going full screen is what put the window into the system's
+  /// full screen: only then does leaving take it out again (a window its
+  /// person had made full screen before stays so).
+  bool _enteredWindowFullScreen = false;
+
+  /// The keys that show displays 1 to 4 (Settings, Keyboard shortcuts).
+  List<ShortcutKey?> _displayKeys({bool watch = false}) {
+    final bindings = watch ? ref.watch(shortcutBindingsProvider) : ref.read(shortcutBindingsProvider);
+    return [for (final a in screenDisplayActions) bindings.bindingFor(a)];
+  }
+
+  /// Tells the shell which screen is in full screen ([screenFullScreenSessionProvider]).
+  void _sayFullScreen(bool on) {
+    final said = ref.read(screenFullScreenSessionProvider.notifier);
+    _said = said;
+    if (on) {
+      said.state = widget.sessionId;
+    } else if (said.state == widget.sessionId) {
+      said.state = null;
+    }
+  }
+
+  /// Where [_sayFullScreen] said it, for [dispose], which may not read providers.
+  StateController<String?>? _said;
+
+  Future<void> _windowFullScreen(bool on) async {
+    final set = ScreenPane.debugSetWindowFullScreen;
+    if (set != null) {
+      await set(on);
+      WindowService.fullscreen.value = on;
+      return;
+    }
+    await WindowService.instance?.setFullscreen(on);
+  }
+
+  /// Into full screen or out of it. Out of it the window is as it was
+  /// before: its size, its place and whether it was maximised are the
+  /// system's to put back, which it does for a window it made full screen.
+  Future<void> _setFullScreen(bool on) async {
+    if (on == _fullScreen || !mounted) return;
+    if (on) {
+      if (_inOwnWindow || _c == null) return;
+      final was = WindowService.fullscreen.value;
+      if (!was) {
+        try {
+          await _windowFullScreen(true);
+        } catch (_) {
+          // The window could not change: the screen stays in its tab.
+          return;
+        }
+      }
+      if (!mounted) return;
+      _enteredWindowFullScreen = !was;
+      setState(() => _fullScreen = true);
+      _portal.show();
+      _sayFullScreen(true);
+    } else {
+      final leave = _enteredWindowFullScreen;
+      _enteredWindowFullScreen = false;
+      setState(() => _fullScreen = false);
+      _portal.hide();
+      _sayFullScreen(false);
+      if (leave && WindowService.fullscreen.value) {
+        try {
+          await _windowFullScreen(false);
+        } catch (_) {
+          // Left as the system has it: its own key still leaves it.
+        }
+      }
+    }
+    if (mounted) _takeKeyboardSoon();
   }
 
   ScreenShellService? get _shell {
@@ -302,12 +425,16 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
       showTopSnackBar(context, AppLocalizations.of(context)!.screenResizeUnavailable);
     };
     c.viewOnly = _viewOnly ??= shell.options.viewOnly;
+    c.keyboard.onPaste = shell.options.clipboardOnPaste ? _sendForPaste : null;
     // Shown in a window of its own (the area was left and come back to
     // meanwhile): this view takes nothing, and does not stop the server.
     c.idle = _inOwnWindow;
     final kept = _kept;
     if (kept != null) c.restore(kept);
     _c = c;
+    // This view holds the sound from now on (what a window of its own held
+    // for it while no tab showed it comes back here).
+    ScreenSoundGate.of(session).release(ScreenSoundGate.ownWindow(widget.sessionId));
     // Paused by a view of it that went (the area left for another section
     // and come back to): its whole picture again.
     if (session.isPaused) session.resume();
@@ -321,6 +448,10 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
     final c = _c;
     if (c == null) return;
     if (c.viewport.hasRemote) _kept = c.kept();
+    // Shown in a window of its own: that window is seen, and plays its sound
+    // on (until it closes, or the lock or recording mode silences it:
+    // screen_sound_guard.dart). Otherwise the sound stops with this view.
+    if (_inOwnWindow) c.handSoundToOwnWindow(widget.sessionId);
     // Nobody sees it now: the server stops sending until a view comes back.
     c.pause();
     c.dispose();
@@ -359,6 +490,22 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
   @override
   void dispose() {
     WindowService.fullscreen.removeListener(_onFullscreen);
+    // Closed while in full screen (the session ended, its tab was closed):
+    // the window is put back as this screen found it.
+    if (_fullScreen && _enteredWindowFullScreen && WindowService.fullscreen.value) {
+      unawaited(_windowFullScreen(false).catchError((Object _) {}));
+    }
+    final said = _said;
+    if (_fullScreen && said != null) {
+      final id = widget.sessionId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          if (said.state == id) said.state = null;
+        } catch (_) {
+          // The app's state went with it.
+        }
+      });
+    }
     _focus.removeListener(_onFocus);
     ScreenWindows.instance.shown.removeListener(_onOwnWindows);
     ScreenWindows.instance.onWindowFocus(widget.sessionId, null);
@@ -415,7 +562,7 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
         phone: false,
         fit: _fit ?? ScreenFit.fit,
         viewOnly: _viewOnly ?? false,
-        fullScreen: WindowService.fullscreen.value,
+        fullScreen: _fullScreen,
         keyboardHeld: keyboardHeld ?? _focus.hasFocus,
         canResizeRemote: _shell?.protocol == ScreenProtocol.rdp,
         resizingRemote: _resizeRemote ?? false,
@@ -434,7 +581,9 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
         // Not while recording mode covers the picture: a window would show it.
         ownWindowOffered: isDesktopPlatform && !_covered,
         covered: _covered,
-        soundAsked: _shell?.protocol == ScreenProtocol.rdp && (_shell?.options.soundOn(phone: false) ?? false),
+        // What the session asked of its server (a large tablet shows this pane
+        // too, and asks for no sound unless its host's switch says so).
+        soundAsked: _shell?.soundAsked ?? false,
         soundHere: _c?.soundUnavailable == null,
         soundOn: _soundWanted,
       );
@@ -468,7 +617,8 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
           setState(() => _viewOnly = !(_viewOnly ?? false));
           c?.viewOnly = _viewOnly!;
         case ScreenAction.fullScreen:
-          await WindowService.instance?.toggleFullscreen();
+          await _setFullScreen(!_fullScreen);
+          return;
         case ScreenAction.refresh:
           _session?.fullRefresh();
         case ScreenAction.clipboard:
@@ -544,7 +694,7 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
         connectionId: _shell?.connectionId, sessionId: widget.sessionId, on: on);
     // Turned on with the picture holding the keyboard: what this computer
     // holds goes now.
-    if (on && _focus.hasFocus && !(_viewOnly ?? false)) unawaited(clip.sendLocal());
+    if (on && _focus.hasFocus && !(_viewOnly ?? false) && !_sendsOnPaste) unawaited(clip.sendLocal());
     if (mounted) _takeKeyboardSoon();
   }
 
@@ -556,7 +706,12 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
     if (shell.viaCarrier) {
       return l10n.screenSecurityViaSsh(Redactable.host(shell.carrierLabel ?? '').displayIn(ref));
     }
-    return info.tls != null ? l10n.screenSecurityTls : null;
+    if (info.tls == null) return null;
+    // VeNCrypt is VNC's own TLS, for a VNC host reached directly; an RDP
+    // host (RDP inside TLS) and a Proxmox console are TLS alone.
+    return shell.protocol == ScreenProtocol.vnc && shell.target is DirectTlsTarget
+        ? l10n.screenSecurityTls
+        : l10n.screenSecurityTlsOnly;
   }
 
   void _focusPane() {
@@ -611,34 +766,29 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
     // over it and the app not locked. (A computer's tab behind another, or a
     // minimised window, still plays it, as another program's sound does.)
     c?.soundAllowed = !covered && !ref.watch(isAppLockedProvider);
+    // Full screen is for the screen its person is at: a tab that is no
+    // longer in front, a screen taken to a window of its own or a session
+    // that ended leaves it.
+    if (_fullScreen && (!widget.front || _inOwnWindow || c == null)) {
+      scheduleMicrotask(() => unawaited(_setFullScreen(false)));
+    }
+    c?.keyboard.onLeaveFullScreen = _fullScreen ? () => unawaited(_setFullScreen(false)) : null;
+    // Alt and a digit (unless changed): that display, caught before the remote has it.
+    c?.keyboard.onAppKey = c == null ? null : (e) => showDisplayForKey(_displayKeys(), c, e);
+    // Their labels for full screen's buttons, following a change in Settings.
+    final displayKeyLabels = [for (final k in _displayKeys(watch: true)) k?.displayLabel];
     if (_inOwnWindow) {
       return _InOwnWindow(
         key: ValueKey('screen-pane-${widget.sessionId}'),
         onBack: () => unawaited(ScreenWindows.instance.bringBack(widget.sessionId)),
       );
     }
-    return Column(
-      key: ValueKey('screen-pane-${widget.sessionId}'),
-      children: [
-        ScreenToolbar(
-          fit: _fit ?? ScreenFit.fit,
-          viewOnly: _viewOnly ?? false,
-          fullScreen: WindowService.fullscreen.value,
-          canResizeRemote: _shell?.protocol == ScreenProtocol.rdp,
-          resizingRemote: _resizeRemote ?? false,
-          security: _security(l10n),
-          onAction: (a) => unawaited(_act(a)),
-          onMenu: (_) => unawaited(_openMenu(fromBar: true)),
-          clipboardOn: _clip?.on.value ?? false,
-          onToggleClipboard: _clipboardTogglable ? () => unawaited(_toggleClipboard()) : null,
-          menuKey: menuKey,
-          menu: _menuState(),
-          // The remote's displays (4.0): the bar's segment.
-          displays: c?.displays,
-          onDisplay: c?.showDisplay,
-        ),
-        Expanded(
-          child: c == null
+    // The picture and what lies over it (a cover, the hints, the held
+    // pointer's line): one subtree with one key, so it moves between its tab
+    // and the full screen without being made anew.
+    final Widget body = KeyedSubtree(
+      key: _bodyKey,
+      child: c == null
               ? const ColoredBox(color: AppColors.screenLetterbox, child: SizedBox.expand())
               : Stack(
                   fit: StackFit.expand,
@@ -649,6 +799,9 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
                     // The strip of the remote's displays, left of the picture:
                     // nothing while there is one display. Open or closed is
                     // this computer's, kept until its person changes it.
+                    // In full screen the frame has buttons for them instead,
+                    // beside the picture.
+                    if (!_fullScreen)
                     ScreenDisplayStrip(
                       displays: c.displays,
                       onDisplay: c.showDisplay,
@@ -704,7 +857,8 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
                       ),
                     // The first time on this computer: the key that gives the
                     // keyboard back and opens the panel (4.0).
-                    if (!covered)
+                    // (In full screen its own line names the menu key, where this would sit.)
+                    if (!covered && !_fullScreen)
                       Positioned.fill(
                         child: ScreenHintOverlay(
                           offer: const [ScreenHintKind.releaseKey],
@@ -734,8 +888,74 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
                     const ScreenPrivacyCover(),
                   ],
                 ),
+    );
+    return OverlayPortal(
+      overlayLocation: OverlayChildLocation.rootOverlay,
+      key: ValueKey('screen-pane-${widget.sessionId}'),
+      controller: _portal,
+      overlayChildBuilder: (context) => Positioned.fill(
+        // What the window shows under it is not told to a screen reader either.
+        child: Material(
+          key: const ValueKey('screen-full-screen'),
+          color: AppColors.screenLetterbox,
+          child: ScreenFullScreenFrame(
+            title: widget.sessionState.connectionLabel,
+            picture: c,
+            displayKeyLabels: displayKeyLabels,
+            hint: l10n.screenFullScreenHint(menuKey.label, _mac ? l10n.screenFullScreenExitKeysMac : l10n.screenFullScreenExitKeys),
+            actions: ScreenFullScreenBarActions(
+              onExit: () => unawaited(_setFullScreen(false)),
+              exitLabel: l10n.screenExitFullScreen,
+              onMenu: () => unawaited(_openMenu(fromBar: true)),
+              menuLabel: l10n.screenMenuTooltipKey(menuKey.label),
+              onDisconnect: () => unawaited(_act(ScreenAction.disconnect)),
+              disconnectLabel: l10n.terminalDisconnect,
+            ),
+            // The picture moves between its tab and this layer, also while a
+            // dialog's barrier is up (the session panel's Exit full screen):
+            // what it tells a screen reader is left out here, where Flutter
+            // cannot place a moved subtree under that barrier, and the layer
+            // says what it is in its place. The bar's buttons are its own.
+            child: Semantics(
+              container: true,
+              label: l10n.screenViewLabel,
+              child: ExcludeSemantics(child: body),
+            ),
+          ),
         ),
-      ],
+      ),
+      child: Column(
+        children: [
+          // Under the picture in full screen: neither read out nor reached by the keyboard.
+          ExcludeSemantics(
+            excluding: _fullScreen,
+            child: ExcludeFocus(
+              excluding: _fullScreen,
+              child: ScreenToolbar(
+          fit: _fit ?? ScreenFit.fit,
+          viewOnly: _viewOnly ?? false,
+          fullScreen: _fullScreen,
+          canResizeRemote: _shell?.protocol == ScreenProtocol.rdp,
+          resizingRemote: _resizeRemote ?? false,
+          security: _security(l10n),
+          onAction: (a) => unawaited(_act(a)),
+          onMenu: (_) => unawaited(_openMenu(fromBar: true)),
+          clipboardOn: _clip?.on.value ?? false,
+          onToggleClipboard: _clipboardTogglable ? () => unawaited(_toggleClipboard()) : null,
+          menuKey: menuKey,
+          menu: _menuState(),
+          // The remote's displays (4.0): the bar's segment.
+          displays: c?.displays,
+          onDisplay: c?.showDisplay,
+        ),
+            ),
+          ),
+          Expanded(
+            // In full screen the picture is over the whole window, not here.
+            child: _fullScreen ? const ColoredBox(color: AppColors.screenLetterbox, child: SizedBox.expand()) : body,
+          ),
+        ],
+      ),
     );
   }
 }

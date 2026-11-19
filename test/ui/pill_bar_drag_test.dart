@@ -220,7 +220,7 @@ void main() {
     testWidgets('a quarter of the tab\'s own width at each edge is "beside", the half between is "join"', (tester) async {
       await pumpStrip(tester, width: 2400);
       final t3 = tabRect(tester, 't3');
-      expect(t3.width, 222, reason: 'a tab at its widest: its edges were 40 pixels whatever its width');
+      expect(t3.width, 236, reason: 'a tab at its widest: its edges were 40 pixels whatever its width');
       final quarter = t3.width / 4;
       final gesture = await dragTab(tester, 't1', Offset(t3.left + quarter - 4, t3.center.dy));
       expect(before, findsOneWidget, reason: 'just inside the first quarter');

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -974,7 +975,9 @@ class _TriggersSection extends StatelessWidget {
           const SizedBox(height: 12),
           _SsidWarningBanner(
             key: const ValueKey('network-wifi-names-not-read'),
-            text: l10n.netWifiNamesNotOnPhones,
+            // A Mac reads none either (macOS asks for Location Services),
+            // and is told so in its own words.
+            text: defaultTargetPlatform == TargetPlatform.macOS ? l10n.netWifiNamesNotOnMac : l10n.netWifiNamesNotOnPhones,
             muted: true,
           ),
         ] else if (hasSsid) ...[

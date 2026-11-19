@@ -896,7 +896,7 @@ class _IdentityEditScreenState extends ConsumerState<IdentityEditScreen> {
         label: name.isEmpty ? l10n.fidoMakeTitle : name,
         comment: name,
       );
-      final imported = KeyImportService().importOpenSSHKey(made.toPem());
+      final imported = KeyImportService().importOpenSSHKey(made.key.toPem());
       if (!mounted) return;
       setState(() {
         _privateKeyPem = imported.privatePem;
@@ -905,7 +905,14 @@ class _IdentityEditScreenState extends ConsumerState<IdentityEditScreen> {
         _keyType = imported.keyType;
         _publicKeyData = null;
       });
-      showTopSnackBar(context, l10n.identitySshKeyLoaded(imported.keyType), isSuccess: true);
+      if (choice.askPin && !made.keyRequiresPin) {
+        // The security key could not be told to hold to the PIN itself
+        // (no credProtect): the key works, and asking for the PIN is the
+        // app's own rule, which the person is told.
+        showTopSnackBar(context, l10n.fidoMadePinAppOnly, isWarning: true);
+      } else {
+        showTopSnackBar(context, l10n.identitySshKeyLoaded(imported.keyType), isSuccess: true);
+      }
     } on FidoFailure catch (failure) {
       // (Closing the sheet says nothing: the person knows.)
       if (!mounted || failure.kind == FidoFailureKind.cancelled) return;

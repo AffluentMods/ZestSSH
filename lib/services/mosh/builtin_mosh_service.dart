@@ -196,6 +196,10 @@ class BuiltinMoshService implements ShellService, ShellEndReason, MoshLinkSource
         if (foreign is int && foreign > 0) {
           onLog?.call("mosh: $foreign datagrams from an address that is not the host's were dropped unopened");
         }
+        final heldBack = s['held_back'];
+        if (heldBack is int && heldBack > 0) {
+          onLog?.call('mosh: $heldBack datagrams were left unopened while the terminal caught up (the host sends them again)');
+        }
       case MoshEventKind.closed:
         final s = _json(data);
         AppLogger.info('Mosh session closed: ${s['reason']}');

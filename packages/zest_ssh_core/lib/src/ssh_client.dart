@@ -1288,7 +1288,11 @@ class SSHClient {
     final message = SSH_Message_Userauth_Passwd_ChangeReq.decode(payload);
     printTrace?.call('<- $socket: $message');
 
-    final response = await onChangePasswordRequest!(message.prompt);
+    // No handler (the app sets none): the next way of signing in, as a
+    // handler that answers nothing does (dartssh2 #253). It threw before, and
+    // a server asking for a new password (an expired one) ended the
+    // connection with an internal error.
+    final response = await onChangePasswordRequest?.call(message.prompt);
     if (response == null) return _tryNextAuthMethod();
 
     _sendMessage(SSH_Message_Userauth_Request.newPassword(

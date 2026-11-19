@@ -241,8 +241,8 @@ void main() {
     expect(await run(client, 'ls -A $remote'), 'page\nsealed', reason: 'and nothing half done beside them');
   });
 
-  test('a file is put in the place of another in one step, with nothing removed for it; on a host that cannot, as '
-      'before', () async {
+  test('a file is put in the place of another in one step, with nothing removed for it; on a host that cannot, the '
+      'file is moved aside and removed only once the new one is in its place', () async {
     if (unavailable != null) return markTestSkipped(unavailable!);
     final asked = <String>[];
     final (client, sftp, remote, local) = await opened(asked: asked);
@@ -257,13 +257,22 @@ void main() {
         reason: 'the rename that a taken name refuses is not tried');
     expect(asked.where((request) => request.startsWith('SftpExtendedPacket')), hasLength(1), reason: 'one step');
 
-    // A host without that step: the file that is there is removed, and the new one renamed.
+    // A host without that step (OpenSSH's own rename refuses a name that is taken): the file
+    // that is there is moved aside, under a name of this upload's own, the new one renamed onto
+    // its name, and the one moved aside removed after. The file itself is never removed; nothing
+    // is left beside it, and a file of the person's under the old fixed name is not touched.
     SftpService.debugOneStepRename = false;
+    await run(client, "printf 'mine' > $remote/site.zestold");
     asked.clear();
     await sftp.uploadFileFromPath(withContent(local, 'site', 'newer').path, '$remote/site');
-    expect(await run(client, 'cat $remote/site; ls -A $remote'), 'newersite');
+    expect(await run(client, 'cat $remote/site; echo; cat $remote/site.zestold; echo; ls -A $remote'),
+        'newer\nmine\nsite\nsite.zestold');
     expect(asked.where((request) => request.startsWith('SftpExtendedPacket')), isEmpty);
-    expect(asked.where((request) => request.startsWith('SftpRemovePacket')), hasLength(1));
+    final removed = [for (final r in asked) if (r.startsWith('SftpRemovePacket')) r];
+    expect(removed, hasLength(1), reason: 'only the one this upload moved aside: $asked');
+    expect(RegExp(r'/site\.zestold-[0-9a-f]{8}\)$').hasMatch(removed.single), isTrue, reason: '$removed');
+    expect([for (final r in asked) if (r.startsWith('SftpRenamePacket')) r], hasLength(3),
+        reason: 'refused onto the name, the file aside, the upload onto the name: $asked');
   });
 
   test('an upload that is stopped half way leaves the file it was to replace as it was; where it could only be '

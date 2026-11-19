@@ -37,7 +37,9 @@ import 'package:zestssh/ui/widgets/title_bar_double_click.dart';
 import 'package:zestssh/ui/widgets/window_drag_area.dart';
 import 'package:zestssh/theme/desktop_dimensions.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/tree_selector.dart';
-import 'package:zestssh/ui/screens/desktop/widgets/session_chrome.dart' show FilesOnlyTag, ScreenTag;
+import 'package:zestssh/core/theme/group_color.dart' show resolveGroupColor;
+import 'package:zestssh/core/theme/zest_colors.dart';
+import 'package:zestssh/services/local_shell_service.dart';
 import 'package:zestssh/ui/widgets/session_status_mark.dart';
 import 'package:zestssh/models/redactable.dart';
 import 'package:zestssh/ui/widgets/redacted_text.dart';
@@ -48,6 +50,19 @@ import 'package:zestssh/services/window_service.dart';
 /// would snapshot the charcoal default at library load and never
 /// update when the user picks a different app theme.
 Color get _pillBarBackground => AppColors.v3ChromeBg;
+
+/// The workspace each open tab was opened from this run of the app (4.0),
+/// by tab id: its chip leads its tabs in the strip. Not kept: a fresh run of
+/// the app opened none.
+final tabWorkspacesProvider = Provider<Map<String, ({String id, String name})>>((ref) {
+  final groups = ref.watch(savedTabGroupsProvider);
+  ref.watch(workTabsProvider);
+  final notifier = ref.read(savedTabGroupsProvider.notifier);
+  return {
+    for (final g in groups)
+      for (final t in notifier.tabsOpenedFrom(g.id)) t.id: (id: g.id, name: g.name),
+  };
+});
 
 /// The title bar (3.0).
 ///
@@ -170,6 +185,30 @@ class PillBar extends ConsumerWidget {
     this.pageTitle,
   });
 
+  /// The workspace each open tab was opened from, by tab, with its colour.
+  Map<String, _TabWorkspace> _tabWorkspaces(WidgetRef ref) => {
+        for (final MapEntry(key: tab, value: w) in ref.watch(tabWorkspacesProvider).entries)
+          tab: _TabWorkspace(w.id, w.name, resolveGroupColor(colorValue: null, colorIndex: null, name: w.name)),
+      };
+
+  /// The session a tab of one session shows, by tab id: what its kind tile
+  /// says is that session's kind (a tab's id is not its session's). The
+  /// first of its terminals (or of its panes, where it has no terminal)
+  /// that is open and not hidden, as the tab's name is made (its first,
+  /// where none is).
+  Map<String, String> _tabSessionIds(WidgetRef ref) {
+    final open = ref.watch(activeSessionsProvider);
+    return {
+      for (final tab in ref.watch(workTabsProvider).tabs)
+        if (_shownOf(tab.terminalSessionIds.isNotEmpty ? tab.terminalSessionIds : tab.sessionIds, open)
+            case final String id)
+          tab.id: id,
+    };
+  }
+
+  static String? _shownOf(List<String> ids, Map<String, SessionState> open) =>
+      ids.where((id) => open[id] != null && !open[id]!.isHidden).firstOrNull ?? ids.firstOrNull;
+
   /// The session tabs, in the bar or in a strip of their own.
   Widget _tabStrip(WidgetRef ref, AppLocalizations l10n) => _SessionTabStrip(
         sessions: sessions,
@@ -194,6 +233,12 @@ class PillBar extends ConsumerWidget {
         tabSources: _tabSources(ref, l10n),
         filesOnlyIds: ref.watch(filesOnlySessionsProvider),
         screenIds: ref.watch(screenSessionsProvider),
+        localIds: {
+          for (final MapEntry(key: id, value: s) in ref.watch(activeSessionsProvider).entries)
+            if (s.session?.shell is LocalShellService) id,
+        },
+        tabSessionIds: _tabSessionIds(ref),
+        tabWorkspaces: _tabWorkspaces(ref),
         // Live shortcut bindings so the context menu's right-aligned
         // shortcut column follows the user's rebindings (§4/§5). Watched
         // here → the strip rebuilds on any change, and each menu open
@@ -1016,7 +1061,18 @@ class _SessionTabStrip extends StatefulWidget {
   /// The sessions that are remote screens (4.0): their tabs say VNC.
   final Set<String> screenIds;
 
+  /// The sessions that are this computer's own shell (Local terminal).
+  final Set<String> localIds;
+
+  /// The session each tab of one session shows, by tab id: the ids above
+  /// are sessions', a tab's id is its own.
+  final Map<String, String> tabSessionIds;
+
+  /// The workspace each tab was opened from, by tab id (none: no entry).
+  final Map<String, _TabWorkspace> tabWorkspaces;
+
   const _SessionTabStrip({
+    this.tabWorkspaces = const {},
     required this.sessions,
     this.activeSessionId,
     required this.onSessionSelected,
@@ -1037,6 +1093,8 @@ class _SessionTabStrip extends StatefulWidget {
     this.tabSources = const {},
     this.filesOnlyIds = const {},
     this.screenIds = const {},
+    this.localIds = const {},
+    this.tabSessionIds = const {},
   });
 
   @override
@@ -1044,30 +1102,50 @@ class _SessionTabStrip extends StatefulWidget {
 }
 
 class _SessionTabStripState extends State<_SessionTabStrip> {
+  /// The workspaces whose tabs are folded into their chip, by id.
+  final Set<String> _folded = {};
+
+  void _toggleFold(String workspaceId) => setState(() {
+        if (!_folded.remove(workspaceId)) _folded.add(workspaceId);
+      });
+
   @override
   Widget build(BuildContext context) {
     if (widget.sessions.isEmpty) {
       return const SizedBox.shrink();
     }
+    // A workspace folded into its chip: its tabs leave the strip, but for
+    // the one in front.
+    _folded.removeWhere((id) => !widget.tabWorkspaces.values.any((w) => w.id == id));
+    final sessions = [
+      for (final e in widget.sessions)
+        if (!_folded.contains(widget.tabWorkspaces[e.key]?.id) || e.key == widget.activeSessionId) e,
+    ];
+    final foldedChips = {
+      for (final e in widget.sessions)
+        if (_folded.contains(widget.tabWorkspaces[e.key]?.id)) widget.tabWorkspaces[e.key]!.id,
+    };
+    // The chips take room of their own, as about half a tab each.
+    final chipCount = {for (final w in widget.tabWorkspaces.values) w.id}.length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final available = constraints.maxWidth;
+        final available = constraints.maxWidth - chipCount * _kTabEstimatedWidth / 2;
         final totalNeeded =
-            widget.sessions.length * _kTabEstimatedWidth;
+            sessions.length * _kTabEstimatedWidth;
 
         // Determine how many tabs fit.
         final bool hasOverflow =
-            totalNeeded > available && widget.sessions.length > 1;
+            totalNeeded > available && sessions.length > 1;
         final int visibleCount = hasOverflow
             ? ((available - _kChevronWidth) / _kTabEstimatedWidth)
                 .floor()
-                .clamp(1, widget.sessions.length - 1)
-            : widget.sessions.length;
+                .clamp(1, sessions.length - 1)
+            : sessions.length;
 
-        final visibleSessions = widget.sessions.sublist(0, visibleCount);
+        final visibleSessions = sessions.sublist(0, visibleCount);
         final hiddenSessions = hasOverflow
-            ? widget.sessions.sublist(visibleCount)
+            ? sessions.sublist(visibleCount)
             : <MapEntry<String, SessionState>>[];
 
         // If the active session is hidden, swap it into the visible set.
@@ -1089,15 +1167,37 @@ class _SessionTabStripState extends State<_SessionTabStrip> {
                 // -- Visible tabs with drag support --
                 Expanded(
                   child: Row(
-                    children: List.generate(visibleSessions.length, (i) {
-                      return Flexible(
-                        child: _buildDraggableTab(
-                          visibleSessions[i],
-                          landsAfter:
-                              landsAtEnd && i == visibleSessions.length - 1,
+                    children: [
+                      for (var i = 0; i < visibleSessions.length; i++) ...[
+                        // A workspace's chip before the first of its tabs.
+                        if (widget.tabWorkspaces[visibleSessions[i].key] case final w?
+                            when i == 0 || widget.tabWorkspaces[visibleSessions[i - 1].key]?.id != w.id)
+                          _WorkspaceChip(
+                            key: ValueKey('tab-workspace-${w.id}'),
+                            workspace: w,
+                            folded: _folded.contains(w.id),
+                            count: widget.sessions.where((e) => widget.tabWorkspaces[e.key]?.id == w.id).length,
+                            onTap: () => _toggleFold(w.id),
+                          ),
+                        Flexible(
+                          child: _buildDraggableTab(
+                            visibleSessions[i],
+                            landsAfter: landsAtEnd && i == visibleSessions.length - 1,
+                          ),
                         ),
-                      );
-                    }),
+                      ],
+                      // A folded workspace none of whose tabs is in front:
+                      // its chip alone, to open it again.
+                      for (final id in foldedChips)
+                        if (!visibleSessions.any((e) => widget.tabWorkspaces[e.key]?.id == id))
+                          _WorkspaceChip(
+                            key: ValueKey('tab-workspace-$id'),
+                            workspace: widget.tabWorkspaces.values.firstWhere((w) => w.id == id),
+                            folded: true,
+                            count: widget.sessions.where((e) => widget.tabWorkspaces[e.key]?.id == id).length,
+                            onTap: () => _toggleFold(id),
+                          ),
+                    ],
                   ),
                 ),
 
@@ -1228,6 +1328,8 @@ class _SessionTabStripState extends State<_SessionTabStrip> {
     required bool landsAfter,
   }) {
     final tabId = entry.key;
+    // The session the tab shows (its kind is that session's).
+    final shown = widget.tabSessionIds[tabId] ?? tabId;
     final groupSize = widget.tabGroupSizes[tabId] ?? 1;
     final isPinned = widget.pinnedTabIds.contains(tabId);
     final tab = _SessionTab(
@@ -1251,8 +1353,11 @@ class _SessionTabStripState extends State<_SessionTabStrip> {
       onTmuxTap: widget.onOpenTmux == null
           ? null
           : () => widget.onOpenTmux!(tabId),
-      filesOnly: widget.filesOnlyIds.contains(tabId),
-      screen: widget.screenIds.contains(tabId),
+      kindSessionId: shown,
+      filesOnly: widget.filesOnlyIds.contains(shown),
+      screen: widget.screenIds.contains(shown),
+      groupSize: groupSize,
+      local: widget.localIds.contains(shown),
     );
 
     // The strip's whole height, not only the tab's own: a tab is found from
@@ -1301,6 +1406,19 @@ class _SessionTabStripState extends State<_SessionTabStrip> {
           ),
           if (landsAfter)
             const _LandingBar(key: ValueKey('tab-lands-after'), after: true),
+          if (widget.tabWorkspaces[tabId] case final w?)
+            Positioned(
+              left: 0,
+              right: _kTabGap,
+              bottom: 2,
+              height: 2,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  key: ValueKey('tab-workspace-line-$tabId'),
+                  decoration: BoxDecoration(color: w.color, borderRadius: BorderRadius.circular(1)),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1924,8 +2042,25 @@ class _SessionTab extends StatefulWidget {
   /// The tab's session is files only (an SFTP-only host): it says SFTP.
   final bool filesOnly;
 
-  /// The tab's session is a remote screen (4.0): it says VNC.
+  /// The tab's session is a remote screen (4.0).
   final bool screen;
+
+  /// How many sessions the tab holds side by side (a split): 1 for one.
+  final int groupSize;
+
+  /// The tab's session is this computer's own shell (Local terminal).
+  final bool local;
+
+  /// What the tab holds, as its kind tile says it.
+  _TabKind get kind => groupSize > 1
+      ? _TabKind.split
+      : screen
+          ? _TabKind.screen
+          : filesOnly
+              ? _TabKind.files
+              : local
+                  ? _TabKind.local
+                  : _TabKind.terminal;
 
   const _SessionTab({
     super.key,
@@ -1943,7 +2078,13 @@ class _SessionTab extends StatefulWidget {
     this.source,
     this.filesOnly = false,
     this.screen = false,
+    this.groupSize = 1,
+    this.local = false,
+    this.kindSessionId,
   });
+
+  /// The session the tab shows, where its id is not that session's.
+  final String? kindSessionId;
 
   @override
   State<_SessionTab> createState() => _SessionTabState();
@@ -1962,6 +2103,15 @@ class _SessionTabState extends State<_SessionTab> {
     final topLeft = box.localToGlobal(Offset.zero);
     return topLeft & box.size;
   }
+
+  /// What the tab holds, in words, where it is not a plain terminal.
+  String? _kindWords(AppLocalizations l10n) => switch (widget.kind) {
+        _TabKind.split => l10n.a11yTabSplit(widget.groupSize),
+        _TabKind.screen => l10n.a11yTabScreen,
+        _TabKind.files => l10n.pillSftp,
+        _TabKind.local => l10n.homeLocalTerminal,
+        _TabKind.terminal => null,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -1991,6 +2141,7 @@ class _SessionTabState extends State<_SessionTab> {
       label: [
         Redactable.host(label).display,
         if (widget.source != null) Redactable.group(widget.source!).display,
+        ?_kindWords(l10n),
         status,
         if (widget.isPinned) l10n.a11yTabPinned,
       ].join(', '),
@@ -2043,7 +2194,8 @@ class _SessionTabState extends State<_SessionTab> {
           child: Container(
             constraints: const BoxConstraints(
               minWidth: 120,
-              maxWidth: 220,
+              // 220 before the kind tile, which is 14 wider than the dot it took the place of.
+              maxWidth: 234,
             ),
             // A finger's 44 where the controls are touch sized (4.0).
             height: touch ? 44 : _kTabHeight,
@@ -2059,18 +2211,22 @@ class _SessionTabState extends State<_SessionTab> {
                     // Active vs inactive is carried by the BACKGROUND + label,
                     // never the identity bar (§3): active lifts one surface
                     // step, inactive stays recessed.
-                    color: widget.isActive
+                    color: _tinted(widget.isActive
                         ? AppColors.v3Elevated
                         : _hovering
                             ? AppColors.v3Hover
-                            : AppColors.v3Surface,
+                            : AppColors.v3Surface),
                     borderRadius: BorderRadius.circular(_kTabRadius),
                     border: Border.all(
                       color: _focused
                           ? ZestTokens.brand
                           : widget.isActive
-                              ? AppColors.v3AccentPrimary.withValues(alpha: 0.45)
-                              : AppColors.v3BorderSubtle,
+                              ? (widget.kind == _TabKind.screen
+                                  ? ZestColors.statusInfo.withValues(alpha: 0.55)
+                                  : AppColors.v3AccentPrimary.withValues(alpha: 0.45))
+                              : widget.kind == _TabKind.screen
+                                  ? Color.alphaBlend(ZestColors.statusInfo.withValues(alpha: 0.18), AppColors.v3BorderSubtle)
+                                  : AppColors.v3BorderSubtle,
                       width: _focused ? 2 : 1,
                     ),
                   ),
@@ -2086,15 +2242,31 @@ class _SessionTabState extends State<_SessionTab> {
                         colors: widget.identityColors,
                         active: widget.isActive,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 7),
 
-                      // Status dot - the ONE place status lives on the tab
-                      // (dot + background tint, never a bar; §2).
-                      // Its shape says it too, not its colour alone (4.0
-                      // accessibility pass): a dot while connected, a ring
-                      // while connecting, a cross once it is not.
-                      SessionStatusMark(status: widget.state.status, size: 6),
-                      const SizedBox(width: 6),
+                      // What the tab holds (a terminal, a remote screen,
+                      // a split, this computer, files only), first, so a
+                      // narrow tab still says it; its status on the tile's
+                      // corner, the ONE place status lives on the tab. The
+                      // status's shape says it too, not its colour alone:
+                      // a dot while connected, a ring while connecting, a
+                      // cross once it is not.
+                      _KindTile(
+                        key: switch (widget.kind) {
+                          _TabKind.screen => ValueKey('tab-screen-${widget.sessionId}'),
+                          _TabKind.files => ValueKey('tab-files-only-${widget.sessionId}'),
+                          _ => ValueKey('tab-kind-${widget.sessionId}'),
+                        },
+                        sessionId: widget.kindSessionId ?? widget.sessionId,
+                        kind: widget.kind,
+                        status: widget.state.status,
+                        ring: _tinted(widget.isActive
+                            ? AppColors.v3Elevated
+                            : _hovering
+                                ? AppColors.v3Hover
+                                : AppColors.v3Surface),
+                      ),
+                      const SizedBox(width: 7),
 
                       // Connection name, and under it where it comes from
                       // while tabs from more than one place are
@@ -2138,21 +2310,23 @@ class _SessionTabState extends State<_SessionTab> {
                         ),
                       ),
 
-                      // Files only: SFTP, where a terminal's tab says
-                      // nothing more.
-                      if (widget.filesOnly) ...[
-                        const SizedBox(width: 4),
-                        FilesOnlyTag(
-                            key: ValueKey('tab-files-only-${widget.sessionId}'),
-                            sessionId: widget.sessionId,
-                            compact: true),
-                      ],
-                      // A remote screen: VNC, with a monitor.
-                      if (widget.screen) ...[
-                        const SizedBox(width: 4),
-                        ScreenTag(
-                            key: ValueKey('tab-screen-${widget.sessionId}'), sessionId: widget.sessionId, compact: true),
-                      ],
+                      // A split: how many sessions it holds.
+                      if (widget.kind == _TabKind.split)
+                        ExcludeSemantics(
+                          child: Container(
+                            key: ValueKey('tab-split-count-${widget.sessionId}'),
+                            margin: const EdgeInsets.only(left: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: AppColors.v3TextPrimary.withValues(alpha: 0.07),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${widget.groupSize}',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.v3TextTertiary),
+                            ),
+                          ),
+                        ),
 
                       // Typing goes to every terminal of this tab: said on
                       // the tab itself, also while another tab is in front.
@@ -2221,6 +2395,156 @@ class _SessionTabState extends State<_SessionTab> {
       ),
       ),
     );
+  }
+}
+
+/// The workspace a tab was opened from: its chip and its line.
+class _TabWorkspace {
+  const _TabWorkspace(this.id, this.name, this.color);
+  final String id;
+  final String name;
+  final Color color;
+}
+
+/// A workspace's chip before its tabs: its name in its colour; a click
+/// folds its tabs into it and opens them again, as a browser's tab groups.
+class _WorkspaceChip extends StatelessWidget {
+  const _WorkspaceChip({
+    super.key,
+    required this.workspace,
+    required this.folded,
+    required this.count,
+    required this.onTap,
+  });
+
+  final _TabWorkspace workspace;
+  final bool folded;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final c = workspace.color;
+    final name = Redactable.group(workspace.name).display;
+    final says = folded ? l10n.tabWorkspaceChipFolded(name, count) : l10n.tabWorkspaceChip(name);
+    return Padding(
+      padding: const EdgeInsets.only(right: _kTabGap + 2),
+      child: Semantics(
+        button: true,
+        expanded: !folded,
+        label: says,
+        excludeSemantics: true,
+        onTap: onTap,
+        child: Tooltip(
+          message: says,
+          excludeFromSemantics: true,
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                height: 24,
+                constraints: const BoxConstraints(maxWidth: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 9),
+                decoration: BoxDecoration(
+                  color: c.withValues(alpha: folded ? 0.30 : 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.layers, size: 12, color: c),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: RedactedText(
+                        Redactable.group(workspace.name),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c),
+                      ),
+                    ),
+                    if (folded) ...[
+                      const SizedBox(width: 5),
+                      Text('$count', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What a session tab holds ([_SessionTab.kind]).
+enum _TabKind { terminal, local, files, screen, split }
+
+/// A tab's surface, a remote screen's a cooler blue (4.0).
+extension on _SessionTabState {
+  Color _tinted(Color base) =>
+      widget.kind == _TabKind.screen ? Color.alphaBlend(ZestColors.statusInfo.withValues(alpha: 0.09), base) : base;
+}
+
+/// The tile at the start of a tab: what it holds, as a glyph, with the
+/// session's status on its corner, ringed in the tab's own surface.
+class _KindTile extends ConsumerWidget {
+  const _KindTile({super.key, required this.sessionId, required this.kind, required this.status, required this.ring});
+
+  final String sessionId;
+  final _TabKind kind;
+  final SessionStatus status;
+  final Color ring;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final (IconData glyph, Color tint) = switch (kind) {
+      _TabKind.terminal => (LucideIcons.terminal, AppColors.v3TextSecondary),
+      _TabKind.local => (LucideIcons.laptop, AppColors.v3TextSecondary),
+      _TabKind.files => (LucideIcons.folder, ZestColors.statusWarning),
+      _TabKind.screen => (LucideIcons.monitor, ZestColors.statusInfo),
+      _TabKind.split => (LucideIcons.layoutPanelLeft, AppColors.v3TextSecondary),
+    };
+    final sessions = ref.read(activeSessionsProvider.notifier);
+    final tooltip = switch (kind) {
+      _TabKind.screen => sessions.isRdpScreen(sessionId) ? l10n.screenTagTooltipRdp : l10n.screenTagTooltip,
+      _TabKind.files => sessions.isFtps(sessionId) ? l10n.sessionFilesOnlyLineFtps : l10n.sessionFilesOnlyLine,
+      _TabKind.local => l10n.homeLocalTerminal,
+      _ => null,
+    };
+    final tile = SizedBox(
+      width: 20,
+      height: 20,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tint.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Icon(glyph, size: 12, color: tint),
+          ),
+          Positioned(
+            right: -3,
+            bottom: -3,
+            child: Container(
+              padding: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(color: ring, shape: BoxShape.circle),
+              child: SessionStatusMark(status: status, size: 7),
+            ),
+          ),
+        ],
+      ),
+    );
+    return ExcludeSemantics(child: tooltip == null ? tile : Tooltip(message: tooltip, child: tile));
   }
 }
 

@@ -310,7 +310,6 @@ void main() {
             body: PortForwardDetailPane(
               controller: controller,
               hasSelection: true,
-              onNew: () {},
               onSave: () async => true,
               onClose: () {},
               onDelete: () {},

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'shortcut_action.dart';
@@ -168,4 +169,18 @@ final Map<ShortcutAction, ShortcutKey> defaultShortcutBindings = {
     ctrl: true,
     shift: true,
   ),
+
+  // ── Remote screens ───────────────────────────────────────────
+  ShortcutAction.screenDisplay1: _displayKey(LogicalKeyboardKey.digit1),
+  ShortcutAction.screenDisplay2: _displayKey(LogicalKeyboardKey.digit2),
+  ShortcutAction.screenDisplay3: _displayKey(LogicalKeyboardKey.digit3),
+  ShortcutAction.screenDisplay4: _displayKey(LogicalKeyboardKey.digit4),
 };
+
+/// The key that shows a remote's display: Alt and the digit (Ctrl and a
+/// digit picks a tab), and on a Mac Control, Option and the digit, since
+/// Option and a digit types a character there on many layouts (# on a
+/// British one).
+ShortcutKey _displayKey(LogicalKeyboardKey digit) => defaultTargetPlatform == TargetPlatform.macOS
+    ? ShortcutKey(keyId: digit.keyId, ctrl: true, alt: true)
+    : ShortcutKey(keyId: digit.keyId, alt: true);

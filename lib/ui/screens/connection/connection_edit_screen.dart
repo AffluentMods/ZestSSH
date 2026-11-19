@@ -1,8 +1,10 @@
+import 'package:zestssh/services/connection_share_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:zestssh/ui/widgets/host_row.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,7 +15,9 @@ import 'package:zestssh/ui/widgets/os_icon.dart' show OsIconWidget;
 import 'package:zestssh/ui/widgets/zest_button.dart';
 import 'package:zestssh/core/widgets/status_pill.dart' show HostStatus;
 import 'package:zestssh/features/hosts/host_card_face.dart';
+import 'package:zestssh/features/hosts/host_screens.dart' show addScreenForHost;
 import 'package:zestssh/features/hosts/host_tester.dart';
+import 'package:zestssh/features/hosts/widgets/section_label.dart' show SectionLink;
 import 'package:zestssh/features/hosts/widgets/host_test_views.dart';
 import 'package:zestssh/features/hosts/widgets/host_card.dart' show HostCard, HostCardData, defaultIconIdFor;
 import 'package:zestssh/models/os_kind.dart';
@@ -75,6 +79,8 @@ import 'package:zestssh/theme/zest_tokens.dart';
 import 'package:zestssh/ui/widgets/zest_field.dart';
 import 'package:zestssh/ui/widgets/zest_section_header.dart';
 import 'package:zestssh/ui/widgets/zest_pane_footer.dart';
+import 'package:zestssh/ui/widgets/zest_button_group.dart';
+import 'package:zestssh/ui/widgets/zest_close_button.dart';
 import 'package:zestssh/models/redactable.dart';
 import 'package:zestssh/ui/widgets/recording_masked_field.dart';
 import 'package:zestssh/ui/widgets/redacted_text.dart';
@@ -137,6 +143,10 @@ const String _kCreateNewKey = '\u0000create-new-key';
 @visibleForTesting
 bool? debugHostFormOnComputer;
 
+/// Whether a remote screen's More options start open, for a test that looks at
+/// what is in them: null for what the form does (closed).
+bool? debugScreenMoreOpen;
+
 /// Whether the host form offers a local shell. Null in the app.
 @visibleForTesting
 bool? debugHostFormLocalShell;
@@ -150,7 +160,7 @@ class ConnectionEditScreen extends ConsumerStatefulWidget {
   /// sticky footer action row.
   final bool inDialog;
 
-  /// Invoked when the editor should close itself (close ✕ / Cancel / after a
+  /// Invoked when the editor should close itself (the header's close / after a
   /// successful save or delete). Supplied by the docked desktop editor so the
   /// panel can clear its target provider instead of popping a route. When
   /// null (mobile route / legacy dialog), the editor falls back to popping.
@@ -202,7 +212,7 @@ class ConnectionEditScreen extends ConsumerStatefulWidget {
   /// The docked editor open now, asked to close (set while one is open).
   static Future<bool> Function()? _dockedClose;
 
-  /// Asks the docked editor to close, as its own Cancel does: at once where
+  /// Asks the docked editor to close, as its own close button does: at once where
   /// nothing changed, else after the question every editor of the app asks
   /// about unsaved changes. True once it is closed (or none was open); false
   /// where the person kept it open. The Hosts page asks it before it shows
@@ -235,7 +245,7 @@ class ConnectionEditScreen extends ConsumerStatefulWidget {
       // main content instead of floating a modal over it behind a scrim. Just
       // set the target; the shell watches this provider and mounts the dock.
       // Clicking the content behind it does nothing (it isn't modal); the
-      // editor is dismissed only through its own close/Cancel/save, which run
+      // editor is dismissed only through its own close/save, which run
       // through the `onClose` the dock supplies.
       //
       // The dock lives on the Hosts view (the shell tucks it away with
@@ -268,7 +278,11 @@ class ConnectionEditScreen extends ConsumerStatefulWidget {
       // of the hosts) is handed to the page.
       if (initialProtocol != null) {
         return context.push(Routes.connectionEdit,
-            extra: ConnectionEditorTarget(initialProtocol: initialProtocol, initialVia: initialVia));
+            extra: ConnectionEditorTarget(
+                initialProtocol: initialProtocol,
+                initialVia: initialVia,
+                initialHost: initialHost,
+                initialLabel: initialLabel));
       }
       return context.push(Routes.connectionEdit);
     }
@@ -412,7 +426,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
 
   /// A remote screen's options ([ScreenOptions]), as the form has them; its
   /// socket path is [_socketController]'s.
-  ScreenOptions _screenOptions = ScreenOptions.defaults;
+  ScreenOptions _screenOptions = ScreenOptions.forNewHost;
 
   /// Whether a screen's options were saved with the host (loaded): one that
   /// becomes a screen in this editor starts at Settings' scaling instead.
@@ -443,6 +457,11 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
   final _gatewayHostController = TextEditingController();
   final _gatewayPortController = TextEditingController(text: '443');
   String? _gatewayKeyId;
+
+  /// An RDP host that goes through an RD Gateway (chosen here, or one this
+  /// version cannot read): its Test is off, since it would dial the PC
+  /// directly, which the session never does.
+  bool get _gatewayHost => _rdp && (_throughGateway || _screenOptions.gateway?.readable == false);
 
   /// What "Reach through" holds while the gateway is chosen (no host's id
   /// can be it).
@@ -556,6 +575,10 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
   /// the space on screen go.
   SavePlace? _saveIn;
   bool _isTesting = false;
+
+  /// Which test was asked for last: the one whose button shows it running in
+  /// the computer's footer while [_isTesting].
+  _HostTestKind? _runningTest;
   HostTestResult? _testResult;
 
   /// Whether the form has unsaved edits. Drives the header "unsaved" dot, the
@@ -879,7 +902,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
 
   /// Close the editor, first asking the user what to do with unsaved edits.
   /// A clean form closes immediately; a dirty one offers Save / Discard /
-  /// Cancel. Routed through by the footer Cancel, the header ✕, and (on
+  /// Cancel. Routed through by the header's close button and (on
   /// mobile) the back button, so no in-progress edit is lost silently.
   Future<void> _confirmDiscardThenClose() async {
     if (!_dirty) {
@@ -949,7 +972,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
         // already exist. Hidden during initial create so the user
         // can't share half-filled drafts that would fail validation
         // on the receiving side.
-        if (isEditing && mayExportScreenSpace(ref))
+        if (isEditing && mayExportScreenSpace(ref) && ConnectionShareService.canShare(_protocol.name))
           IconButton(
             icon: const Icon(LucideIcons.qrCode),
             tooltip: l10n.connectionEditShare,
@@ -1067,7 +1090,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
 
   /// Desktop-dialog chrome: header strip with title + close, scrolling
   /// content area centred at a comfortable reading width, and a sticky
-  /// footer with Test / Cancel / Save buttons.
+  /// footer with the Test group and Save.
   ///
   /// Replaces the old "Scaffold + AppBar + scroll-everything-including
   /// -the-action-buttons" layout that read fine on mobile but felt
@@ -1310,7 +1333,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
           // Share (QR / link) - parity with the mobile form's app-bar action.
           // Gated on isEditing exactly like delete, so half-filled drafts
           // can't be shared before they'd validate on the receiving side.
-          if (isEditing && mayExportScreenSpace(ref))
+          if (isEditing && mayExportScreenSpace(ref) && ConnectionShareService.canShare(_protocol.name))
             _HeaderIconButton(
               icon: LucideIcons.share,
               tooltip: l10n.connectionEditShare,
@@ -1318,10 +1341,12 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
             ),
           // (Delete is in Advanced, red, away from close: beside it, one
           // was taken for the other, 22 October 2026.)
-          _HeaderIconButton(
-            icon: LucideIcons.x,
-            tooltip: l10n.cancel,
-            onTap: _confirmDiscardThenClose,
+          // The way out of the editor (there is no Cancel in the footer): in
+          // the danger colour, larger than the actions beside it.
+          const SizedBox(width: 4),
+          ZestCloseButton(
+            key: const ValueKey('host-edit-close'),
+            onPressed: _confirmDiscardThenClose,
           ),
         ],
       ),
@@ -1419,45 +1444,41 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
         _protocol == ConnectionProtocol.et ||
         _protocol == ConnectionProtocol.serial ||
         _ftps;
-    // Shared sticky footer: optional Test buttons on the left, Cancel + Save on
-    // the right (Save disabled until the form is dirty). The Test buttons go
-    // under one another where the footer leaves them less than both need (a
-    // narrow editor, longer words): side by side they ran off their half.
-    return ZestPaneFooter(
-      leading: _screen
-          ? ZestButton(
+    // Shared sticky footer: the tests as one outlined group on the left, Save
+    // alone on the right (disabled until the form is dirty). The header's
+    // close button leaves the editor, so the footer has no Cancel. The group
+    // goes one under the other where the footer leaves it less than it needs
+    // side by side (a narrow editor, longer words).
+    final group = _screen
+        ? [
+            ZestButtonGroupItem(
               key: const ValueKey('host-edit-screen-test'),
               label: l10n.screenTestButton,
               icon: LucideIcons.radio,
               isLoading: _isTesting,
-              onPressed: _isTesting ? null : _testScreen,
-            )
-          : showTest
-          ? Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                // The footer's own buttons, as tall as Cancel and Save (found in a
-                // design audit).
-                ZestButton(
+              onPressed: _isTesting || _gatewayHost ? null : _testScreen,
+            ),
+          ]
+        : showTest
+            ? [
+                ZestButtonGroupItem(
+                  key: const ValueKey('host-edit-test-reachability'),
                   label: l10n.zestHostTestReachability,
                   icon: LucideIcons.radio,
-                  onPressed: _isTesting
-                      ? null
-                      : () => _testReachability(_baseTestConfig()),
+                  isLoading: _isTesting && _runningTest == _HostTestKind.reachability,
+                  onPressed: _isTesting ? null : () => _testReachability(_baseTestConfig()),
                 ),
-                ZestButton(
+                ZestButtonGroupItem(
+                  key: const ValueKey('host-edit-test-full'),
                   label: l10n.zestHostTestFull,
                   icon: LucideIcons.lock,
-                  onPressed: _isTesting
-                      ? null
-                      : () => _testFullAuth(_baseTestConfig()),
+                  isLoading: _isTesting && _runningTest == _HostTestKind.full,
+                  onPressed: _isTesting ? null : () => _testFullAuth(_baseTestConfig()),
                 ),
-              ],
-            )
-          : null,
-      onCancel: _isLoading ? null : _confirmDiscardThenClose,
-      cancelLabel: l10n.cancel,
+              ]
+            : null;
+    return ZestPaneFooter(
+      leading: group == null ? null : ZestButtonGroup(items: group),
       onSave: _maySave ? _save : null,
       saveEnabled: _dirty && _maySave,
       saveBusy: _isLoading,
@@ -1498,6 +1519,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
         ),
         const SizedBox(height: 11),
         _buildProtocolField(l10n),
+        ?_addScreenLine(l10n),
         // Explicit or implicit TLS, for an FTPS host (3.4).
         if (_ftps) _buildFtpsModeField(l10n),
         // A remote screen (4.0): the SSH host it is reached through, and
@@ -1515,8 +1537,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
         if (_screen) ...[
           _screenNote(_rdp ? l10n.connectionEditRdpPasswordNote : l10n.connectionEditScreenPasswordNote,
               key: const ValueKey('host-edit-screen-password-note')),
-          const SizedBox(height: 11),
-          _buildScreenOptionsFields(l10n),
+          _buildScreenMore(l10n),
         ] else
           _buildOtherAccounts(l10n, identitiesAsync),
       ],
@@ -1608,6 +1629,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
                     label: _shortProtocolLabel(protocols[i]),
                     selected: current == protocols[i],
                     focused: _protocolFocused && current == protocols[i],
+                    tabStop: false,
                     onTap: () => _onProtocolSelected(protocols[i]),
                   ),
                 ),
@@ -2892,6 +2914,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
                   padding: const EdgeInsets.only(bottom: 16),
                 ),
               _buildProtocolField(l10n, phone: true),
+              ?_addScreenLine(l10n),
               // Explicit or implicit TLS, for an FTPS host (3.4).
               if (_ftps) _buildFtpsModeField(l10n, phone: true),
               // A remote screen (4.0): the SSH host it is reached through,
@@ -2911,8 +2934,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
               if (_screen) ...[
                 _screenNote(_rdp ? l10n.connectionEditRdpPasswordNote : l10n.connectionEditScreenPasswordNote,
                     key: const ValueKey('host-edit-screen-password-note')),
-                const SizedBox(height: 11),
-                _buildScreenOptionsFields(l10n, phone: true),
+                _buildScreenMore(l10n, phone: true),
               ] else
                 _buildOtherAccounts(l10n, identitiesAsync, phone: true),
               const SizedBox(height: 14),
@@ -3131,7 +3153,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
             message: l10n.screenTestButton,
             child: OutlinedButton.icon(
               key: const ValueKey('host-edit-screen-test'),
-              onPressed: _isTesting ? null : _testScreen,
+              onPressed: _isTesting || _gatewayHost ? null : _testScreen,
               style: phoneBarButtonStyle(),
               icon: testing ?? const Icon(LucideIcons.activity, size: 18),
               label: Text(_isTesting ? l10n.connectionEditTesting : l10n.hostFormTest),
@@ -3572,6 +3594,44 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     return (socket.isEmpty ? o.copyWith(clearSocket: true) : o.copyWith(socket: socket)).encode();
   }
 
+  /// Under Protocol, while a saved SSH host (or one reached over SSH) is
+  /// edited: "Remote screen for this host? Add a screen", which adds a screen
+  /// host reached through it ([addScreenForHost]) once this editor has closed
+  /// (its unsaved changes asked about first). Only where a host may be added
+  /// in the space on screen; null otherwise.
+  Widget? _addScreenLine(AppLocalizations l10n) {
+    final saved = _loadedRow;
+    if (saved == null ||
+        !_carrierKinds.contains(saved.protocol) ||
+        !_carrierKinds.contains(_protocol.name) ||
+        !mayAddScreenSpace(ref)) {
+      return null;
+    }
+    return Padding(
+      key: const ValueKey('host-edit-add-screen-line'),
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              l10n.hostEditScreenLine,
+              style: TextStyle(fontSize: 11.5, height: 1.4, color: ZestTokens.textMuted),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SectionLink(
+            key: const ValueKey('host-edit-add-screen'),
+            label: l10n.hostScreenAdd,
+            onTap: () {
+              final opener = Navigator.of(context, rootNavigator: true).context;
+              addScreenForHost(opener, ref, saved, beforeOpen: _askToClose);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   /// The SSH host last connected to in this space: where a new screen is
   /// reached through, until another is picked. Null where there is none.
   String? _lastUsedCarrierId() {
@@ -3657,15 +3717,28 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
         ZestSelect<String?>(
           value: throughGateway ? _gatewayChoice : via,
           hint: l10n.connectionEditScreenVia,
+          // Directly and an RD Gateway first, each with what it is, then the
+          // SSH hosts under their heading, each with its own icon and address,
+          // searched where there are many.
           items: [
+            if (!sshOnly)
+              ZestSelectItem(null, l10n.connectionEditScreenDirect,
+                  icon: LucideIcons.globe, note: l10n.connectionEditReachDirectNote),
+            if (gatewayOffered)
+              ZestSelectItem(_gatewayChoice, l10n.connectionEditRdpGateway,
+                  icon: LucideIcons.shieldCheck, note: l10n.connectionEditReachGatewayNote),
             for (final c in carriers)
               ZestSelectItem(
                 c.id,
                 c.label.isNotEmpty ? Redactable.host(c.label).displayIn(ref) : Redactable.address(c.host).displayIn(ref),
+                leading: HostGlyph(host: c, size: 16),
+                note: c.label.isNotEmpty ? Redactable.address(c.host).displayIn(ref) : null,
+                section: l10n.connectionEditReachSshSection,
+                searchable: true,
               ),
-            if (!sshOnly) ZestSelectItem(null, l10n.connectionEditScreenDirect),
-            if (gatewayOffered) ZestSelectItem(_gatewayChoice, l10n.connectionEditRdpGateway),
           ],
+          searchHint: l10n.connectionEditReachSearch,
+          noMatches: l10n.connectionEditReachNoMatches,
           onChanged: (v) {
             if (v == _gatewayChoice) {
               if (_throughGateway) return;
@@ -3865,6 +3938,57 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
 
   /// Clipboard, scaling, picture quality and view only. In a team, an
   /// editor also says whether members may turn the clipboard on.
+  /// Whether a remote screen's More options are open: null until its person
+  /// opens or closes them, which is closed, or open for a host that signs in
+  /// without NLA (its warning stays in sight while that is on).
+  bool? _screenMoreOpen;
+
+  /// Under what a remote screen needs to connect (its address, how it is
+  /// reached, its sign-in): one line on what to turn on on the remote, and
+  /// everything else a session starts with behind More options, closed.
+  /// Those options are what a new session starts with; each can be changed
+  /// in the session's own panel while it is open.
+  Widget _buildScreenMore(AppLocalizations l10n, {bool phone = false}) {
+    final open = _screenMoreOpen ?? (debugScreenMoreOpen ?? (_rdp && !_screenOptions.nla));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _screenNote(_rdp ? l10n.connectionEditRdpTurnOnNote : l10n.connectionEditVncTurnOnNote,
+            key: const ValueKey('host-edit-screen-turn-on-note')),
+        const SizedBox(height: 8),
+        Semantics(
+          button: true,
+          expanded: open,
+          child: InkWell(
+            key: const ValueKey('host-edit-screen-more'),
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => setState(() => _screenMoreOpen = !open),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: phone ? 48 : 32),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(open ? LucideIcons.chevronDown : LucideIcons.chevronRight, size: 16, color: ZestTokens.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(
+                    // (A phone's form ends with a group named More options: this one names the screen.)
+                    phone ? l10n.connectionEditScreenOptionsPhone : l10n.connectionEditScreenMoreOptions,
+                    style: TextStyle(fontSize: phone ? 14 : 12.5, fontWeight: FontWeight.w600, color: ZestTokens.textSecondary),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (open) ...[
+          const SizedBox(height: 8),
+          _buildScreenOptionsFields(l10n, phone: phone),
+        ],
+      ],
+    );
+  }
+
   Widget _buildScreenOptionsFields(AppLocalizations l10n, {bool phone = false}) {
     final inTeam = ref.read(databaseProvider).isOrchard;
     final o = _screenOptions;
@@ -4021,6 +4145,16 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
             note: noSharing ? l10n.connectionEditScreenTeamNoSharing : null,
           ),
         ),
+        if (!noSharing)
+          KeyedSubtree(
+            key: const ValueKey('host-edit-screen-clipboard-on-paste'),
+            child: _MToggleRow(
+              label: l10n.connectionEditScreenClipboardOnPaste,
+              value: o.clipboardOnPaste,
+              onChanged: (v) => set((o) => o.copyWith(clipboardOnPaste: v)),
+              note: l10n.connectionEditScreenClipboardOnPasteNote,
+            ),
+          ),
         if (inTeam && !noSharing)
           KeyedSubtree(
             key: const ValueKey('host-edit-screen-clipboard-members'),
@@ -4102,7 +4236,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     if (_screen) {
       final test = OutlinedButton.icon(
         key: const ValueKey('host-edit-screen-test'),
-        onPressed: _isTesting ? null : _testScreen,
+        onPressed: _isTesting || _gatewayHost ? null : _testScreen,
         icon: _isTesting
             ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
             : const Icon(LucideIcons.radio, size: 16),
@@ -4223,11 +4357,15 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
   /// user name, no password.
   Future<void> _testScreen() => _runTest((started) => _tester.screenTest(_baseTestConfig(), onStarted: started));
 
-  Future<void> _testReachability(EffectiveTestConfig cfg) =>
-      _runTest((started) => _tester.reachability(cfg, onStarted: started));
+  Future<void> _testReachability(EffectiveTestConfig cfg) {
+    _runningTest = _HostTestKind.reachability;
+    return _runTest((started) => _tester.reachability(cfg, onStarted: started));
+  }
 
-  Future<void> _testFullAuth(EffectiveTestConfig cfg) =>
-      _runTest((started) => _tester.fullConnection(cfg, onStarted: started));
+  Future<void> _testFullAuth(EffectiveTestConfig cfg) {
+    _runningTest = _HostTestKind.full;
+    return _runTest((started) => _tester.fullConnection(cfg, onStarted: started));
+  }
 
   /// Runs a test: what is refused before it begins leaves what was shown until
   /// its own result, and one that begins clears it and shows it is running.
@@ -4760,6 +4898,17 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
       }
       return;
     }
+    // An RD Gateway chosen with an address or port that is none (its field not drawn in this
+    // layout, so not validated): never saved as a host with no gateway, which would open directly.
+    if (_screen && _rdp && _throughGateway) {
+      final port = int.tryParse(_gatewayPortController.text.trim());
+      if (!ScreenGateway(host: _gatewayHostController.text.trim(), port: port ?? 0).readable) {
+        if (mounted) {
+          showTopSnackBar(context, AppLocalizations.of(context)!.connectionEditRdpGatewayHostInvalid, isError: true);
+        }
+        return;
+      }
+    }
 
     setState(() => _isLoading = true);
 
@@ -4842,6 +4991,21 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
         final broadcast = kept(wolBroadcast.isEmpty ? null : wolBroadcast, (c) => c.wolBroadcastAddress);
         final keptNote = kept(note, (c) => c.note);
         final keptStartup = kept(startup, (c) => c.startupCommand);
+        // The RD Gateway is a field of its own inside the options column: one a sync brought, took
+        // away or changed while the editor was open stays as the sync left it, unless the person
+        // changed Reach through here (a host that lost its gateway would open the PC directly).
+        var screenOptions = _screenOptionsToSave();
+        if (screenOptions != null && _rdp && now != null) {
+          final form = ScreenOptions.decode(screenOptions);
+          final gateway = kept<ScreenGateway?>(form.gateway, (c) => ScreenOptions.decode(c.screenOptions).gateway);
+          if (gateway == ScreenGateway.unreadable && form.gateway != gateway) {
+            // One this version cannot read: the column as the sync left it.
+            screenOptions = now.screenOptions;
+          } else if (gateway != form.gateway) {
+            screenOptions =
+                (gateway == null ? form.copyWith(clearGateway: true) : form.copyWith(gateway: gateway)).encode();
+          }
+        }
         await crud.update(
           id: widget.connectionId!,
           label: kept(label, (c) => c.label),
@@ -4857,7 +5021,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
           connectViaId: connectViaId,
           clearConnectViaId: connectViaId == null,
           // A remote screen's options; none for any other host.
-          screenOptions: _screenOptionsToSave(),
+          screenOptions: screenOptions,
           setScreenOptions: true,
           colorIndex: kept(_colorIndex, (c) => c.colorIndex),
           colorValue: colorValue,
@@ -5251,9 +5415,12 @@ class _RailItemState extends State<_RailItem> {
 
 // ─── Header icon button ─────────────────────────────────────────
 
-/// Understated icon button for the inspector header (delete / close). Ghost
-/// by default, tinting to [hoverColor] on hover - so the destructive delete
-/// isn't an alarming red block, but still reads as dangerous when reached.
+/// The two tests of a host that is not a remote screen.
+enum _HostTestKind { reachability, full }
+
+/// Understated icon button for the inspector header (move or copy, share).
+/// Ghost by default, tinting to [hoverColor] on hover. (The close beside them
+/// is a [ZestCloseButton].)
 class _HeaderIconButton extends StatefulWidget {
   const _HeaderIconButton({
     required this.icon,
@@ -6228,11 +6395,17 @@ class _MChoicePill extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.focused = false,
+    this.tabStop = true,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Reached with Tab and picked with Enter or Space, with the keyboard's
+  /// ring. False for the protocol row alone: that group is one Tab stop of
+  /// its own, moved through with the arrow keys, and draws [focused] itself.
+  final bool tabStop;
 
   /// The protocol group has keyboard focus and this is the active pill: draw an
   /// orange focus ring around it (a 2px gap separates the ring from the filled
@@ -6243,6 +6416,19 @@ class _MChoicePill extends StatelessWidget {
   Widget build(BuildContext context) {
     // Its name said once (the label and its words were both read: "SSH,
     // SSH").
+    if (tabStop) {
+      // No least size of its own: the row's pills keep the height they had.
+      return ZestPressable(
+        onTap: onTap,
+        semanticLabel: label,
+        selected: selected,
+        inGroup: true,
+        excludeChildSemantics: true,
+        minSize: 0,
+        borderRadius: _kChipRadius,
+        child: _pill(),
+      );
+    }
     return Semantics(
       button: true,
       selected: selected,
@@ -6253,7 +6439,13 @@ class _MChoicePill extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
+        child: _pill(),
+      ),
+    );
+  }
+
+  Widget _pill() {
+    return AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
           alignment: Alignment.center,
@@ -6287,8 +6479,6 @@ class _MChoicePill extends StatelessWidget {
               color: selected ? ZestTokens.onBrand : ZestTokens.textSecondary,
             ),
           ),
-        ),
-      ),
     );
   }
 }

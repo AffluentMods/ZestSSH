@@ -590,6 +590,35 @@ class SyncDataService {
   static const _timesKept = {'connections', 'snippets'};
 
   static const _baseKey = 'sync.base';
+
+  /// The keys (`identities/` and the id) a pull wrote, or was about to write, whose
+  /// secrets are not all in this device's secure storage yet: a write there
+  /// failed, or the app ended before it. Until they are, the pull is not done:
+  /// it is made again, and nothing is sent from here (a key without its secret
+  /// would be sent as one whose secret was taken off, and other devices would
+  /// take it off too). In this profile's database.
+  static const _secretsOwedKey = 'sync.secrets_owed';
+
+  Future<Set<String>> loadSecretsOwed() async {
+    try {
+      final raw = await LocalStateStore(_database).read(_secretsOwedKey);
+      if (raw == null) return const {};
+      final decoded = jsonDecode(raw);
+      return decoded is List ? {for (final item in decoded) if (item is String) item} : const {};
+    } catch (e) {
+      AppLogger.warning('Sync: what a pull still owed could not be read (${errorKind(e)})');
+      return const {};
+    }
+  }
+
+  Future<void> saveSecretsOwed(Set<String> items) async {
+    final state = LocalStateStore(_database);
+    if (items.isEmpty) {
+      await state.remove(_secretsOwedKey);
+    } else {
+      await state.write(_secretsOwedKey, jsonEncode(items.toList()..sort()));
+    }
+  }
   static const _baseAsideKey = 'sync.base.aside';
 
   /// Each item as this device last synced it ([itemHashes] of what it last
@@ -1857,8 +1886,15 @@ class SyncDataService {
         return mine == theirs ? SyncTake.same : SyncTake.local;
       }
       if (mine == null || theirs == null) return SyncTake.incoming;
-      if (mine == theirs) return SyncTake.same;
       final mineAt = hereAt[item];
+      // A key a pull wrote without all its secrets goes again, though it reads
+      // as the same or as changed here: it differs only by what never arrived.
+      // Not where it was changed here since: that is the person's own change.
+      if (!merge.lastChanged && merge.owed.contains(item) &&
+          (mineAt == null || thereAt == null || !mineAt.isAfter(thereAt))) {
+        return SyncTake.incoming;
+      }
+      if (mine == theirs) return SyncTake.same;
       if (merge.lastChanged) {
         // Two copies with no history in common: the one changed last stands, and
         // here where that cannot be told, so nothing older takes the place of what
@@ -2841,6 +2877,8 @@ class SyncDataService {
       int secretsRestored = 0;
       int secretsFailed = 0;
       int secretsSkipped = 0;
+      // The keys whose secrets secure storage did not take.
+      final secretsOwed = <String>{};
       if (data['secrets'] is Map) {
         final secrets = Map<String, dynamic>.from(data['secrets'] as Map);
         for (final entry in secrets.entries) {
@@ -2901,6 +2939,7 @@ class SyncDataService {
             }
           } catch (e) {
             secretsFailed++;
+            secretsOwed.add('identities/$identityId');
             AppLogger.error(
               'Failed to write identity secret for $identityId to secure storage', e);
           }
@@ -3005,6 +3044,7 @@ class SyncDataService {
         knownHostConflicts: knownHostConflicts,
         keptHere: keptHere,
         taken: taken,
+        secretsOwed: secretsOwed,
       );
     } catch (e) {
       if (unread != null && identical(e, unread)) rethrow;
@@ -3084,6 +3124,11 @@ class SyncRestoreResult {
   /// names them): one that is not here was kept as it is, or was the same.
   final Set<String> taken;
 
+  /// The keys (`identities/` and the id) written from the blob whose secrets this
+  /// device's secure storage did not take: the rows are here, a password or
+  /// a private key of theirs is not. A restore that leaves any is not whole.
+  final Set<String> secretsOwed;
+
   const SyncRestoreResult({
     required this.success,
     required this.recordsRestored,
@@ -3091,6 +3136,7 @@ class SyncRestoreResult {
     this.knownHostConflicts = const [],
     this.keptHere = 0,
     this.taken = const {},
+    this.secretsOwed = const {},
   });
 }
 
@@ -3214,10 +3260,8 @@ enum HostActsAlone {
 }
 
 class SyncMergeBase {
-  const SyncMergeBase({required this.key, this.base, this.storeWentBack = false})
-      : lastChanged = false,
-        owed = const {},
-        onTaken = null;
+  const SyncMergeBase({required this.key, this.base, this.storeWentBack = false, this.owed = const {}, this.onTaken})
+      : lastChanged = false;
 
   /// No base to merge with, as when joining sync ([SyncDataService.restoreAll]
   /// without a merge): an item changed here later than the incoming copy, by

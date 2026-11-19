@@ -108,11 +108,13 @@ String screenCardSubtitle({
 /// (4.0) says its kind after it ("10.0.0.40:3389 · RDP",
 /// "localhost:3389 via web-01 · RDP"): both kinds of screen draw the same
 /// monitor, and a VNC host's line stays as it was. It has no socket, whatever
-/// its options hold.
+/// its options hold. [withKind] false leaves the kind out (where it is
+/// said beside the line already).
 String screenCardSubtitleOf(
   Connection screen, {
   required String? Function(String id) labelOf,
   required String Function(String carrier) via,
+  bool withKind = true,
 }) {
   final viaId = screen.connectViaId;
   final options = ScreenOptions.decode(screen.screenOptions);

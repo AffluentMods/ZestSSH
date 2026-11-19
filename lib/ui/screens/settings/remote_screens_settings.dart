@@ -8,6 +8,7 @@ import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/theme/desktop_dimensions.dart';
 import 'package:zestssh/ui/screens/settings/widgets/setting_control_tile.dart';
 import 'package:zestssh/ui/screens/settings/widgets/settings_section.dart';
+import 'package:zestssh/ui/widgets/guide_help_button.dart';
 import 'package:zestssh/ui/widgets/phone_list.dart';
 import 'package:zestssh/ui/widgets/responsive_scaffold.dart';
 import 'package:zestssh/utils/platform_utils.dart';
@@ -27,6 +28,7 @@ class RemoteScreensSettingsScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     return ResponsiveScaffold(
       title: l10n.settingsScreensSection,
+      actions: const [GuideHelpButton(feature: 'remote_screens', size: 20), SizedBox(width: 4)],
       maxWidth: isDesktopPlatform ? DesktopDimensions.settingsMaxWidth : 680,
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

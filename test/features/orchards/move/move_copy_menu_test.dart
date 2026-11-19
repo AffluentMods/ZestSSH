@@ -148,11 +148,12 @@ void main() {
   }
 
   final button = find.byKey(const ValueKey('move-copy-button'));
+  // The place picker's rows (move_copy_dialog.dart).
   Finder place(String? crate) =>
-      find.byKey(ValueKey('move-copy-place-${crate == null ? 'personal' : _acme}-${crate ?? ''}'));
-  final team = find.byKey(const ValueKey('move-copy-team-$_acme'));
-  Finder moveTo(String crate) => find.byKey(ValueKey('move-copy-move-$_acme-$crate'));
-  Finder copyTo(String crate) => find.byKey(ValueKey('move-copy-copy-$_acme-$crate'));
+      find.byKey(ValueKey('transfer-place-${crate == null ? 'personal' : _acme}-${crate ?? ''}'));
+  final moveTo = find.byKey(const ValueKey('move-copy-move'));
+  final copyTo = find.byKey(const ValueKey('move-copy-copy'));
+  final picker = find.byKey(const ValueKey('transfer-pick'));
 
   /// What the app's messages said (a computer's go to its notifications).
   List<String> said() => [for (final n in container.read(notificationCenterProvider).history) n.title];
@@ -160,47 +161,40 @@ void main() {
   Future<List<Connection>> teamHosts(WidgetTester tester) async => (await tester.runAsync(() => acme.select(acme.connections).get()))!;
   Future<List<Connection>> treeHosts(WidgetTester tester) async => (await tester.runAsync(() => tree.select(tree.connections).get()))!;
 
-  testWidgets('the menu lists Personal, marked as where the host is and not offered, and the team with the vaults '
-      'this account may add to', (tester) async {
+  testWidgets('the menu is Move to... and Copy to...; either opens the place picker, with Personal marked as '
+      'where the host is and not offered, and the vaults this account may add to', (tester) async {
     await setUpSpaces(tester);
     await pumpButton(tester);
     expect(button, findsOneWidget);
     await tester.tap(button);
     await tester.pump();
-    expect(find.text(en.moveCopyMenuHead.toUpperCase()), findsOneWidget);
-    expect(place(null), findsOneWidget);
+    expect(find.descendant(of: moveTo, matching: find.text(en.transferMoveTo)), findsOneWidget);
+    expect(find.descendant(of: copyTo, matching: find.text(en.transferCopyTo)), findsOneWidget);
+    expect(find.byType(SubmenuButton), findsNothing, reason: 'no menus inside the menu');
+    await tester.tap(moveTo);
+    await settle(tester);
+    expect(picker, findsOneWidget);
     expect(find.descendant(of: place(null), matching: find.text(en.transferHere)), findsOneWidget);
-    expect(tester.widget<MenuItemButton>(place(null)).onPressed, isNull, reason: 'where it is: not offered');
-    expect(team, findsOneWidget);
-    expect(find.descendant(of: team, matching: find.text('Acme')), findsOneWidget);
-    await tester.tap(team);
-    await tester.pump();
     expect(place(_prod), findsOneWidget);
     expect(place(_staging), findsOneWidget);
     expect(place(_ro), findsNothing, reason: 'a vault without add is not listed');
-    expect(find.text('Archive'), findsNothing);
-    await tester.tap(place(_staging));
-    await tester.pump();
-    expect(find.text(en.moveCopyMenuMoveHere), findsOneWidget);
-    expect(find.text(en.moveCopyMenuCopyHere), findsOneWidget);
-    await tester.tapAt(const Offset(10, 500)); // Closes the menu: nothing happened.
+    await tester.tap(place(null));
     await settle(tester);
+    expect(picker, findsOneWidget, reason: 'where it is: nothing happened');
     expect(await teamHosts(tester), isEmpty);
     expect(moved, 0);
   }, skip: !kOrchardsEnabled);
 
-  testWidgets('a vault, then Move here: the host goes there, it is said, and the editor is told it moved', (tester) async {
+  testWidgets('Move to..., then a vault: the host goes there, it is said, and the editor is told it moved', (tester) async {
     await setUpSpaces(tester);
     await pumpButton(tester);
     await tester.tap(button);
     await tester.pump();
-    await tester.tap(team);
-    await tester.pump();
-    await tester.tap(place(_staging));
-    await tester.pump();
-    await tester.tap(moveTo(_staging));
+    await tester.tap(moveTo);
     await settle(tester);
-    expect(find.byKey(const ValueKey('transfer-pick')), findsNothing, reason: 'the place was picked already');
+    await tester.tap(place(_staging));
+    await settle(tester);
+    expect(picker, findsNothing);
     final hosts = await teamHosts(tester);
     expect(hosts.single.label, 'web-h2');
     expect(await tester.runAsync(() => CratePlacement(acme).crateOf('host', hosts.single.id)), _staging);
@@ -210,16 +204,14 @@ void main() {
     await tester.pump(const Duration(seconds: 5)); // The line that says so goes.
   }, skip: !kOrchardsEnabled);
 
-  testWidgets('a vault, then Copy here: a copy goes there, the host stays, and nothing is told to close', (tester) async {
+  testWidgets('Copy to..., then a vault: a copy goes there, the host stays, and nothing is told to close', (tester) async {
     await setUpSpaces(tester);
     await pumpButton(tester);
     await tester.tap(button);
     await tester.pump();
-    await tester.tap(team);
-    await tester.pump();
+    await tester.tap(copyTo);
+    await settle(tester);
     await tester.tap(place(_prod));
-    await tester.pump();
-    await tester.tap(copyTo(_prod));
     await settle(tester);
     final hosts = await teamHosts(tester);
     expect(hosts.single.label, 'web-h2');
@@ -245,8 +237,7 @@ void main() {
     expect(tester.getSemantics(find.descendant(of: button, matching: find.byType(IconButton))),
         isSemantics(tooltip: en.moveCopyMenuButton, isButton: true, hasTapAction: true, isFocusable: true));
     semantics.dispose();
-    // Tab reaches it; Enter opens it on its first place to choose (the team:
-    // Personal is where the host is).
+    // Tab reaches it; Enter opens it on Move to..., and Enter on that opens the picker.
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     final iconButton = tester.widget<IconButton>(find.descendant(of: button, matching: find.byType(IconButton)));
@@ -254,20 +245,11 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     await tester.pump();
-    expect(team, findsOneWidget);
-    expect(Focus.of(tester.element(find.descendant(of: team, matching: find.text('Acme')))).hasFocus, isTrue);
-    // Right opens the team, Down to Staging, Right opens it, Enter on Move here.
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-    expect(place(_prod), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-    expect(moveTo(_staging), findsOneWidget);
-    expect(Focus.of(tester.element(find.descendant(of: moveTo(_staging), matching: find.text(en.moveCopyMenuMoveHere)))).hasFocus,
-        isTrue);
+    expect(Focus.of(tester.element(find.descendant(of: moveTo, matching: find.text(en.transferMoveTo)))).hasFocus, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    expect(picker, findsOneWidget);
+    await tester.tap(place(_staging));
     await settle(tester);
     expect((await teamHosts(tester)).single.label, 'web-h2');
     expect(moved, 1);
@@ -321,18 +303,16 @@ void main() {
       await tester.tap(button);
       await tester.pump();
       expect(said(), contains(en.moveCopyMenuSaveFirst));
-      expect(team, findsNothing);
+      expect(moveTo, findsNothing);
       await tester.pump(const Duration(seconds: 6));
       await finish(tester);
 
       await pumpEditor(tester, id: 'h2');
       await tester.tap(button);
       await tester.pump();
-      await tester.tap(team);
-      await tester.pump();
+      await tester.tap(moveTo);
+      await settle(tester);
       await tester.tap(place(_prod));
-      await tester.pump();
-      await tester.tap(moveTo(_prod));
       await settle(tester);
       expect((await teamHosts(tester)).single.label, 'web-h2');
       expect(closed, 1);

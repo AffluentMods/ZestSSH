@@ -22,18 +22,19 @@ import 'package:zestssh/ui/screens/purchase/no_plans_here.dart';
 import 'package:zestssh/ui/widgets/redacted_text.dart';
 import 'package:zestssh/ui/widgets/button_box.dart';
 
-/// Upgrade screen with smart 3-product display logic.
+/// Upgrade screen: what it offers depends on what is owned.
 ///
-/// Products (RevenueCat):
-///   zestssh-pro ($9.99) → "Squeezed" - Pro features
-///   zestssh-cloud-sync ($24.99) → Cloud Sync only (shown to Pro owners)
-///   zestssh-everything ($29.99) → "Juiced" - Pro + Cloud Sync
+/// Products (RevenueCat), each bought once:
+///   zestssh-pro ($9.99) → Squeezed: the Pro features
+///   zestssh-cloud-sync ($24.99) → Juiced: ZestSSH Cloud, hosted sync storage
+///     only (sync itself is free to storage of one's own)
+///   zestssh-everything ($29.99) → the Bundle: Squeezed + Juiced
 ///
 /// Display states:
-///   State 1 - Nothing owned: Show Squeezed + Juiced
-///   State 2 - Pro only:      Show Cloud Sync upgrade card
-///   State 3 - Cloud only:    Show Squeezed card
-///   State 4 - Both:          "You have everything!" celebration
+///   Nothing owned:  Squeezed and the Bundle
+///   Squeezed only:  Juiced
+///   Juiced only:    Squeezed
+///   Both:           "You have everything!"
 class UpgradeScreen extends ConsumerStatefulWidget {
   const UpgradeScreen({super.key});
 

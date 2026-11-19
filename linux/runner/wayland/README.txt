@@ -5,8 +5,8 @@ which GTK 3 does not speak itself.
   pointer-constraints-unstable-v1   the pointer locked to the window
   relative-pointer-unstable-v1      the mouse's movement as movement
 
-Made with wayland-scanner 1.24.0 from wayland-protocols 1.47 (Ubuntu), on
-15 November 2026:
+Made with wayland-scanner 1.18.0 from wayland-protocols 1.20 (Ubuntu 20.04,
+the release's build root), on 19 November 2026:
 
   wayland-scanner client-header <xml> <name>-client-protocol.h
   wayland-scanner private-code  <xml> <name>-protocol.c
@@ -14,5 +14,11 @@ Made with wayland-scanner 1.24.0 from wayland-protocols 1.47 (Ubuntu), on
 with <xml> under /usr/share/wayland-protocols/unstable/pointer-constraints/
 and .../unstable/relative-pointer/. They are checked in so that no build of
 the app (deb, rpm, Flatpak, Snap) needs wayland-scanner or wayland-protocols.
+
+Make them with the oldest wayland-scanner the app builds against: code from a
+scanner of 1.20 or later calls wl_proxy_marshal_flags, which an older
+libwayland-client (1.18 in Ubuntu 20.04) does not have, and the build stops;
+code from an older scanner builds and runs with every newer libwayland.
+
 Each carries its protocol's own licence (MIT) at its top; keep it there. To
 make them again, run the two commands and replace the files whole.

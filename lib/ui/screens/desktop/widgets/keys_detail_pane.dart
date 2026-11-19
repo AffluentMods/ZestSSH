@@ -249,7 +249,6 @@ class KeysDetailPane extends ConsumerWidget {
       subtitleMono: true,
       isDirty: controller.isDirty && canEdit,
       onSave: canEdit ? () => onSave() : null,
-      onCancel: onClose,
       onClose: onClose,
       headerAction: headerAction,
       // No delete while composing a brand-new identity - there is nothing to

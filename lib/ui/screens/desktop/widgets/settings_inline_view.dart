@@ -1280,8 +1280,10 @@ final List<_SettingSearchSpec> _kSettingsSearchIndex = [
   _SettingSearchSpec.page(_SettingsSection.data, (l) => l.settingsInlineResetAllSettings, (l) => l.settingsResetAllHelp),
   // About: the switch of the check for updates, where its row is (a
   // computer that updates from the website).
-  if (UpdateCheckService.manualCheckSupported)
+  if (UpdateCheckService.manualCheckSupported) ...[
     _SettingSearchSpec(_SettingsSection.about, (l) => l.updateCheckAutomatic, (l) => l.updateCheckAutomaticDesc),
+    _SettingSearchSpec(_SettingsSection.about, (l) => l.updateAutoInstall, (l) => l.updateAutoInstallDesc),
+  ],
 ];
 
 /// A single search result row in the nav rail (S7): the setting title over a
@@ -3264,6 +3266,21 @@ class _ContentArea extends ConsumerWidget {
             onChanged: (v) => ref.read(updateCheckEnabledProvider.notifier).set(v),
           ),
         ),
+        // Installing a release by itself, as the app starts, and no "Update
+        // available" in the title bar for it (off by default). Only with
+        // the check on: without it nothing is found to install.
+        if (ref.watch(updateCheckEnabledProvider)) ...[
+          const SizedBox(height: 12),
+          _SettingRow(
+            label: l10n.updateAutoInstall,
+            subtitle: l10n.updateAutoInstallDesc,
+            child: _Toggle(
+              key: const ValueKey('settings-update-auto-install'),
+              value: ref.watch(autoUpdateProvider),
+              onChanged: (v) => ref.read(autoUpdateProvider.notifier).set(v),
+            ),
+          ),
+        ],
       ],
       const SizedBox(height: 24),
       _SubSectionLabel(label: l10n.settingsInlineLinksSection),

@@ -3,13 +3,20 @@
 This is the changelog for `zest_ssh_core`. For the history of dartssh2 up to the fork point, see
 `CHANGELOG-dartssh2.md`.
 
-## Unreleased
+## 0.4.0 - 2026-11-20
 
 ### Added
 
 - **`SSHClient.x11Filter`** decides, before the channel is confirmed, whether an `x11` channel the
   server opens is taken, from where the server says the X client is. One that says no, or throws,
   refuses it.
+
+### Fixed
+
+- **A server asking for a new password no longer ends the connection.** With no
+  `onChangePasswordRequest` (ZestSSH sets none), an SSH_MSG_USERAUTH_PASSWD_CHANGEREQ (an expired
+  password, RFC 4252 8) threw a null check and the connection ended with an internal error; now the
+  client goes on to the next way of signing in, as when the handler answers nothing (dartssh2 #253).
 
 ### Security
 

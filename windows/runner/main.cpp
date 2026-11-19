@@ -95,6 +95,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // Skia, as up to Flutter 3.38: Impeller, on by default on Windows from
+  // Flutter 3.50, crashed in its OpenGL (ANGLE, Direct3D 11) draw call while a
+  // remote screen had a window of its own, a second engine in the process
+  // (an access violation in rx::StateManager11::updateState). Every window of
+  // the app's own (packages/desktop_multi_window) is set the same.
+  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 

@@ -337,7 +337,6 @@ class _PortForwardListViewState extends ConsumerState<PortForwardListView>
           child: PortForwardDetailPane(
             controller: _controller,
             hasSelection: true,
-            onNew: () => _createNew(narrow: false),
             onSave: _save,
             onSaveAndStart: _saveAndStart,
             onClose: () async {
@@ -416,7 +415,6 @@ class _PortForwardListViewState extends ConsumerState<PortForwardListView>
             detailPane: PortForwardDetailPane(
               controller: _controller,
               hasSelection: _hasSelection,
-              onNew: () => _createNew(narrow: narrow),
               onSave: _save,
               onSaveAndStart: _saveAndStart,
               onClose: _close,

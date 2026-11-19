@@ -288,6 +288,14 @@ int compareVersions(String a, String b) {
   return 0;
 }
 
+/// Whether [latest] is a major update for a copy that runs [current]: its
+/// first number is higher ("5.0.0" for "4.2.1"; "4.3.0" is not). A number
+/// that cannot be read counts as 0, so it never makes one major.
+bool isMajorUpdate(String current, String latest) {
+  int major(String v) => int.tryParse(v.split('+').first.split('.').first.trim()) ?? 0;
+  return major(latest) > major(current);
+}
+
 /// Compares two releases: their versions first ([compareVersions]), and
 /// where those are the same, their build numbers, but only where BOTH are
 /// known: an unknown build (a manifest without `build`, a copy that cannot

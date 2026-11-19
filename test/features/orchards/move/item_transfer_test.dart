@@ -475,6 +475,52 @@ void main() {
       expect(await _ids(acme, 'identities'), ['k1']);
     });
 
+    test('a key that leaves its team is told once, with the vault it was in: copied or moved out, and one that '
+        'went along with a host; a key into a team, or to another vault of its team, is not', () async {
+      final left = <(String, String?)>[];
+      var m = 0;
+      final t = ItemTransfer(
+        tree: tree,
+        openTeam: (id) async => id == _acme ? acme : globex,
+        storage: storage,
+        newId: () => 'made-${++m}',
+        onKeyLeftTeam: (team, {required key, required label, crateId}) async {
+          expect(team, same(acme));
+          left.add((key, crateId));
+        },
+      );
+      Future<void> teamKey(String id) async {
+        await _key(acme, id);
+        await OrchardIdentitySecrets(acme).write(id, IdentitySecret.privateKey, 'PEM');
+      }
+
+      // Into a team: nothing left one.
+      await _key(tree, 'p1');
+      await IdentitySecretStore.forDatabase(tree, storage).write('p1', IdentitySecret.privateKey, 'PEM');
+      await t.run(await t.plan(
+          from: const TreeSpace(), kind: 'key', keys: ['p1'], to: const SavePlace.vault(_acme, _staging), mode: TransferMode.copy));
+      expect(left, isEmpty);
+
+      // To another vault of its own team: it is still the team's.
+      await teamKey('k1');
+      await t.run(await t.plan(
+          from: const OrchardSpace(_acme), kind: 'key', keys: ['k1'], to: const SavePlace.vault(_acme, _staging), mode: TransferMode.copy));
+      expect(left, isEmpty);
+
+      // Copied to Personal, moved to Personal, copied to another team.
+      await t.run(await t.plan(
+          from: const OrchardSpace(_acme), kind: 'key', keys: ['k1'], to: const SavePlace.personal(), mode: TransferMode.copy));
+      expect(left, [('k1', _prod)]);
+      await teamKey('k2');
+      await t.run(await t.plan(
+          from: const OrchardSpace(_acme), kind: 'key', keys: ['k2'], to: const SavePlace.personal(), mode: TransferMode.move));
+      expect(left, [('k1', _prod), ('k2', _prod)]);
+      expect(await _ids(acme, 'identities'), isNot(contains('k2')));
+      await t.run(await t.plan(
+          from: const OrchardSpace(_acme), kind: 'key', keys: ['k1'], to: const SavePlace.vault(_globex, _gx), mode: TransferMode.copy));
+      expect(left, [('k1', _prod), ('k2', _prod), ('k1', _prod)]);
+    });
+
     test('a key whose secrets this account may not see does not leave its vault', () async {
       await acme.customStatement('UPDATE orchard_crates SET switches = ? WHERE crate_id = ?',
           [jsonEncode(({..._all}..remove(CrateSwitches.reveal)).toList()), _prod]);

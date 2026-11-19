@@ -15,6 +15,12 @@ speech_to_text_windows 1.0.1 from pub.dev, BSD-3-Clause (see LICENSE), changed b
 * The recognition thread is joined when listening stops, instead of left running detached with a
   pointer to the plugin, and the plugin's destructor no longer locks its mutex twice (it called
   Stop with the lock held, and Stop locks it again).
+* The recognition context's interest is set to hypotheses as well as recognitions. 1.0.1 read
+  hypotheses in its loop but never asked for them (a context's default interest is recognitions
+  alone), so what was being heard never reached Dart.
+* `locales` gives the language of the recogniser that dictation uses, from its token's Language
+  attribute, as `id:name` with the name in Windows' display language. 1.0.1 listed English of the
+  United States and of the United Kingdom whatever the recogniser was.
 
 ## 1.0.1
 

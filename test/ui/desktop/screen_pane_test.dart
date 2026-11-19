@@ -669,6 +669,27 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets("the lock says how a screen reached directly is protected: VNC's VeNCrypt for a VNC host, TLS alone "
+      'for an RDP host (it named VeNCrypt for RDP too)', (tester) async {
+    String lock() => tester
+        .widget<Tooltip>(find.ancestor(of: find.byKey(const ValueKey('screen-toolbar-security')), matching: find.byType(Tooltip)))
+        .message!;
+    const tls = {'protocol': 'TLSv1.3', 'cert_sha256': 'aa'};
+    for (final protocol in [ScreenProtocol.vnc, ScreenProtocol.rdp]) {
+      native = FakeScreenNative();
+      final (shell, _) = await connectScreen(tester, protocol: protocol, connected: {'tls': tls});
+      await pumpArea(tester, {'s1': _state('s1', 'desk-01', shell)});
+      await settle(tester);
+      if (protocol == ScreenProtocol.vnc) {
+        expect(lock(), en.screenSecurityTls);
+      } else {
+        expect(lock(), en.screenSecurityTlsOnly);
+        expect(lock(), isNot(contains('VeNCrypt')));
+      }
+      await finish(tester);
+    }
+  });
+
   testWidgets('a VNC screen is not offered "Resize the remote", whatever its host says', (tester) async {
     final (shell, engine) =
         await connectScreen(tester, options: const ScreenOptions(scaling: ScreenScaling.remoteResize));
@@ -876,6 +897,49 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(engine2.sounds.last, isTrue, reason: 'shown for this session: it plays');
+    await finish(tester);
+  });
+
+  testWidgets("the remote's sound on a tablet in the computer's layout: not asked of the server unless its host says "
+      'so, and the switch is offered only where it was', (tester) async {
+    // An Android or iOS device: the remote's sound is off there by default.
+    ScreenShellService.debugOnPhoneSystem = true;
+    addTearDown(() => ScreenShellService.debugOnPhoneSystem = null);
+
+    Future<bool> switchOffered() async {
+      await tester.sendKeyEvent(LogicalKeyboardKey.f8);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 6; i++) {
+        await tester.drag(panelList(), const Offset(0, -400));
+        await tester.pumpAndSettle();
+      }
+      final offered = find.byKey(const ValueKey('screen-panel-sound'), skipOffstage: false).evaluate().isNotEmpty;
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      return offered;
+    }
+
+    final (quiet, quietEngine) = await connectScreen(tester,
+        protocol: ScreenProtocol.rdp, connected: const {'protocol': 'rdp'});
+    expect(quietEngine.request.containsKey('rdp_sound'), isFalse, reason: 'no sound asked of the server');
+    await pumpArea(tester, {'s1': _state('s1', 'office-pc', quiet)});
+    await settle(tester);
+    expect(await switchOffered(), isFalse, reason: 'no switch that says on while nothing plays');
+    await finish(tester);
+
+    // A host whose person turned its sound on: asked for, and its switch is there.
+    native = FakeScreenNative();
+    final (loud, loudEngine) = await connectScreen(tester,
+        protocol: ScreenProtocol.rdp,
+        options: const ScreenOptions().copyWith(sound: true),
+        connected: const {
+          'protocol': 'rdp',
+          'sound': {'rate': 48000, 'channels': 2},
+        });
+    expect(loudEngine.request['rdp_sound'], 'off', reason: 'asked for, silent until the tab is seen');
+    await pumpArea(tester, {'s1': _state('s1', 'office-pc', loud)});
+    await settle(tester);
+    expect(await switchOffered(), isTrue);
     await finish(tester);
   });
 

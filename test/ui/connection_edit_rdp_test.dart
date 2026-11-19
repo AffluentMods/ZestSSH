@@ -39,6 +39,8 @@ void main() {
   late AppDatabase db;
 
   setUp(() async {
+    // These tests look at what a screen's More options hold: open from the start.
+    debugScreenMoreOpen = true;
     debugTopSnackBarOnPhone = true;
     db = AppDatabase.forTesting(NativeDatabase.memory());
     final at = DateTime(2026, 11, 13);
@@ -61,6 +63,7 @@ void main() {
   });
 
   tearDown(() async {
+    debugScreenMoreOpen = null;
     debugHostFormOnComputer = null;
     debugTopSnackBarOnPhone = null;
     await db.close();
@@ -203,6 +206,31 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('on a computer a screen choice is picked from the keyboard: Enter on the pill the keyboard is on',
+      (tester) async {
+    debugHostFormOnComputer = true;
+    await pump(tester, ConnectionEditScreen(connectionId: 'r-home', inDialog: true, onClose: () {}));
+    final pill = keyed('host-edit-rdp-displays-3');
+    await tester.ensureVisible(pill);
+    await settle(tester);
+    // The keyboard's place is the pill's own (not whatever holds the form).
+    final node = Focus.maybeOf(tester.element(find.descendant(of: pill, matching: find.text('3'))), scopeOk: true)!;
+    expect(node.canRequestFocus, isTrue);
+    expect(node.skipTraversal, isFalse, reason: 'Tab stops on it');
+    final box = tester.renderObject<RenderBox>(pill);
+    expect(node.rect.size, box.size, reason: 'the node is the pill, no wider');
+    node.requestFocus();
+    await settle(tester);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    await tester.tap(find.text(en.connectionSaveChanges));
+    await settle(tester);
+    final saved = (await db.connectionsDao.getById('r-home'))!;
+    expect((jsonDecode(saved.screenOptions!) as Map<String, Object?>)['displays'], 3);
+    await tester.pump(const Duration(seconds: 7));
+    await finish(tester);
+  });
+
   testWidgets('without NLA is a switch that is off, and its warning is in sight while it is on; the graphics choice is saved',
       (tester) async {
     debugHostFormOnComputer = true;
@@ -315,10 +343,15 @@ void main() {
     await finish(tester);
 
     await pump(tester, ConnectionEditScreen(connectionId: 'r-home', inDialog: true, onClose: () {}), gateway: true);
+    // Test dials the PC directly: on for a host reached directly...
+    bool testOn() => (tester.widget(keyed('host-edit-screen-test')) as dynamic).onPressed != null;
+    expect(testOn(), isTrue);
     await openReach();
     await tester.tap(keyed('zest-select-item- rd-gateway'));
     await settle(tester);
     expect(keyed('host-edit-rdp-gateway'), findsOneWidget);
+    // ... and off once it goes through a gateway, where no session dials the PC.
+    expect(testOn(), isFalse);
     expect(keyed('host-edit-rdp-direct-note'), findsNothing);
     expect(anywhere(en.connectionEditRdpGatewayNote), findsOneWidget);
     expect(anywhere(en.connectionEditRdpGatewaySameSignIn), findsOneWidget, reason: "the PC's own sign-in at first");
@@ -354,6 +387,26 @@ void main() {
     await settle(tester);
     saved = (await db.connectionsDao.getById('r-home'))!;
     expect((jsonDecode(saved.screenOptions!) as Map).containsKey('gateway'), isFalse);
+    await tester.pump(const Duration(seconds: 7));
+    await finish(tester);
+  });
+
+  testWidgets('a gateway a sync brings while the editor is open is kept when the host is saved; one the person '
+      'changed here is theirs', (tester) async {
+    debugHostFormOnComputer = true;
+    await pump(tester, ConnectionEditScreen(connectionId: 'r-home', inDialog: true, onClose: () {}), gateway: true);
+    // Another device gives the host a gateway meanwhile.
+    await (db.update(db.connections)..where((c) => c.id.equals('r-home'))).write(ConnectionsCompanion(
+        screenOptions: const Value('{"v":1,"gateway":{"host":"rdg.example.test"}}'),
+        updatedAt: Value(DateTime(2026, 11, 17))));
+    await tester.enterText(field('home-pc').first, 'home');
+    await settle(tester);
+    await tester.tap(find.text(en.connectionSaveChanges));
+    await settle(tester);
+    final saved = (await db.connectionsDao.getById('r-home'))!;
+    expect(saved.label, 'home');
+    expect(ScreenOptions.decode(saved.screenOptions).gateway, const ScreenGateway(host: 'rdg.example.test'),
+        reason: 'untouched here: as the sync left it, never dropped (the PC would be dialled directly)');
     await tester.pump(const Duration(seconds: 7));
     await finish(tester);
   });
@@ -419,5 +472,94 @@ void main() {
         await finish(tester);
       }
     }
+  });
+  // What is needed to connect is what a screen's form shows; the rest is
+  // behind More options, closed.
+  group('what a remote screen needs to connect is all its form shows', () {
+    const behind = [
+      'host-edit-rdp-without-nla',
+      'host-edit-rdp-graphics-ScreenGraphics.auto',
+      'host-edit-rdp-displays-1',
+      'host-edit-rdp-relative-mouse',
+      'host-edit-rdp-sound',
+      'host-edit-screen-frame-limit-0',
+      'host-edit-screen-clipboard',
+      'host-edit-screen-scaling-ScreenScaling.fit',
+      'host-edit-screen-view-only',
+    ];
+
+    testWidgets('an RDP host: its address, how it is reached and its sign-in, one line on what to turn on on the PC, '
+        'and More options closed; opened, everything a session starts with is there, as it was', (tester) async {
+      debugScreenMoreOpen = null;
+      debugHostFormOnComputer = true;
+      await pump(tester, ConnectionEditScreen(connectionId: 'r-home', inDialog: true, onClose: () {}));
+      expect(keyed('host-edit-screen-reach'), findsOneWidget);
+      expect(field('home-pc.example.com'), findsOneWidget);
+      expect(keyed('host-edit-screen-password-note'), findsOneWidget);
+      expect(anywhere(en.connectionEditRdpTurnOnNote), findsOneWidget);
+      expect(anywhere(en.connectionEditVncTurnOnNote), findsNothing);
+      expect(anywhere(en.connectionEditScreenMoreOptions), findsOneWidget);
+      expect(keyed('host-edit-screen-options'), findsNothing);
+      for (final key in behind) {
+        expect(keyed(key), findsNothing, reason: key);
+      }
+
+      await tester.ensureVisible(keyed('host-edit-screen-more'));
+      await tester.tap(keyed('host-edit-screen-more'));
+      await tester.pump();
+      expect(keyed('host-edit-screen-options'), findsOneWidget);
+      for (final key in behind) {
+        expect(keyed(key), findsOneWidget, reason: key);
+      }
+      // And closed again by the same press.
+      await tester.ensureVisible(keyed('host-edit-screen-more'));
+      await tester.tap(keyed('host-edit-screen-more'));
+      await tester.pump();
+      expect(keyed('host-edit-screen-options'), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('a host that signs in without NLA opens with its options shown: the warning stays in sight',
+        (tester) async {
+      debugScreenMoreOpen = null;
+      debugHostFormOnComputer = true;
+      await pump(tester, ConnectionEditScreen(connectionId: 'r-office', inDialog: true, onClose: () {}));
+      expect(keyed('host-edit-screen-options'), findsOneWidget);
+      expect(keyed('host-edit-rdp-without-nla'), findsOneWidget);
+      await finish(tester);
+    });
+
+    testWidgets('a new host of each kind: closed, with the line for its kind; saved without opening them, its options '
+        'are the defaults a new host has', (tester) async {
+      debugScreenMoreOpen = null;
+      debugHostFormOnComputer = true;
+      await pump(tester, ConnectionEditScreen(inDialog: true, onClose: () {}));
+      await tester.tap(find.text('VNC').first);
+      await tester.pump();
+      expect(anywhere(en.connectionEditVncTurnOnNote), findsOneWidget);
+      expect(keyed('host-edit-screen-options'), findsNothing);
+      await tester.tap(find.text('RDP').first);
+      await tester.pump();
+      expect(anywhere(en.connectionEditRdpTurnOnNote), findsOneWidget);
+      expect(anywhere(en.connectionEditVncTurnOnNote), findsNothing);
+      expect(keyed('host-edit-screen-options'), findsNothing);
+      expect(keyed('host-edit-rdp-displays-1'), findsNothing, reason: 'no number of displays is asked for before connecting');
+      await finish(tester);
+    });
+
+    testWidgets('on a phone the group is named for the screen (its form has a More options of its own), 48 high',
+        (tester) async {
+      debugScreenMoreOpen = null;
+      debugHostFormOnComputer = false;
+      await pump(tester, const ConnectionEditScreen(connectionId: 'r-home'), size: const Size(412, 1800));
+      expect(anywhere(en.connectionEditScreenOptionsPhone), findsOneWidget);
+      expect(keyed('host-edit-screen-options'), findsNothing);
+      expect(tester.getSize(keyed('host-edit-screen-more')).height, greaterThanOrEqualTo(48));
+      await tester.ensureVisible(keyed('host-edit-screen-more'));
+      await tester.tap(keyed('host-edit-screen-more'));
+      await tester.pump();
+      expect(keyed('host-edit-screen-options'), findsOneWidget);
+      await finish(tester);
+    });
   });
 }

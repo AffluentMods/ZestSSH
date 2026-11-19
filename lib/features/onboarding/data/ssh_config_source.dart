@@ -38,20 +38,38 @@ class OnboardingSshEntry {
 
   /// The bare host of [proxyJump] with any `user@` / `:port` stripped -
   /// used to match against other imported aliases / existing connections.
-  String? get proxyJumpHost {
-    final raw = proxyJump;
-    if (raw == null || raw.isEmpty) return null;
-    var h = raw.trim();
-    // ProxyJump can be a comma-separated chain - the first hop is the one we
-    // connect through directly.
-    final comma = h.indexOf(',');
-    if (comma != -1) h = h.substring(0, comma).trim();
+  /// Null where there is no route, or it is more than one host can stand for
+  /// ([jumpHop]).
+  String? get proxyJumpHost => jumpHop?.host;
+
+  /// The one host [proxyJump] goes through, with the user and port written
+  /// with it, where it names exactly one. Null for none (`none` included)
+  /// and for a route of several hosts (`a,b`): the app links a host to the
+  /// one host it connects through, and a route of several is connected
+  /// through its last, which itself goes through the one before. Taking the
+  /// first, as was done, made a route that leaves hosts out.
+  ({String host, String? user, int? port})? get jumpHop {
+    final raw = proxyJump?.trim();
+    if (raw == null || raw.isEmpty || raw.toLowerCase() == 'none' || raw.contains(',')) return null;
+    var h = raw;
+    String? user;
     final at = h.lastIndexOf('@');
-    if (at != -1) h = h.substring(at + 1);
+    if (at != -1) {
+      user = h.substring(0, at);
+      h = h.substring(at + 1);
+    }
     // The port after it, and the brackets of an IPv6 address, are no part
     // of the host (cut at the first colon, an IPv6 one was its first group).
-    h = splitHostPort(h)?.host ?? h;
-    return h.isEmpty ? null : h;
+    final split = splitHostPort(h);
+    final host = split?.host ?? h;
+    if (host.isEmpty) return null;
+    return (host: host, user: user == null || user.isEmpty ? null : user, port: split?.port);
+  }
+
+  /// Whether [proxyJump] names a route (anything but nothing and `none`).
+  bool get hasJumpRoute {
+    final raw = proxyJump?.trim();
+    return raw != null && raw.isNotEmpty && raw.toLowerCase() != 'none';
   }
 }
 
@@ -133,7 +151,10 @@ class SshConfigSource {
   /// Rules (F1):
   ///  * `Host a b c` expands to one entry per concrete alias.
   ///  * Wildcard-only host lines (`Host *`, `Host prod-*`) are skipped with a
-  ///    wildcard reason - they describe many hosts, not one.
+  ///    wildcard reason - they describe many hosts, not one. What they say
+  ///    still holds for the hosts they match, as does what stands before the
+  ///    first `Host` line: each host gets the first value the file gives it,
+  ///    as OpenSSH works it out ([SshConfigParser.valuesFor]).
   ///  * Invalid hostname / port produce a skip with the matching reason.
   ///  * `HostName`, `Port`, `User`, `IdentityFile`, `ProxyJump` are honoured.
   SshConfigScanResult parse(String content) {
@@ -141,12 +162,16 @@ class SshConfigSource {
     final blocks = SshConfigParser.parse(content);
     final entries = <OnboardingSshEntry>[];
     final skipped = <SshConfigSkip>[];
+    final index = SshConfigIndex(blocks);
     var cut = false;
 
     allBlocks:
     for (final block in blocks) {
       final hostSpec = block['Host'];
       if (hostSpec == null) continue; // Match blocks etc.
+      // What stood before the first Host line: no host of its own, and not a
+      // block the person wrote, so not one to list as left out.
+      if (block.containsKey(SshConfigParser.global)) continue;
 
       // A Host line may list several patterns separated by whitespace.
       final tokens = hostSpec
@@ -165,52 +190,55 @@ class SshConfigSource {
         continue;
       }
 
-      final explicitHostName = block['HostName'];
-      final portRaw = block['Port'];
-      final user = block['User'];
-      final identityFile = block['IdentityFile'];
-      final proxyJump = block['ProxyJump'];
-
-      // Port: default 22, but a present-and-invalid port is a hard skip.
-      int port = 22;
-      if (portRaw != null) {
-        final parsed = int.tryParse(portRaw);
-        if (parsed == null || parsed < 1 || parsed > 65535) {
-          skipped.add(SshConfigSkip(
-            label: concrete.join(' '),
-            reason: SshSkipReason.port,
-          ));
-          continue;
-        }
-        port = parsed;
-      }
-
-      // The username renders on host cards via the linked identity, so hold it
-      // to the app's display bar: strip control + bidi/RTL spoofing chars and
-      // cap length (untrusted ~/.ssh/config). A value that sanitises to empty
-      // (e.g. nothing but control chars) drops the username but still imports
-      // the host - better than losing the server.
-      final cleanedUser =
-          user == null ? null : sanitizeDisplayText(user, maxLen: 256);
-      final safeUser =
-          (cleanedUser == null || cleanedUser.isEmpty) ? null : cleanedUser;
-
-      // IdentityFile is surfaced verbatim in the connection note. Reject path
-      // traversal outright, then hold the survivor to the same control/bidi and
-      // length bar as every other imported free-text field.
-      final String? safeIdentity;
-      if (identityFile == null || identityFile.contains('..')) {
-        safeIdentity = null;
-      } else {
-        final cleaned = sanitizeDisplayText(identityFile, maxLen: 1024);
-        safeIdentity = cleaned.isEmpty ? null : cleaned;
-      }
-
       for (final alias in concrete) {
         if (entries.length + skipped.length >= kCsvMaxHosts) {
           cut = true;
           break allBlocks;
         }
+        // What the whole file says for this host: its own block, the blocks
+        // of patterns that match it, and what stands before the first Host.
+        final values = index.valuesFor(alias);
+        final explicitHostName = values['HostName'];
+        final portRaw = values['Port'];
+        final user = values['User'];
+        final identityFile = values['IdentityFile'];
+        final proxyJump = values['ProxyJump'];
+
+        // Port: default 22, but a present-and-invalid port is a hard skip.
+        int port = 22;
+        if (portRaw != null) {
+          final parsed = int.tryParse(portRaw);
+          if (parsed == null || parsed < 1 || parsed > 65535) {
+            skipped.add(SshConfigSkip(
+              label: alias,
+              reason: SshSkipReason.port,
+            ));
+            continue;
+          }
+          port = parsed;
+        }
+
+        // The username renders on host cards via the linked identity, so hold it
+        // to the app's display bar: strip control + bidi/RTL spoofing chars and
+        // cap length (untrusted ~/.ssh/config). A value that sanitises to empty
+        // (e.g. nothing but control chars) drops the username but still imports
+        // the host - better than losing the server.
+        final cleanedUser =
+            user == null ? null : sanitizeDisplayText(user, maxLen: 256);
+        final safeUser =
+            (cleanedUser == null || cleanedUser.isEmpty) ? null : cleanedUser;
+
+        // IdentityFile is surfaced verbatim in the connection note. Reject path
+        // traversal outright, then hold the survivor to the same control/bidi and
+        // length bar as every other imported free-text field.
+        final String? safeIdentity;
+        if (identityFile == null || identityFile.contains('..')) {
+          safeIdentity = null;
+        } else {
+          final cleaned = sanitizeDisplayText(identityFile, maxLen: 1024);
+          safeIdentity = cleaned.isEmpty ? null : cleaned;
+        }
+
         final hostname = explicitHostName ?? alias;
         // Never a leading dash: it reads as an option (-oProxyCommand) wherever
         // it is passed later.

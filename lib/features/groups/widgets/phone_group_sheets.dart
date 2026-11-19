@@ -6,9 +6,11 @@ import 'package:zestssh/database/daos/connections_dao.dart' show ConnectionWithD
 import 'package:zestssh/database/database.dart' show ConnectionGroup;
 import 'package:zestssh/features/groups/widgets/group_editor_panel.dart';
 import 'package:zestssh/features/orchards/guardrails.dart';
+import 'package:zestssh/features/orchards/team_write.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/models/redactable.dart';
 import 'package:zestssh/providers/connection_providers.dart';
+import 'package:zestssh/providers/core_providers.dart' show connectionGroupsDaoProvider;
 import 'package:zestssh/providers/settings_providers.dart';
 import 'package:zestssh/theme/app_colors.dart';
 import 'package:zestssh/theme/zest_tokens.dart';
@@ -18,6 +20,7 @@ import 'package:zestssh/ui/widgets/zest_dialog.dart';
 import 'package:zestssh/ui/widgets/zest_section_header.dart';
 import 'package:zestssh/ui/widgets/zest_sheet.dart';
 import 'package:zestssh/utils/host_address.dart';
+import 'package:zestssh/utils/kept_from_sync.dart';
 import 'package:zestssh/ui/widgets/host_row.dart';
 
 /// Groups on a phone and a tablet (3.0.1):
@@ -73,9 +76,10 @@ Future<bool> deleteGroupAsking(BuildContext context, String groupId) async {
   );
   if (ok != true) return false;
   // delete() clears every member's group (they drop to Ungrouped), then
-  // removes the group: hosts are never deleted.
-  await container.read(groupCrudProvider).delete(groupId);
-  return true;
+  // removes the group: hosts are never deleted. A team that does not allow
+  // it says so.
+  if (!context.mounted) return false;
+  return runTeamWrite(context, () => container.read(groupCrudProvider).delete(groupId), where: 'Group sheet: delete');
 }
 
 /// What a long press on a group (its chip, its header) offers: Edit group,
@@ -337,23 +341,36 @@ class _EditGroupSheetState extends ConsumerState<_EditGroupSheet> {
     if (!_canSave) return;
     setState(() => _busy = true);
     final id = widget.groupId;
-    if (_fieldsDirty) {
-      await ref.read(groupCrudProvider).updateFolder(
-            id: id,
-            name: _name.text.trim(),
-            colorIndex: _colorIndex,
-            colorValue: _colorValue,
-            iconCodePoint: _group?.iconCodePoint,
-          );
+    // A change the team does not allow is said, and the sheet stays to be
+    // changed or left (Save went dead, with nothing said).
+    final saved = await runTeamWrite(context, () async {
+      if (_fieldsDirty) {
+        // A field the person did not touch keeps what a sync wrote while the
+        // sheet was open.
+        final now = await ref.read(connectionGroupsDaoProvider).getById(id);
+        final keep = keptSince<ConnectionGroup>(_group, now, (g) => g.updatedAt);
+        await ref.read(groupCrudProvider).updateFolder(
+              id: id,
+              name: keep(_name.text.trim(), (g) => g.name),
+              colorIndex: keep(_colorIndex, (g) => g.colorIndex),
+              colorValue: keep(_colorValue, (g) => g.colorValue),
+              iconCodePoint: now?.iconCodePoint ?? _group?.iconCodePoint,
+            );
+      }
+      final hosts = ref.read(connectionCrudProvider);
+      for (final c in _removed) {
+        await hosts.update(id: c, clearGroupId: true);
+      }
+      for (final c in _added) {
+        await hosts.update(id: c, groupId: id);
+      }
+    }, where: 'Group sheet: save');
+    if (!mounted) return;
+    if (!saved) {
+      setState(() => _busy = false);
+      return;
     }
-    final hosts = ref.read(connectionCrudProvider);
-    for (final c in _removed) {
-      await hosts.update(id: c, clearGroupId: true);
-    }
-    for (final c in _added) {
-      await hosts.update(id: c, groupId: id);
-    }
-    if (mounted) Navigator.of(context).pop();
+    Navigator.of(context).pop();
   }
 
   /// A back gesture with changes: asked first, as the computer's editor.

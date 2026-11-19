@@ -9,6 +9,8 @@
 // - Nothing is printed: 1.0.1 printed every call, status and recognised phrase to stdout.
 // - The recognition thread is joined when listening stops (1.0.1 detached it with a pointer to
 //   the plugin), and the destructor no longer locks m_mutex twice.
+// - The context's interest takes hypotheses as well as recognitions (what is being heard), and
+//   locales gives the language of the recogniser dictation uses (1.0.1 listed two English ones).
 #include "speech_to_text_windows_plugin.h"
 
 #include <flutter/method_channel.h>
@@ -17,6 +19,7 @@
 
 #include <windows.h>
 #include <sapi.h>
+#include <cwchar>
 #include <string>
 #include <utility>
 
@@ -65,6 +68,17 @@ HWND CreateDispatchWindow() {
                          instance, nullptr);
 }
 
+// [wide] as UTF-8 in [text]; false when it cannot be converted.
+bool Utf8(const wchar_t* wide, std::string* text) {
+  int size = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+  if (size <= 0) {
+    return false;
+  }
+  text->assign(size - 1, '\0');
+  WideCharToMultiByte(CP_UTF8, 0, wide, -1, &(*text)[0], size, nullptr, nullptr);
+  return true;
+}
+
 // The words of a recognition result as UTF-8 in [text]; false when SAPI gives none.
 bool ResultText(ISpRecoResult* result, std::string* text) {
   LPWSTR wide = nullptr;
@@ -72,15 +86,46 @@ bool ResultText(ISpRecoResult* result, std::string* text) {
   if (FAILED(hr) || !wide) {
     return false;
   }
-  bool converted = false;
-  int size = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
-  if (size > 0) {
-    text->assign(size - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, &(*text)[0], size, nullptr, nullptr);
-    converted = true;
-  }
+  bool converted = Utf8(wide, text);
   CoTaskMemFree(wide);
   return converted;
+}
+
+// The language the recogniser listens in, as speech_to_text's "id:name" ("en-US:English (United
+// States)", the name in Windows' display language); false when its token does not say. The
+// token's Language attribute is a list of hexadecimal LCIDs ("409;9"), its own first.
+bool RecognizerLanguage(ISpRecognizer* recognizer, std::string* entry) {
+  ISpObjectToken* token = nullptr;
+  if (FAILED(recognizer->GetRecognizer(&token)) || !token) {
+    return false;
+  }
+  bool found = false;
+  ISpDataKey* attributes = nullptr;
+  if (SUCCEEDED(token->OpenKey(L"Attributes", &attributes)) && attributes) {
+    LPWSTR value = nullptr;
+    if (SUCCEEDED(attributes->GetStringValue(L"Language", &value)) && value) {
+      const LCID lcid = static_cast<LCID>(wcstoul(value, nullptr, 16));
+      CoTaskMemFree(value);
+      wchar_t name[LOCALE_NAME_MAX_LENGTH] = {};
+      if (lcid != 0 && LCIDToLocaleName(lcid, name, LOCALE_NAME_MAX_LENGTH, 0) > 0) {
+        wchar_t display[256] = {};
+        if (GetLocaleInfoEx(name, LOCALE_SLOCALIZEDDISPLAYNAME, display, 256) <= 0) {
+          wcscpy_s(display, name);
+        }
+        // speech_to_text splits the entry at its colon: none in the name.
+        std::wstring shown(display);
+        for (auto& c : shown) {
+          if (c == L':') {
+            c = L' ';
+          }
+        }
+        found = Utf8((std::wstring(name) + L":" + shown).c_str(), entry);
+      }
+    }
+    attributes->Release();
+  }
+  token->Release();
+  return found;
 }
 
 }  // namespace
@@ -233,6 +278,15 @@ void SpeechToTextWindowsPlugin::Initialize(
       return;
     }
 
+    // Hypotheses as well as recognitions: a context's default interest is recognitions alone,
+    // so what is being heard (the SPEI_HYPOTHESIS case below) never reached Dart.
+    const ULONGLONG interest = SPFEI(SPEI_RECOGNITION) | SPFEI(SPEI_HYPOTHESIS);
+    hr = m_cpRecoContext->SetInterest(interest, interest);
+    if (FAILED(hr)) {
+      result->Success(flutter::EncodableValue(false));
+      return;
+    }
+
     // Create a grammar
     hr = m_cpRecoContext->CreateGrammar(0, &m_cpRecoGrammar);
     if (FAILED(hr)) {
@@ -368,9 +422,17 @@ void SpeechToTextWindowsPlugin::Cancel(
 void SpeechToTextWindowsPlugin::GetLocales(
     std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
 
+  // The one language SAPI's dictation listens in, the default recogniser's (1.0.1 listed English
+  // of the United States and of the United Kingdom whatever the recogniser was). None before
+  // initialize, or where its token does not say.
   flutter::EncodableList locales;
-  locales.push_back(flutter::EncodableValue("en-US:English (United States)"));
-  locales.push_back(flutter::EncodableValue("en-GB:English (United Kingdom)"));
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::string language;
+    if (m_cpRecognizer && RecognizerLanguage(m_cpRecognizer, &language)) {
+      locales.push_back(flutter::EncodableValue(language));
+    }
+  }
 
   result->Success(flutter::EncodableValue(locales));
 }

@@ -313,7 +313,6 @@ void main() {
         controller: editor,
         runController: run,
         hasSelection: true,
-        onNew: () {},
         onSave: () async => true,
         onClose: () {},
         onDelete: () {},

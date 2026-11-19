@@ -329,7 +329,7 @@ void main() {
     expect(crud.secretReads, greaterThan(0), reason: 'the editor loads the private key');
 
     // Its close: back to the details, the draft and its secrets let go.
-    await tester.tap(find.byTooltip(l10n.zestCommonCancel).first);
+    await tester.tap(find.byTooltip(l10n.close).first);
     await settle(tester);
     expect(find.byType(KeysInspectorPane), findsOneWidget);
 
@@ -385,7 +385,7 @@ void main() {
     // is looked for inside the editor.
     expect(find.descendant(of: find.byType(KeysDetailPane), matching: find.text(l10n.zestKeysNewIdentityTitle)),
         findsOneWidget);
-    await tester.tap(find.byTooltip(l10n.zestCommonCancel).first);
+    await tester.tap(find.byTooltip(l10n.close).first);
     await settle(tester);
     expect(find.byType(KeysDetailPane), findsNothing);
     expect(find.byType(KeysInspectorPane), findsNothing);

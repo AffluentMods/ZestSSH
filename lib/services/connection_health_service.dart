@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zestssh/features/screens/model/screen_options.dart' show ScreenOptions;
 import 'package:zestssh/database/database.dart';
 import 'package:zestssh/features/networks/engine/connection_resolver.dart';
 import 'package:zestssh/features/networks/models/network.dart';
@@ -105,7 +106,13 @@ Future<int?> tcpReachabilityProbe(String host, int port) async {
 /// The host as it is saved, where no network settings are at hand: checked
 /// at its own address unless it is reached through another host.
 Future<ProbeTarget?> savedProbeTarget(Connection connection) async =>
-    connection.connectViaId != null ? null : (host: connection.host, port: connection.port);
+    connection.connectViaId != null || throughRdpGateway(connection) ? null : (host: connection.host, port: connection.port);
+
+/// An RDP host reached through an RD Gateway (one this version reads or not): its address is the
+/// PC's as the gateway knows it, often a name inside the gateway's network, never dialled from
+/// here. Not checked.
+bool throughRdpGateway(Connection connection) =>
+    connection.protocol == 'rdp' && ScreenOptions.decode(connection.screenOptions).gateway != null;
 
 /// Where a check of [connection] connects, given how it resolves on the
 /// network this device is on ([resolved]; null where the network settings
@@ -119,6 +126,7 @@ Future<ProbeTarget?> savedProbeTarget(Connection connection) async =>
 /// connected to directly (ConnectionResolver.jumpGateSkip): then so is its
 /// check.
 ProbeTarget? probeTargetFor(Connection connection, {required ResolvedConnection? resolved, required bool isPro}) {
+  if (throughRdpGateway(connection)) return null;
   final baseChain = [if (connection.connectViaId != null) connection.connectViaId!];
   final chain = resolved?.jumpChain ?? baseChain;
   final dialed = chain.isNotEmpty &&

@@ -160,6 +160,8 @@ class KeychainNames {
     'pin_lockout_until',
     'vault_slots',
     'vault_tpm_sealed_key',
+    // A Mac's (the Secure Enclave): read to open the lock, before any database is open.
+    'vault_secure_enclave_sealed_key',
     'vault2_hw_on',
     'pinned_cert_hashes',
     'recovery_proof_accounts_v1',

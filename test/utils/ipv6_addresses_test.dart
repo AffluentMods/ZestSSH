@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zestssh/features/cloud_import/cloud_scans.dart';
 import 'package:zestssh/features/hosts/connect_link.dart';
 import 'package:zestssh/features/hosts/quick_target.dart';
+import 'package:zestssh/features/onboarding/data/onboarding_import.dart' show SavedHop, jumpTargetOf;
 import 'package:zestssh/features/onboarding/data/ssh_config_source.dart';
 import 'package:zestssh/features/password_managers/password_manager_import.dart';
 import 'package:zestssh/providers/monitoring_providers.dart';
@@ -80,13 +81,28 @@ void main() {
     }
   });
 
-  test("an SSH config's ProxyJump through an IPv6 host names that host", () {
-    String? jump(String via) => OnboardingSshEntry(alias: 'web', hostname: 'web.example.com', proxyJump: via).proxyJumpHost;
+  test("an SSH config's ProxyJump through an IPv6 host names that host, and links to it where it is known", () {
+    OnboardingSshEntry entry(String via) => OnboardingSshEntry(alias: 'web', hostname: 'web.example.com', proxyJump: via);
+    String? jump(String via) => entry(via).proxyJumpHost;
     expect(jump('[2001:db8::1]:22'), '2001:db8::1');
     expect(jump('deploy@[2001:db8::1]:2222'), '2001:db8::1');
     expect(jump('2001:db8::1'), '2001:db8::1');
     expect(jump('jump.example.com:2222'), 'jump.example.com');
-    expect(jump('ops@jump.example.com, second.example.com'), 'jump.example.com');
+    expect(entry('deploy@[2001:db8::1]:2222').jumpHop, (host: '2001:db8::1', user: 'deploy', port: 2222));
+    // A route of two hosts names no one host to go through (linked to its
+    // first, it would leave the second out): kept as written instead.
+    expect(jump('ops@jump.example.com, second.example.com'), isNull);
+    expect(entry('ops@jump.example.com, second.example.com').hasJumpRoute, isTrue);
+
+    // The one host it names, known by its IPv6 address, is the one gone through.
+    const saved = <SavedHop>[(id: 'h-jump', label: 'jump', host: '2001:db8::1', port: 2222, user: 'deploy')];
+    for (final via in ['2001:db8::1', '[2001:db8::1]:2222', 'deploy@[2001:db8::1]:2222', 'deploy@2001:db8::1']) {
+      expect(jumpTargetOf(entry(via), const {}, saved), (alias: null, savedId: 'h-jump'), reason: via);
+    }
+    expect(jumpTargetOf(entry('[2001:db8::1]:22'), const {}, saved), isNull, reason: 'another port than it has');
+    // And one of the same import, named by its IPv6 address as its alias.
+    const byAlias = {'2001:db8::1': OnboardingSshEntry(alias: '2001:db8::1', hostname: '2001:db8::1', port: 2222)};
+    expect(jumpTargetOf(entry('[2001:db8::1]:2222'), byAlias, const []), (alias: '2001:db8::1', savedId: null));
   });
 
   test('a Prometheus target is matched by its host, an IPv6 one too', () {

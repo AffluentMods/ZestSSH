@@ -20,6 +20,8 @@ class ZestSelectItem<T> {
     this.badge,
     this.tag,
     this.note,
+    this.section,
+    this.searchable = false,
   });
 
   final T value;
@@ -49,6 +51,15 @@ class ZestSelectItem<T> {
   /// A word after the label in a quiet outline: Custom, on a theme someone
   /// made.
   final String? tag;
+
+  /// The heading of the part of the menu it starts: drawn above the first
+  /// item of each run with the same section (under a hairline where items
+  /// come before it). Null: no heading.
+  final String? section;
+
+  /// Filtered by the menu's search ([ZestSelect.searchHint]), on its label
+  /// and [note]; the others are always shown.
+  final bool searchable;
 }
 
 /// A theme's colours, a stripe each, as a select shows them.
@@ -97,7 +108,19 @@ class ZestSelect<T> extends StatefulWidget {
     this.accent = false,
     this.large = false,
     this.semanticLabel,
+    this.searchHint,
+    this.searchThreshold = 8,
+    this.noMatches,
   });
+
+  /// Where given, a search field heads the menu once more than
+  /// [searchThreshold] items are [ZestSelectItem.searchable]: what is typed
+  /// filters them, Enter picks the first one shown. Its placeholder.
+  final String? searchHint;
+  final int searchThreshold;
+
+  /// Said in the menu where the search leaves none of the searchable items.
+  final String? noMatches;
 
   /// What is chosen, to a screen reader ("Theme"); left out, the name of the
   /// row it stands in ([ZestControlLabel]), where it is in one.
@@ -143,6 +166,83 @@ class _ZestSelectState<T> extends State<ZestSelect<T>> {
   /// The field's width when the menu last opened.
   double? _openWidth;
 
+  /// The menu's search ([ZestSelect.searchHint]), emptied as it closes.
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  bool get _searching =>
+      widget.searchHint != null && widget.items.where((i) => i.searchable).length > widget.searchThreshold;
+
+  bool _matches(ZestSelectItem<T> item) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty || !item.searchable || !_searching) return true;
+    return item.label.toLowerCase().contains(q) || (item.note?.toLowerCase().contains(q) ?? false);
+  }
+
+  /// The heading of a part of the menu ([ZestSelectItem.section]).
+  Widget _sectionHeading(String label, {required bool first}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!first) Divider(height: 9, thickness: 0.5, color: ZestTokens.border),
+          Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(12, 6, 12, 4),
+            child: Semantics(
+              header: true,
+              child: Text(
+                label.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.6,
+                  color: ZestTokens.textTertiary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+
+  Widget _searchField(double rowHeight) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+      child: SizedBox(
+        height: rowHeight < 34 ? 34 : rowHeight,
+        child: TextField(
+          key: const ValueKey('zest-select-search'),
+          controller: _search,
+          autofocus: true,
+          style: const TextStyle(fontSize: 13),
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: widget.searchHint,
+            prefixIcon: Icon(LucideIcons.search, size: 14, color: ZestTokens.textTertiary),
+            prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 0),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          ),
+          onChanged: (v) => setState(() => _query = v),
+          onSubmitted: (_) {
+            // What the search leaves as Enter is pressed; with nothing typed,
+            // Enter picks nothing (the value stays as it was).
+            _query = _search.text;
+            if (_query.trim().isEmpty) return;
+            final shown = [for (final i in widget.items) if (i.searchable && _matches(i) && i.enabled) i];
+            if (shown.isEmpty || widget.onChanged == null) return;
+            widget.onChanged!(shown.first.value);
+            _menu.close();
+          },
+        ),
+      ),
+    );
+  }
+
   void _toggle(BuildContext field, MenuController controller) {
     if (controller.isOpen) {
       controller.close();
@@ -168,6 +268,8 @@ class _ZestSelectState<T> extends State<ZestSelect<T>> {
     // 48 where a finger presses a choice (44 on a phone before).
     final touch = phone || touchSizedAt(context);
     final rowHeight = touch ? 48.0 : 32.0;
+    // What the menu shows: every item, or those the search leaves.
+    final visible = [for (final i in widget.items) if (_matches(i)) i];
     final valueRow = Row(
       children: [
         if (chosen?.swatch != null) _swatchOf(chosen!.swatch!),
@@ -203,7 +305,10 @@ class _ZestSelectState<T> extends State<ZestSelect<T>> {
       controller: _menu,
       alignmentOffset: const Offset(0, 4),
       onOpen: () => setState(() {}),
-      onClose: () => setState(() {}),
+      onClose: () => setState(() {
+        _search.clear();
+        _query = '';
+      }),
       // At least as wide as the field, measured as it opens: under a wide
       // field it opened narrower and covered what was under it (found in a design
       // audit). The panel only keeps its minimum width when
@@ -214,7 +319,10 @@ class _ZestSelectState<T> extends State<ZestSelect<T>> {
         minimumSize: WidgetStatePropertyAll(Size(math.max(widget.width ?? 160, _openWidth ?? 0), 0)),
       ),
       menuChildren: [
-        for (final item in widget.items)
+        if (_searching) _searchField(rowHeight),
+        for (final (index, item) in visible.indexed) ...[
+          if (item.section != null && (index == 0 || visible[index - 1].section != item.section))
+            _sectionHeading(item.section!, first: index == 0 && !_searching),
           MenuItemButton(
             key: ValueKey('zest-select-item-${item.value}'),
             onPressed: !item.enabled || !enabled ? null : () => widget.onChanged!(item.value),
@@ -262,7 +370,9 @@ class _ZestSelectState<T> extends State<ZestSelect<T>> {
                             ),
                             Text(
                               item.note!,
-                              style: TextStyle(fontSize: 11, color: ZestTokens.textPlaceholder),
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: item.enabled ? ZestTokens.textTertiary : ZestTokens.textPlaceholder),
                             ),
                           ],
                         ),
@@ -300,6 +410,16 @@ class _ZestSelectState<T> extends State<ZestSelect<T>> {
                 ],
               ],
             ),
+          ),
+        ],
+        if (_searching &&
+            _query.trim().isNotEmpty &&
+            !widget.items.any((i) => i.searchable && _matches(i)) &&
+            widget.noMatches != null)
+          Padding(
+            key: const ValueKey('zest-select-no-matches'),
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+            child: Text(widget.noMatches!, style: TextStyle(fontSize: 12, color: ZestTokens.textTertiary)),
           ),
         if (widget.actions.isNotEmpty) Divider(height: 9, thickness: 0.5, color: ZestTokens.border),
         for (final action in widget.actions)

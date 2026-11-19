@@ -861,8 +861,9 @@ void main() {
       );
       await window.failed(StateError('x'), StackTrace.empty);
       expect(said, ['ended', 'shown']);
-      final main = File('lib/main.dart').readAsStringSync();
-      expect(main, contains('if (_adminArgs != null) await endAdminWithoutData();\n'.replaceAll('\n', Platform.isWindows ? '\r\n' : '\n')));
+      // Line ends as the checkout has them (either, on any system).
+      final main = File('lib/main.dart').readAsStringSync().replaceAll('\r\n', '\n');
+      expect(main, contains('if (_adminArgs != null) await endAdminWithoutData();\n'));
       expect(main, contains('beforeSaying: () async {'));
     });
 

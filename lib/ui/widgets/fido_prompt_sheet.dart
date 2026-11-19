@@ -178,9 +178,13 @@ class _FidoPromptSheetState extends State<FidoPromptSheet> {
       });
     }
     final pinStep = p.step == FidoStep.pin;
-    final wrong = !pinStep || !p.pinWrong
+    final wrong = !pinStep
         ? null
-        : [l10n.fidoPinWrong, if (p.pinTriesLeft != null) l10n.fidoPinTriesLeft(p.pinTriesLeft!)].join(' ');
+        : p.pinWrong
+            ? [l10n.fidoPinWrong, if (p.pinTriesLeft != null) l10n.fidoPinTriesLeft(p.pinTriesLeft!)].join(' ')
+            : p.pinAgain
+                ? l10n.fidoPinAgain
+                : null;
     return ZestDialogShell(
       key: const ValueKey('fido-prompt'),
       size: ZestModalSize.compact,

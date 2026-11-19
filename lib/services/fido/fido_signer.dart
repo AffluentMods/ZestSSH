@@ -8,9 +8,12 @@
 // Cancel. One conversation at a time; a second waits for the first.
 //
 // The PIN is held in a variable of the one operation that asked for it,
-// for as long as that operation runs (a key that left the NFC field while
-// it was typed is asked again without the person typing it twice), and is
-// never stored, logged or shown.
+// for as long as that operation runs, and is never stored, logged or shown.
+// A key that left the NFC field may already have counted a PIN it was sent
+// as a wrong try, with its answer lost: so before a PIN is sent again
+// without being typed again, the key's count of PIN tries is read, and
+// where it fell since the PIN was last sent, or cannot be read, the PIN is
+// dropped and asked for again.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -120,6 +123,7 @@ class FidoPrompt {
     required this.ways,
     this.again = false,
     this.pinWrong = false,
+    this.pinAgain = false,
     this.pinTriesLeft,
   });
 
@@ -136,8 +140,25 @@ class FidoPrompt {
   /// The PIN just given was wrong.
   final bool pinWrong;
 
+  /// The key left before it answered the PIN just given, and could not say
+  /// whether it counted it as a wrong try: it is typed again.
+  final bool pinAgain;
+
   /// How many tries of the PIN the key still gives, where it said.
   final int? pinTriesLeft;
+}
+
+/// A key made on a security key: its key file's parts ([key]), and whether
+/// the security key itself uses it only after its PIN ([keyRequiresPin]:
+/// made with credProtect at its highest level). Where the PIN was asked for
+/// every time and the security key does not, that rule is the app's own,
+/// held in the key file's flags.
+@immutable
+class FidoMadeKey {
+  const FidoMadeKey(this.key, {required this.keyRequiresPin});
+
+  final OpenSSHSkKeyPair key;
+  final bool keyRequiresPin;
 }
 
 class _Present {
@@ -237,9 +258,10 @@ class FidoSigner {
 
   /// Makes a new key on a security key: Ed25519 ([ed25519]) or P-256, for
   /// [application], asking for the key's PIN at every use where
-  /// [verifyRequired]. Its key file's parts; nothing secret. Throws
-  /// [FidoFailure].
-  Future<OpenSSHSkKeyPair> makeKey({
+  /// [verifyRequired]. Its key file's parts, nothing secret, and whether
+  /// the security key itself holds to the PIN (credProtect, where it has
+  /// it). Throws [FidoFailure].
+  Future<FidoMadeKey> makeKey({
     required bool ed25519,
     required bool verifyRequired,
     required String label,
@@ -255,6 +277,11 @@ class FidoSigner {
       } else if (verifyRequired) {
         throw const FidoFailure(FidoFailureKind.pinNotSet);
       }
+      // Asking for the PIN every time is the key file's flag, which the app
+      // holds to; the file is not secret, so where the security key can be
+      // told, it is told too, and then signs with this key only after the
+      // PIN, whoever asks.
+      final protect = verifyRequired && info.credProtect;
       final made = await ctap.makeCredential(
         clientDataHash: _bytes(32),
         rpId: application,
@@ -262,19 +289,25 @@ class FidoSigner {
         userName: 'openssh',
         alg: alg,
         pin: pin,
+        credProtect: protect ? kCredProtectUvRequired : null,
       );
       final sk = SkKey.made(
         made,
         application: application,
         flags: kSkUserPresenceRequired | (verifyRequired ? kSkUserVerificationRequired : 0),
       );
-      return OpenSSHSkKeyPair(
-        type: sk.algorithm,
-        publicKey: sk.publicKey,
-        application: application,
-        flags: sk.flags,
-        keyHandle: sk.keyHandle,
-        comment: comment,
+      return FidoMadeKey(
+        OpenSSHSkKeyPair(
+          type: sk.algorithm,
+          publicKey: sk.publicKey,
+          application: application,
+          flags: sk.flags,
+          keyHandle: sk.keyHandle,
+          comment: comment,
+        ),
+        // (A key that lists credProtect but does not say it used the level
+        // asked for is not taken to hold to it.)
+        keyRequiresPin: protect && made.credProtect == kCredProtectUvRequired,
       );
     });
   }
@@ -325,14 +358,20 @@ class FidoSigner {
     if (!ways.usb && !ways.nfcOn) throw const FidoFailure(FidoFailureKind.nfcOff);
 
     String? pin;
-    Future<String> askPin({bool wrong = false, int? triesLeft}) {
+    // Whether [pin] was sent to a key already, and the key's count of PIN
+    // tries just before it was (null where it did not say).
+    var pinSent = false;
+    int? triesBeforeSent;
+    Future<String> askPin({bool wrong = false, bool again = false, int? triesLeft}) {
       final asked = _pin = Completer<String>();
+      pinSent = false;
       _show(FidoPrompt(
         purpose: purpose,
         label: label,
         step: FidoStep.pin,
         ways: ways,
         pinWrong: wrong,
+        pinAgain: again,
         pinTriesLeft: triesLeft,
       ));
       return asked.future;
@@ -350,22 +389,44 @@ class FidoSigner {
         _show(FidoPrompt(purpose: purpose, label: label, step: FidoStep.working, ways: ways));
         final ctap = Ctap2(present.device);
         final info = await ctap.getInfo();
+        // The key's count of PIN tries, or null where it does not say.
+        Future<int?> triesLeft() async {
+          try {
+            return await ctap.pinRetries(protocol: info.pinProtocol ?? 1);
+          } on CtapError {
+            return null;
+          } on CtapProtocolError {
+            return null;
+          }
+        }
+
         Future<PinToken> token(int permissions, String rpId) async {
           while (true) {
             pin ??= await askPin();
             _show(FidoPrompt(purpose: purpose, label: label, step: FidoStep.working, ways: ways));
+            final now = await triesLeft();
+            if (pinSent) {
+              // Sent before, to a key that then left: a count that fell
+              // since says the key took it as a wrong try (its answer lost),
+              // and one it does not give says nothing. Either way it is not
+              // sent again untyped.
+              final earlier = triesBeforeSent;
+              if (now == null || earlier == null || now < earlier) {
+                final fell = now != null && earlier != null;
+                pin = null;
+                pin = await askPin(wrong: fell, again: !fell, triesLeft: now);
+                continue;
+              }
+            }
+            triesBeforeSent = now;
+            pinSent = true;
             try {
               return await ctap.pinToken(info, utf8.encode(pin!), permissions: permissions, rpId: rpId);
             } on CtapError catch (e) {
               if (e.status != CtapError.pinInvalid) rethrow;
               pin = null;
-              int? left;
-              try {
-                left = await ctap.pinRetries(protocol: info.pinProtocol ?? 1);
-              } on CtapError {
-                // (It did not say: the sheet says wrong, with no count.)
-              }
-              pin = await askPin(wrong: true, triesLeft: left);
+              // (Where it does not say, the sheet says wrong, with no count.)
+              pin = await askPin(wrong: true, triesLeft: await triesLeft());
             }
           }
         }
@@ -377,7 +438,9 @@ class FidoSigner {
         if (e.message.contains('not a FIDO security key')) {
           throw const FidoFailure(FidoFailureKind.notASecurityKey);
         }
-        // The key left: wait for it again, with what was typed kept.
+        // The key left: wait for it again, with what was typed kept. A PIN
+        // already sent is sent again only where the key's count of tries
+        // shows it was not taken as a wrong one (token).
         continue;
       } on CtapError catch (e) {
         throw _refusal(e);

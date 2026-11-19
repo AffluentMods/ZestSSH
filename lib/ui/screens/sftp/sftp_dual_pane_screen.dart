@@ -758,6 +758,12 @@ class _SftpDualPaneScreenState extends ConsumerState<SftpDualPaneScreen>
   /// connect to a saved host directly, without re-opening the picker dialog.
   Future<void> _connectToConnection(
       int side, ConnectionWithDetails picked, {String? openAt}) async {
+    // A Telnet host has no files to give: said before anything connects,
+    // rather than an unencrypted session opened unasked that cannot give them.
+    if (isTelnetHost(picked.connection)) {
+      showTopSnackBar(context, AppLocalizations.of(context)!.desktopShellSftpRequiresSsh, isError: true);
+      return;
+    }
     final notifier = ref.read(activeSessionsProvider.notifier);
     // The host's Crate must allow SFTP: no session is opened
     // for a host whose files this account may not browse.

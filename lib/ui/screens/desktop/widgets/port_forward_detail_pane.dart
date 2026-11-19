@@ -55,7 +55,6 @@ class PortForwardDetailPane extends ConsumerWidget {
     super.key,
     required this.controller,
     required this.hasSelection,
-    required this.onNew,
     required this.onSave,
     this.onSaveAndStart,
     required this.onClose,
@@ -74,7 +73,6 @@ class PortForwardDetailPane extends ConsumerWidget {
   /// "Save in" (3.4), over a new rule's fields.
   final Widget? saveIn;
   final bool hasSelection;
-  final VoidCallback onNew;
   final Future<bool> Function() onSave;
 
   /// Saves the rule and starts it (the footer's Save and start); none where
@@ -105,7 +103,6 @@ class PortForwardDetailPane extends ConsumerWidget {
       modeToggle: _modeToggle(l10n),
       isDirty: controller.isDirty,
       onSave: () => onSave(),
-      onCancel: onNew,
       onClose: onClose,
       // A saved rule's Move or copy (4.0): its places, then Move here or
       // Copy here.
@@ -121,7 +118,6 @@ class PortForwardDetailPane extends ConsumerWidget {
         _ => null,
       },
       footer: _PfFooter(
-        onCancel: onClose,
         onSave: () => onSave(),
         saveEnabled: controller.isDirty,
         onSaveAndStart: onSaveAndStart == null ? null : () => onSaveAndStart!(),
@@ -597,18 +593,16 @@ class _HostGlyph extends ConsumerWidget {
   }
 }
 
-/// The editor's footer: Delete for a saved rule; Cancel, Save, and Save and
-/// start.
+/// The editor's footer: Delete for a saved rule; Save, and Save and start
+/// (the header's close leaves the editor).
 class _PfFooter extends StatelessWidget {
   const _PfFooter({
-    required this.onCancel,
     required this.onSave,
     required this.saveEnabled,
     this.onSaveAndStart,
     this.onDelete,
   });
 
-  final VoidCallback onCancel;
   final VoidCallback onSave;
   final bool saveEnabled;
   final VoidCallback? onSaveAndStart;
@@ -637,7 +631,7 @@ class _PfFooter extends StatelessWidget {
                 onPressed: onDelete,
               ),
             const SizedBox(width: 8),
-            // The three go to a second line where the pane is too narrow for
+            // The two go to a second line where the pane is too narrow for
             // them in one (a long language, a small window).
             Expanded(
               child: Wrap(
@@ -645,13 +639,6 @@ class _PfFooter extends StatelessWidget {
                 spacing: ZestSizing.buttonGap,
                 runSpacing: 8,
                 children: [
-                  ZestButton(
-                    key: const ValueKey('pf-cancel'),
-                    label: l10n.zestCommonCancel,
-                    variant: ZestButtonVariant.secondary,
-                    size: ZestButtonSize.large,
-                    onPressed: onCancel,
-                  ),
                   ZestButton(
                     key: const ValueKey('pf-save'),
                     label: l10n.zestCommonSave,

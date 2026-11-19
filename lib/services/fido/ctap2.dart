@@ -75,7 +75,7 @@ class CtapError implements Exception, HasTypeName {
   static const int actionTimeout = 0x3a;
   static const int upRequired = 0x3b;
   static const int uvBlocked = 0x3c;
-  static const int uvInvalid = 0x3e;
+  static const int uvInvalid = 0x3f;
 
   @override
   String toString() => 'Security key refused: CTAP2 status 0x${status.toRadixString(16).padLeft(2, '0')}';
@@ -95,6 +95,7 @@ class AuthenticatorInfo {
     required this.options,
     required this.pinProtocols,
     required this.algorithms,
+    this.extensions = const [],
     this.maxMsgSize,
   });
 
@@ -110,6 +111,9 @@ class AuthenticatorInfo {
   /// The COSE algorithms it says it makes keys for; empty where it does not
   /// say (CTAP 2.0), which is not "none".
   final List<int> algorithms;
+
+  /// The extensions it says it supports ("credProtect", "hmac-secret", ...).
+  final List<String> extensions;
 
   final int? maxMsgSize;
 
@@ -132,6 +136,10 @@ class AuthenticatorInfo {
   /// Whether it says it can make a key of [alg]; unknown (true) where it
   /// lists none.
   bool makes(int alg) => algorithms.isEmpty || algorithms.contains(alg);
+
+  /// Whether it can be told to sign with a key only after user
+  /// verification (CTAP 2.1's credProtect extension).
+  bool get credProtect => extensions.contains('credProtect');
 }
 
 /// The data a key signs over and returns (WebAuthn's authenticator data):
@@ -199,14 +207,23 @@ class CosePublicKey {
 
 BigInt _big(Uint8List bytes) => bytes.fold(BigInt.zero, (n, b) => (n << 8) | BigInt.from(b));
 
+/// credProtect's highest level (CTAP 2.1, userVerificationRequired): the
+/// security key uses the key only after user verification (its PIN or a
+/// fingerprint), whatever a request asks.
+const int kCredProtectUvRequired = 3;
+
 /// A key a security key made (authenticatorMakeCredential).
 class MadeCredential {
-  const MadeCredential({required this.credentialId, required this.publicKey, required this.authData});
+  const MadeCredential({required this.credentialId, required this.publicKey, required this.authData, this.credProtect});
 
   /// What the key is asked for again by (OpenSSH's key handle).
   final Uint8List credentialId;
   final CosePublicKey publicKey;
   final AuthenticatorData authData;
+
+  /// The credProtect level the security key says it made the key with, or
+  /// null where it said none.
+  final int? credProtect;
 }
 
 /// A signature a security key made (authenticatorGetAssertion).
@@ -285,6 +302,11 @@ class Ctap2 {
         if (e.key is String && e.value is bool) options[e.key! as String] = e.value! as bool;
       }
     }
+    final extensions = <String>[
+      if (m[2] case final List<Object?> list)
+        for (final e in list)
+          if (e is String) e,
+    ];
     final algorithms = <int>[];
     if (m[10] case final List<Object?> list) {
       for (final a in list) {
@@ -300,6 +322,7 @@ class Ctap2 {
             if (v is int) v,
       ],
       algorithms: algorithms,
+      extensions: extensions,
       maxMsgSize: m[5] is int ? m[5] as int : null,
     );
   }
@@ -360,7 +383,9 @@ class Ctap2 {
   /// Makes a key on the security key for [rpId] (an SSH key's application,
   /// "ssh:" unless the person chose another), of kind [alg]. [resident]
   /// keeps it on the security key itself; [pin] is needed where the key has
-  /// a PIN. The person touches the key.
+  /// a PIN. [credProtect] asks for that credProtect level (only of a key
+  /// whose getInfo lists the extension); what the key says it used is in
+  /// the answer. The person touches the key.
   Future<MadeCredential> makeCredential({
     required Uint8List clientDataHash,
     required String rpId,
@@ -369,6 +394,7 @@ class Ctap2 {
     required int alg,
     bool resident = false,
     PinToken? pin,
+    int? credProtect,
   }) async {
     _hash(clientDataHash);
     final m = await _send(_cmdMakeCredential, {
@@ -378,6 +404,7 @@ class Ctap2 {
       4: [
         {'alg': alg, 'type': 'public-key'},
       ],
+      if (credProtect != null) 6: {'credProtect': credProtect},
       if (resident) 7: {'rk': true},
       if (pin != null) 8: pin.authParam(clientDataHash),
       if (pin != null) 9: pin.protocol.version,
@@ -396,14 +423,27 @@ class Ctap2 {
     }
     final credentialId = Uint8List.fromList(rest.sublist(18, 18 + idLength));
     final Object? cose;
+    final int coseEnd;
     try {
-      (cose, _) = cborDecodeFirst(rest, 18 + idLength);
+      (cose, coseEnd) = cborDecodeFirst(rest, 18 + idLength);
     } on CborError catch (e) {
       throw CtapProtocolError('a public key that is not CBOR (${e.message})');
     }
     final publicKey = CosePublicKey.parse(cose);
     if (publicKey.alg != alg) throw const CtapProtocolError('a key of another kind than was asked for');
-    return MadeCredential(credentialId: credentialId, publicKey: publicKey, authData: data);
+    // The extensions' answers follow the public key where the key says it
+    // has some. Only credProtect's is read; one that cannot be read counts
+    // as no level said, the cautious reading.
+    int? level;
+    if (data.flags & AuthenticatorData.flagExtensions != 0 && coseEnd < rest.length) {
+      try {
+        final (extensions, _) = cborDecodeFirst(rest, coseEnd);
+        if (extensions case {'credProtect': final int n}) level = n;
+      } on CborError {
+        level = null;
+      }
+    }
+    return MadeCredential(credentialId: credentialId, publicKey: publicKey, authData: data, credProtect: level);
   }
 
   /// Asks the key to sign [clientDataHash] for [rpId] with the credential

@@ -969,17 +969,41 @@ class AutoSyncService {
           // Merged three ways with what this device last synced (3.0): a
           // change made here and not there is kept, and sent by the push
           // below.
+          // The keys an earlier pull wrote without all their secrets go
+          // again; and the keys this one writes are noted with their rows,
+          // before any secret is, so a pull the app ends in is made again.
+          final owed = await _syncDataService.loadSecretsOwed();
           final result = await _syncDataService.restoreAll(
             data,
             merge: SyncMergeBase(
-                key: dekBytes, base: await _syncDataService.loadSyncBase(), storeWentBack: wentBack),
+              key: dekBytes,
+              base: await _syncDataService.loadSyncBase(),
+              storeWentBack: wentBack,
+              owed: owed,
+              onTaken: (taken) => _syncDataService.saveSecretsOwed({
+                ...owed,
+                for (final item in taken)
+                  if (item.startsWith('identities/')) item,
+              }),
+            ),
           );
           if (result.knownHostConflicts.isNotEmpty) {
             // A synced host key disagreed with one already trusted here - a
             // possible MITM on one of the devices. Surface it (never merged).
             hostKeyConflict.value = result.knownHostConflicts.join(', ');
           }
+          if (result.success && result.secretsOwed.isNotEmpty) {
+            // The rows are here and a password or key of theirs is not: the
+            // pull is not done. Nothing is noted as synced and nothing is
+            // sent, so the next sync makes it again; sent now, these keys
+            // would go out without their secrets and lose them on every device.
+            await _syncDataService.saveSecretsOwed(result.secretsOwed);
+            AppLogger.warning('Auto-sync: ${result.secretsOwed.length} keys came without all their secrets being kept here');
+            _sayPaused(gl10n.syncSecretsNotKept, manual: manual);
+            throw SyncException(gl10n.syncSecretsNotKept);
+          }
           if (result.success) {
+            await _syncDataService.saveSecretsOwed(const {});
             if (counted.wentBack && _storeWentBackSaid != counted.count) {
               _storeWentBackSaid = counted.count;
               storeWentBack.value++;

@@ -11,11 +11,40 @@ abstract final class ScreenViewSize {
   /// one was laid out.
   static Size? lastFollowed;
 
-  /// [view] (logical pixels) as a remote screen's size: whole pixels, the
+  /// The [ratio] the last view that followed its tab was drawn at (see
+  /// [ratioFor]): with [lastFollowed], the size in the screen's own pixels
+  /// the next session of that kind starts at.
+  static double lastFollowedRatio = 1;
+
+  /// How many of the screen's own pixels a remote that follows its view
+  /// takes for one logical pixel: the screen's [devicePixelRatio], at
+  /// least 1. A remote drawn at the screen's own pixels, its text made as
+  /// much larger ([scaleOn]), is shown pixel for pixel, sharp, where one
+  /// logical pixel to one remote pixel was stretched and blurred on a screen
+  /// scaled above 100%. On a phone at most 2: a phone's 3 would send nine
+  /// times the pixels of 1 for a picture the eye cannot tell apart.
+  static double ratioFor(double devicePixelRatio, {bool phone = false}) {
+    final r = devicePixelRatio.isFinite && devicePixelRatio > 1 ? devicePixelRatio : 1.0;
+    return phone && r > 2 ? 2.0 : r;
+  }
+
+  /// The scale a remote drawn at [ratio] ([ratioFor]) is asked for, in
+  /// percent, so its text is as large to the eye as [textScale] (the host's
+  /// choice; 0: nothing said, 100%) at one pixel to one: [textScale] itself
+  /// at 1, else [textScale] times [ratio], 100 to 500 (what RDP takes).
+  static int scaleOn(int textScale, double ratio) {
+    if (ratio <= 1) return textScale;
+    final base = textScale == 0 ? 100 : textScale;
+    return (base * ratio).round().clamp(100, 500);
+  }
+
+  /// [view] (logical pixels) at [ratio], in the screen's own pixels.
+  static Size pixelsOf(Size view, double ratio) => ratio <= 1 ? view : Size(view.width * ratio, view.height * ratio);
+
+  /// [view] as a remote screen's size: whole pixels, the
   /// width even (RDP wants it so), neither side under 200 (the smallest a
-  /// server takes). One logical pixel is one remote pixel, so a screen with
-  /// more pixels to the inch shows the remote scaled up, at a size that can
-  /// be read.
+  /// server takes). Given in the screen's own pixels ([pixelsOf]) where the
+  /// view follows its tab.
   static (int, int) remoteOf(Size view) {
     final w = view.width.floor() & ~1, h = view.height.floor();
     return (w < 200 ? 200 : w, h < 200 ? 200 : h);

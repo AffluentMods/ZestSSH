@@ -70,6 +70,10 @@ class SecureStorageIdentitySecrets implements IdentitySecretStore {
   Future<bool> keptButUnread(String identityId, IdentitySecret secret) async {
     final slot = keyFor(secret, identityId);
     final stored = await _storage.read(key: slot);
+    // A computer's keychain opens what it keeps by itself, and answers none
+    // for an entry whose seal does not open: none read of a slot that holds
+    // something is that case.
+    if (stored == null) return _storage.containsKey(key: slot);
     return SecretSeal.isSealed(stored) && await openKept(sealedBy, slot, stored) == null;
   }
 

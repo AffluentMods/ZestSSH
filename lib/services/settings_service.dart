@@ -96,7 +96,7 @@ class SettingsService {
     'tab_source_group', 'tab_source_mode', 'tab_source_vault',
     'terminal_font',
     'terminal_font_size', 'terminal_ligatures', 'terminal_margin', 'terminal_read_aloud', 'terminal_theme', 'tmux_auto_detect',
-    'ui_density', 'update_check_enabled', 'volume_keys_enabled', 'workflow_run_panel_fraction',
+    'ui_density', 'update_auto_install', 'update_check_enabled', 'volume_keys_enabled', 'workflow_run_panel_fraction',
   };
 
   /// Beginnings of keys made for one thing each that are settings as well:
@@ -140,7 +140,7 @@ class SettingsService {
     'settings_last_section',
     // What was seen, answered or done once, and is not asked again.
     'acked_policy_version', 'ios_port_forward_intro_shown', 'onboarding_complete', 'pins_migrated_to_db',
-    'tmux_intro_seen', 'screen_hints_seen', 'update_dismissed_version', 'sync_turn_on_asked', 'app_lock_offered', 'passkey_offered', 'step_up_at',
+    'tmux_intro_seen', 'screen_hints_seen', 'update_dismissed_version', 'update_pill_hidden_on', 'sync_turn_on_asked', 'app_lock_offered', 'passkey_offered', 'step_up_at',
     'recovery_proof_ask_dismissed',
     // What the app keeps for its own work: a host key that changed and waits for its person, reports that wait to be
     // sent, what was bought, when things last ran, what was measured, how far a replacement of team keys has come.
@@ -154,6 +154,8 @@ class SettingsService {
     'update_last_check_ms',
     // An update started just before the app quit for it: the next start says whether it went in.
     'update_pending_v1',
+    // The release an update to which did not go in: not installed by itself again.
+    'update_auto_failed',
     // On a Mac, the build the notice of macOS's keychain questions after an update was shown for (3.3.2).
     'mac_keychain_told_build',
     // When the Store copy last tried to remove the copy from zestssh.com, or told it is there for every account
@@ -233,7 +235,7 @@ class SettingsService {
     'screen_panel_folded',
     // Updates.
     'notify_update_available', 'update_check_enabled', 'update_dismissed_version', 'update_last_check_ms',
-    'update_pending_v1', 'mac_keychain_told_build',
+    'update_pending_v1', 'mac_keychain_told_build', 'update_auto_install', 'update_pill_hidden_on', 'update_auto_failed',
     // One ZestSSH per Windows PC: the Store copy's try at removing the zestssh.com copy; an older Store copy told of.
     'store_handover_remove_tried', 'store_handover_older_told',
     // Asked or shown once on this device.

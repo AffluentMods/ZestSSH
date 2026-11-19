@@ -308,6 +308,26 @@ void main() {
       await finish(tester);
     });
 
+    if (size == _phone) {
+      testWidgets('on $device: Edit group keeps what a sync changed while the sheet was open: only the colour '
+          'picked is written, not the name the sheet read', (tester) async {
+        await pumpHome(tester, size, platform);
+        await longPress(tester, find.byKey(const ValueKey('phone-filter-g-web')));
+        await tap(tester, find.byKey(const ValueKey('group-action-edit')));
+        expect(find.byKey(const ValueKey('group-edit-sheet')), findsOneWidget);
+        // Another device renames the group meanwhile.
+        await tester.runAsync(() => (db.update(db.connectionGroups)..where((g) => g.id.equals('g-web')))
+            .write(ConnectionGroupsCompanion(name: const Value('Web (renamed)'), updatedAt: Value(DateTime(2027)))));
+        await tap(tester, find.byKey(const ValueKey('group-swatch-5')));
+        await tap(tester, find.byKey(const ValueKey('group-edit-save')));
+        expect(find.byKey(const ValueKey('group-edit-sheet')), findsNothing);
+        final web = (await groups()).single;
+        expect(web.colorIndex, 5);
+        expect(web.name, 'Web (renamed)');
+        await finish(tester);
+      });
+    }
+
     testWidgets('on $device: Delete group from a group\'s header asks, and keeps its hosts, ungrouped',
         (tester) async {
       await pumpHome(tester, size, platform);

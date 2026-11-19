@@ -1037,12 +1037,20 @@ class ScreenSession {
   /// kept and the connection made again (a new channel) with exactly that one. Completes once
   /// connected; throws [ScreenConnectException] when it ends first (the certificate refused,
   /// the credentials, the channel...).
+  ///
+  /// [handshakeTimeout]: how long each try may take from its channel to connected. A server that
+  /// takes the connection and then says nothing (or stops half way) is closed then, its engine
+  /// and channel with it, with [ScreenCloseReason.network] and the detail [handshakeTimedOut].
+  /// [onSession] is given each try's session as soon as it is open, so whoever started it can
+  /// close it before it has connected (a Disconnect while it is still connecting).
   static Future<ScreenSession> connectTrusting(
     ScreenConnectOptions options, {
     required Future<ScreenChannel> Function() openChannel,
     required ScreenTrust trust,
     ScreenTrust? gatewayTrust,
     ScreenNative? native,
+    Duration? handshakeTimeout,
+    void Function(ScreenSession session)? onSession,
   }) async {
     final pinned = await trust.pinned();
     // Through an RD Gateway (4.0) there are two certificates, each asked about and kept
@@ -1053,7 +1061,7 @@ class ScreenSession {
     final askedAbout = <bool>{};
     while (true) {
       try {
-        return await _connectOnce(tryWith, openChannel, native);
+        return await _connectOnce(tryWith, openChannel, native, handshakeTimeout, onSession);
       } on ScreenConnectException catch (e) {
         final shown = e.closed.certificate;
         if (e.reason != ScreenCloseReason.certificate || shown == null) rethrow;
@@ -1070,10 +1078,16 @@ class ScreenSession {
     }
   }
 
+  /// What a session closed by [connectTrusting]'s handshake deadline says
+  /// ([ScreenClosed.detail]).
+  static const handshakeTimedOut = 'handshake_timeout';
+
   static Future<ScreenSession> _connectOnce(
     ScreenConnectOptions options,
     Future<ScreenChannel> Function() openChannel,
     ScreenNative? native,
+    Duration? handshakeTimeout,
+    void Function(ScreenSession session)? onSession,
   ) async {
     final channel = await openChannel();
     final ScreenSession session;
@@ -1084,7 +1098,20 @@ class ScreenSession {
       rethrow;
     }
     session.attach(channel.input, channel.output, connectionDone: channel.connectionDone);
-    await session.connected;
+    onSession?.call(session);
+    if (handshakeTimeout == null) {
+      await session.connected;
+      return session;
+    }
+    await session.connected.timeout(handshakeTimeout, onTimeout: () {
+      // The engine stops (its pipe ends) and the channel closes, as on any end.
+      session._finish(ScreenClosed(
+        ScreenCloseReason.network,
+        'the server did not finish connecting within ${handshakeTimeout.inSeconds} seconds',
+        detail: handshakeTimedOut,
+      ));
+      return session.connected;
+    });
     return session;
   }
 

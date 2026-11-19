@@ -63,10 +63,10 @@ import 'package:zestssh/ui/widgets/zest_sheet.dart';
 import 'package:zestssh/ui/widgets/zest_switch.dart';
 import 'package:zestssh/utils/host_address.dart';
 import 'package:zestssh/features/hosts/host_card_face.dart';
+import 'package:zestssh/features/hosts/host_screens.dart';
 import 'package:zestssh/providers/os_detection_providers.dart';
 import 'package:zestssh/features/hosts/host_list_layout.dart';
 import 'package:zestssh/models/enums.dart' show ConnectionProtocol;
-import 'package:zestssh/ui/screens/connection/connection_edit_screen.dart';
 import 'package:zestssh/features/screens/proxmox/proxmox_console_open.dart';
 import 'package:zestssh/features/screens/proxmox/proxmox_guest_of.dart';
 import 'package:zestssh/features/screens/xprogram/x_program_dialog.dart' show openXProgramOnPhone;
@@ -87,6 +87,7 @@ class PhoneHostActions {
     this.share,
     this.moveTo,
     this.copyTo,
+    this.openScreen,
   });
 
   final VoidCallback connect;
@@ -100,6 +101,10 @@ class PhoneHostActions {
   /// Move to... and Copy to...: Personal, or a team's vault (3.4).
   final VoidCallback? moveTo;
   final VoidCallback? copyTo;
+
+  /// Opens one of the host's own screens (4.0, the screen hosts reached
+  /// through it): a monitor on its row and Screen in its sheet while it has one.
+  final ValueChanged<ConnectionWithDetails>? openScreen;
 }
 
 /// A group made from Home's + (New group): the list picks it, so its section
@@ -1254,7 +1259,10 @@ class PhoneHostRow extends ConsumerWidget {
                   // a tap selects.)
                   else if (selecting)
                     const SizedBox(width: 12)
-                  else
+                  else ...[
+                    // Its own screen, one press away (4.0).
+                    if (actions.openScreen != null)
+                      HostScreenButton(hostId: conn.id, onOpen: actions.openScreen!, size: 48, iconSize: 20, phone: true),
                     Semantics(
                       container: true,
                       button: true,
@@ -1278,6 +1286,7 @@ class PhoneHostRow extends ConsumerWidget {
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -1302,9 +1311,22 @@ String? _vaultNameOf(WidgetRef ref, AppLocalizations l10n, String hostId) {
   return crate == null ? null : crateDisplayName(crate, l10n);
 }
 
-/// `user@host:port`, each part masked in recording mode.
+/// `user@host:port`, each part masked in recording mode. A remote screen:
+/// where it listens and the SSH host it is reached through, as a computer's
+/// card says it ("localhost:5900 via web-01"); its kind is said beside it.
 String _addressOf(WidgetRef ref, ConnectionWithDetails host) {
   final c = host.connection;
+  if (ConnectionProtocol.storedIsScreen(c.protocol)) {
+    final all = ref.read(connectionsWithDetailsProvider).valueOrNull ?? const <ConnectionWithDetails>[];
+    final line = screenCardSubtitleOf(c,
+        labelOf: (id) {
+          final carrier = all.where((h) => h.connection.id == id).firstOrNull?.connection;
+          return carrier == null ? null : (carrier.label.isNotEmpty ? carrier.label : carrier.host);
+        },
+        via: gl10n.pfPageVia,
+        withKind: false);
+    return Redactable.freeText(line).displayIn(ref);
+  }
   final user = host.identity?.username;
   final address = Redactable.address(hostWithPort(c.host, c.port)).displayIn(ref);
   return user == null ? address : '${Redactable.username(user).displayIn(ref)}@$address';
@@ -1411,6 +1433,7 @@ class _HostSheet extends ConsumerWidget {
     final connectAs = connectAsItems(l10n, ref, accounts, defaultUsername: host.identity?.username);
     final canWake = actions.wake != null && conn.wolMacAddress != null;
     final sshLike = conn.protocol == 'ssh' || conn.protocol == 'mosh' || conn.protocol == 'et';
+    final screens = ref.watch(screensOfHostProvider(conn.id));
 
     void close() => Navigator.of(context).pop();
     void run(VoidCallback f) {
@@ -1440,6 +1463,14 @@ class _HostSheet extends ConsumerWidget {
           icon: LucideIcons.userCheck,
           label: l10n.phoneHostsConnectAs,
           onTap: () => _pickAccount(context, connectAs),
+        ),
+      // Its own screen (4.0): one, or a list of them.
+      if (actions.openScreen != null && screens.isNotEmpty)
+        _QuickAction(
+          key: const ValueKey('phone-sheet-screen'),
+          icon: LucideIcons.monitor,
+          label: l10n.phoneHostsScreen,
+          onTap: () => run(() => unawaited(pickHostScreen(opener, ref, screens, actions.openScreen!))),
         ),
       if (canWake)
         _QuickAction(
@@ -1618,8 +1649,8 @@ class _HostSheet extends ConsumerWidget {
                   key: const ValueKey('phone-sheet-add-screen'),
                   icon: LucideIcons.monitor,
                   label: l10n.hostMenuAddScreen,
-                  onTap: () => run(() => ConnectionEditScreen.showAdaptive(context,
-                      initialProtocol: ConnectionProtocol.vnc, initialVia: conn.id)),
+                  // VNC or RDP asked first, over the page the sheet was opened from.
+                  onTap: () => run(() => unawaited(addScreenForHost(opener, ref, conn))),
                 ),
               // An X program on this host, in a screen of its own (4.0):
               // asked over the page that opened the sheet, which is gone by then.

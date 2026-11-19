@@ -16,7 +16,7 @@ a debug build on Windows, macOS or Linux.
 
 There is no private package registry, no git dependency and no submodule. The path dependencies
 (`packages/zest_native`, `packages/zest_ssh_core`, `packages/xterm`, `packages/desktop_multi_window`,
-`packages/speech_to_text_windows`, the last through `dependency_overrides`) are in this
+`packages/speech_to_text_windows`, the last through `dependency_overrides`, and `packages/lucide_icons`) are in this
 repository. The Rust crates come from crates.io, locked by `packages/zest_native/rust/Cargo.lock`.
 
 ### Rust
@@ -190,7 +190,7 @@ flutter test --no-pub --dart-define=ZEST_ORCHARDS=true
 - The Rust library is built first, so the first run takes minutes.
 - One file: `flutter test --no-pub --dart-define=ZEST_ORCHARDS=true test/<path>_test.dart`.
 - The SSH library: `dart test -x integration` inside `packages/zest_ssh_core`.
-- The native library: `cargo test --features vnc` inside `packages/zest_native/rust`.
+- The native library: `cargo test --features vnc,rdp,mosh` inside `packages/zest_native/rust`.
 - `flutter analyze` must show no new issue.
 - Never run `dart format` on a directory: format only the files you create.
 - Licences: `dart run tool/licence_check.dart` checks every Dart package and Rust crate the app ships against the
@@ -221,10 +221,10 @@ Tests that need something this repository does not run for you skip themselves:
 
 ZestSSH itself is under the GNU General Public License version 3 only, with an additional permission under its
 section 7 (`LICENSE`, `LICENSE-EXCEPTION.txt`, `NOTICE`), which the app shows with the others (`third_party/zestssh/`).
-The app shows every licence it carries under About, Open source licenses: the Dart packages' own, the Rust crates'
+The app shows these licences under About, Open source licenses: the Dart packages' own, the Rust crates'
 (`packages/zest_native/NOTICES`, written by `tool/rust_notices.dart`), the bundled fonts' and the code copied into
-this repository (`third_party/`, listed under `flutter: licenses:` in `pubspec.yaml`), and the native libraries of
-the platform the app runs on (`assets/licenses/`). `tool/licence_check.dart` fails when a Dart package or Rust crate
+this repository (`third_party/`, listed under `flutter: licenses:` in `pubspec.yaml`), and, on Windows and Linux,
+the native libraries the build carries (`assets/licenses/`). `tool/licence_check.dart` fails when a Dart package or Rust crate
 comes under a licence that is not on its list (`tool/licence_policy.yaml`).
 
 ## 10. Official release builds

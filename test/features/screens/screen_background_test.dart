@@ -128,6 +128,47 @@ void main() {
       });
     });
 
+    test('back in front while the screens are being closed: the one in the middle of closing is connected again, '
+        'and the rest are left open', () {
+      fakeAsync((clock) {
+        final grace = _Grace(const Duration(seconds: 30));
+        final connected = <String>{'s1', 's2', 's3'};
+        final parked = <String>{};
+        final reconnected = <String>[];
+        final closing = <String, Completer<void>>{};
+        final keeper = ScreenBackgroundKeeper(
+          connectedScreens: () => connected,
+          parkedScreens: () => parked,
+          // Closing a screen takes time (the screen, then its carrier SSH).
+          park: (id) async {
+            closing[id] = Completer<void>();
+            await closing[id]!.future;
+            connected.remove(id);
+            parked.add(id);
+          },
+          reconnect: (id) {
+            reconnected.add(id);
+            parked.remove(id);
+            connected.add(id);
+          },
+          grace: grace,
+          closesInBackground: true,
+        );
+        unawaited(keeper.hidden());
+        clock.elapse(const Duration(seconds: 26));
+        expect(closing.keys, ['s1'], reason: 'the first is closing');
+        // The person comes back before it has closed.
+        expect(keeper.resumed(), 0, reason: 'none was paused yet');
+        closing['s1']!.complete();
+        clock.flushMicrotasks();
+        expect(reconnected, ['s1'], reason: 'closed after the return: connected again, not left paused');
+        expect(closing.keys, ['s1'], reason: 'the others are not closed in front of the person');
+        expect(connected, {'s1', 's2', 's3'});
+        expect(parked, isEmpty);
+        expect(grace.ended, 1);
+      });
+    });
+
     test('iOS says the time is up before the timer: closed at once', () {
       fakeAsync((clock) {
         final grace = _Grace(const Duration(seconds: 30));

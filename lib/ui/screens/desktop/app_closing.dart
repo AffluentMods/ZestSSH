@@ -74,7 +74,10 @@ Future<void> saveOpenTabs(WidgetRef ref, Map<String, SessionState> sessions) asy
       prefs, ref.read(localStateStoreProvider));
   // An X program's tab (4.0) is not brought back: its program ended
   // with the app, and its host's id would open the host's terminal instead.
-  final xProgram = ref.read(activeSessionsProvider.notifier).isXProgram;
+  // Nor is a Proxmox console's: it is a session of its machine's own host,
+  // and that id would open an SSH terminal to the machine.
+  final notifier = ref.read(activeSessionsProvider.notifier);
+  bool xProgram(String sessionId) => notifier.isXProgram(sessionId) || notifier.isConsole(sessionId);
 
   // (1) Group-aware tab snapshots.
   final workTabsState = ref.read(workTabsProvider);

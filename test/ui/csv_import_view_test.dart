@@ -21,6 +21,7 @@ import 'package:zestssh/features/orchards/orchard_providers.dart';
 import 'package:zestssh/features/orchards/record/orchard_record.dart';
 import 'package:zestssh/features/orchards/spaces.dart';
 import 'package:zestssh/features/orchards/sync/crate_placement.dart';
+import 'package:zestssh/features/screens/model/rdp_gateway_offered.dart';
 import 'package:zestssh/features/screens/model/rdp_offered.dart';
 import 'package:zestssh/features/screens/model/screen_options.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
@@ -497,7 +498,8 @@ void main() {
     expect(find.text(l10n.rdpFileNotePassword), findsOneWidget);
     expect(find.text(l10n.rdpFileNoteProgram), findsOneWidget);
     expect(find.text(l10n.rdpFileNoteNla), findsOneWidget);
-    expect(find.text(l10n.rdpFileNoteGateway('gw.example.test')), findsOneWidget);
+    // The gateway comes in with the host (4.0 offers gateways), and the note says so.
+    expect(find.text(l10n.rdpFileNoteGatewayKept('gw.example.test')), findsOneWidget);
     // Nothing of the saved password is on the screen.
     expect(find.textContaining('D08C9DDF'), findsNothing);
     await press(tester, l10n.cloudImpImportN(1));
@@ -508,6 +510,22 @@ void main() {
     final options = ScreenOptions.decode(host.screenOptions);
     expect(options.clipboard, isFalse);
     expect(options.nla, isTrue);
+    expect(options.gateway, const ScreenGateway(host: 'gw.example.test'));
+  });
+
+  testWidgets('a Remote Desktop file through a gateway, where this build offers no gateway: the host connects '
+      'directly, and the note warns of it before anything is imported', (tester) async {
+    const rdp = 'full address:s:pc.example.test\r\ngatewayhostname:s:gw.example.test\r\ngatewayusagemethod:i:1\r\n';
+    files.add(named('Office PC.rdp', rdp));
+    await open(tester, kind: HostFileKind.rdpfile, more: [
+      rdpOfferedProvider.overrideWithValue(true),
+      rdpGatewayOfferedProvider.overrideWithValue(false),
+    ]);
+    await choose(tester);
+    expect(find.text(l10n.rdpFileNoteGateway('gw.example.test')), findsOneWidget);
+    await press(tester, l10n.cloudImpImportN(1));
+    final host = (await db.connectionsDao.getAll()).single;
+    expect(ScreenOptions.decode(host.screenOptions).gateway, isNull);
   });
 
   testWidgets('a Remote Desktop file, where RDP is not offered: nothing of it is read, in any import', (tester) async {
@@ -561,7 +579,7 @@ void main() {
     await open(tester,
         kind: HostFileKind.rdpfile, recording: true, more: [rdpOfferedProvider.overrideWithValue(true)]);
     await choose(tester);
-    expect(find.byKey(const ValueKey('csv-note-rdpGateway')), findsOneWidget);
+    expect(find.byKey(const ValueKey('csv-note-rdpGateway-kept')), findsOneWidget);
     expect(find.textContaining('gw.example.test'), findsNothing);
   });
 

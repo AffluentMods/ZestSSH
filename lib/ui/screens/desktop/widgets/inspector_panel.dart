@@ -7,9 +7,11 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:zestssh/core/theme/zest_colors.dart';
 import 'package:zestssh/database/daos/connections_dao.dart' show ConnectionWithDetails;
 import 'package:zestssh/database/database.dart';
+import 'package:zestssh/features/hosts/host_screens.dart' show HostScreensSection, openHostScreenInTab;
 import 'package:zestssh/features/hosts/widgets/host_panel_sections.dart' show addPortForwardFor;
 import 'package:zestssh/features/snippets/run_snippet.dart';
 import 'package:zestssh/features/snippets/state/snippet_usage_provider.dart';
+import 'package:zestssh/features/terminal/terminal_dictation.dart' show voiceInputSupportedProvider;
 import 'package:zestssh/providers/connection_providers.dart';
 import 'package:zestssh/providers/core_providers.dart' show portForwardRulesForConnectionProvider;
 import 'package:zestssh/router/link_pages.dart' show openShellSection;
@@ -27,6 +29,7 @@ import 'package:zestssh/providers/command_history_providers.dart';
 import 'package:zestssh/providers/desktop_providers.dart';
 import 'package:zestssh/providers/snippet_providers.dart';
 import 'package:zestssh/providers/terminal_providers.dart';
+import 'package:zestssh/ui/screens/desktop/widgets/inspector_speech_tool.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/session_slide_panel.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/snippet_detail_view.dart' show snippetCommandChipSpans;
 import 'package:zestssh/ui/widgets/redacted_text.dart';
@@ -196,7 +199,8 @@ class InspectorPanel extends ConsumerWidget {
   return (forHost: forHost, often: used.take(limit - forHost.length).toList());
 }
 
-/// The Tools tab (3.0): this host's snippets, the commands run here lately,
+/// The Tools tab (3.0): speech to text for this session (4.0, on a computer
+/// where something listens), this host's snippets, the commands run here lately,
 /// and this host's port forwards, each run through the app's own path.
 class InspectorTools extends ConsumerStatefulWidget {
   const InspectorTools({
@@ -311,10 +315,23 @@ class _InspectorToolsState extends ConsumerState<InspectorTools> {
           onRun: terminal == null ? null : () => _runSnippet(s, terminal),
         );
 
+    // Speech to text (4.0) for this session's prompt, where something listens
+    // (not on Linux) and there is a prompt (not a session that is files only).
+    final speech = terminal != null &&
+        ref.watch(voiceInputSupportedProvider) &&
+        !ref.read(activeSessionsProvider.notifier).isFilesOnly(widget.sessionId);
+
     return ZestScrollFade(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
         children: [
+          // ── Speech to text ──
+          if (speech) ...[
+            _SectionHead(label: l10n.terminalSpeechToText),
+            const SizedBox(height: 8),
+            InspectorSpeechTool(sessionId: widget.sessionId),
+          ],
+
           // ── For this host ──
           _SectionHead(
             label: l10n.termToolsForThisHost,
@@ -384,6 +401,15 @@ class _InspectorToolsState extends ConsumerState<InspectorTools> {
             _Note(l10n.termToolsNoForwards)
           else
             for (final r in forwards) _ForwardRow(key: ValueKey('inspector-forward-${r.id}'), rule: r),
+
+          // ── This host's screens (4.0): each opened in a tab, in this session's space ──
+          if (connId != null)
+            HostScreensSection(
+              hostId: connId,
+              topPadding: 14,
+              onOpen: (s) => openHostScreenInTab(context, ref, s,
+                  space: ref.read(activeSessionsProvider.notifier).spaceOfConnection(connId)),
+            ),
         ],
       ),
     );

@@ -16,6 +16,7 @@ import 'package:zestssh/features/screens/session/screen_team_rules.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/models/enums.dart';
 import 'package:zestssh/providers/core_providers.dart';
+import 'package:zestssh/providers/desktop_providers.dart' show connectionEditorTargetProvider;
 import 'package:zestssh/providers/purchase_providers.dart';
 import 'package:zestssh/theme/app_theme.dart';
 import 'package:zestssh/theme/ui_density.dart' show ZestDensity;
@@ -43,6 +44,8 @@ void main() {
   late AppDatabase db;
 
   setUp(() async {
+    // These tests look at what a screen's More options hold: open from the start.
+    debugScreenMoreOpen = true;
     debugTopSnackBarOnPhone = true;
     db = AppDatabase.forTesting(NativeDatabase.memory());
     final at = DateTime(2026, 11, 8);
@@ -67,6 +70,7 @@ void main() {
   });
 
   tearDown(() async {
+    debugScreenMoreOpen = null;
     debugHostFormOnComputer = null;
     debugTopSnackBarOnPhone = null;
     await db.close();
@@ -401,5 +405,60 @@ void main() {
     expect(defaultIconIdFor('ssh'), isNull);
     expect([for (final p in ['ssh', 'mosh', 'et', 'sftp', 'ftps', 'vnc', 'telnet']) screenCarrierKind(p)],
         [true, true, true, false, false, false, false]);
+  });
+
+  group('a saved SSH host offers a screen of its own (4.0)', () {
+    setUp(() => ConnectionEditScreen.debugDesktopShell = true);
+    tearDown(() => ConnectionEditScreen.debugDesktopShell = null);
+
+    testWidgets('under Protocol: "Remote screen for this host? Add a screen", which closes the editor and opens a new '
+        'screen reached through the host, VNC or RDP asked first', (tester) async {
+      debugHostFormOnComputer = true;
+      var closed = 0;
+      await pump(tester, ConnectionEditScreen(connectionId: 'h-gw', inDialog: true, onClose: () => closed++));
+      expect(keyed('host-edit-add-screen-line'), findsOneWidget);
+      expect(anywhere(en.hostEditScreenLine), findsOneWidget);
+      await tester.tap(keyed('host-edit-add-screen'));
+      await settle(tester);
+      await tester.tap(keyed('host-screen-kind-vnc'));
+      await settle(tester);
+      expect(closed, 1, reason: "the host's own editor closes first");
+      final c = ProviderScope.containerOf(tester.element(find.byType(Scaffold).first));
+      final target = c.read(connectionEditorTargetProvider)!;
+      expect(target.connectionId, isNull);
+      expect(target.initialProtocol, ConnectionProtocol.vnc);
+      expect(target.initialVia, 'h-gw');
+      expect(target.initialLabel, 'gw VNC');
+      await finish(tester);
+    });
+
+    testWidgets('a screen host, and a host that carries none, have no such line', (tester) async {
+      debugHostFormOnComputer = true;
+      await pump(tester, ConnectionEditScreen(connectionId: 's-desk', inDialog: true, onClose: () {}));
+      expect(keyed('host-edit-add-screen-line'), findsNothing);
+      await finish(tester);
+      await pump(tester, ConnectionEditScreen(connectionId: 'h-files', inDialog: true, onClose: () {}));
+      expect(keyed('host-edit-add-screen-line'), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets("a new RDP screen of a host: the host's own address on 3389, through it, named as asked",
+        (tester) async {
+      debugHostFormOnComputer = true;
+      await pump(
+          tester,
+          ConnectionEditScreen(
+              inDialog: true,
+              onClose: () {},
+              initialProtocol: ConnectionProtocol.rdp,
+              initialVia: 'h-gw',
+              initialHost: 'gw.example.com',
+              initialLabel: 'gw RDP'));
+      expect(anywhere('gw'), findsWidgets);
+      expect(find.byWidgetPredicate((w) => w is TextField && w.controller?.text == '3389'), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is TextField && w.controller?.text == 'gw.example.com'), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is TextField && w.controller?.text == 'gw RDP'), findsOneWidget);
+      await finish(tester);
+    });
   });
 }

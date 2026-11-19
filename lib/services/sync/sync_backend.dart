@@ -62,6 +62,15 @@ extension SyncBackendKindX on SyncBackendKind {
   /// Whether this backend is the paid, hosted option. Everything else is a
   /// bring-your-own store the user pays nothing to ZestSSH for.
   bool get isHosted => this == SyncBackendKind.zestServer;
+
+  /// Whether the store itself refuses a write that was based on an older
+  /// version than it holds. A ZestSSH server compares versions as it writes,
+  /// and S3 takes a condition with the write. WebDAV and Google Drive take
+  /// any write: there the app reads the version first and writes after, so
+  /// two devices that sync in the same moment can both read the same version
+  /// and the later write stands. (The other device still holds its change,
+  /// and sends it at its next sync.)
+  bool get refusesCrossingWrites => this != SyncBackendKind.webdav && this != SyncBackendKind.googleDrive;
 }
 
 /// A pluggable transport + storage target for end-to-end-encrypted cloud

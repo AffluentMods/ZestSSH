@@ -7,7 +7,12 @@ import 'package:zestssh/services/ftps/ftps_session.dart' show ftpsFailureText;
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/l10n/l10n_global.dart';
 import 'package:zestssh/services/sftp_service.dart'
-    show SftpFileTooLargeException, SftpNameNotInCommandException, SftpNotAFileException, SftpWrittenInPlaceException;
+    show
+        SftpFileTooLargeException,
+        SftpNameNotInCommandException,
+        SftpNotAFileException,
+        SftpSetAsideException,
+        SftpWrittenInPlaceException;
 import 'package:zestssh/services/sftp_transfer_safety.dart' show SftpIntegrityException;
 import 'package:zestssh/services/transfer_cancel_token.dart';
 
@@ -72,6 +77,9 @@ final _sentenceEnds = ['.', String.fromCharCode(0x3002), String.fromCharCode(0x0
 /// [said] as a sentence that another can follow: with a full stop behind it
 /// where it ends in what a server or a system said, which ends in none.
 String _asSentence(String said) => _sentenceEnds.any(said.endsWith) ? said : '$said.';
+
+/// The name of the file at [path] on the server, without its folder.
+String _leaf(String path) => path.substring(path.lastIndexOf('/') + 1);
 
 /// Short, human explanation of [error], phrased for the SFTP UI.
 ///
@@ -142,6 +150,13 @@ String sftpErrorMessage(
         ? t.sftpErrCameShort(cause.expected, cause.actual)
         : sftpErrorMessage(cause, name: name, op: op, l10n: t);
     return '${_asSentence(why)} ${t.sftpErrWrittenInPlace(target)}';
+  }
+
+  // Moved aside to make room, and neither the new file put in its place nor
+  // the old one put back: what ended it, and where both are on the server.
+  if (error is SftpSetAsideException) {
+    final why = sftpErrorMessage(error.cause, name: name, op: op, l10n: t);
+    return '${_asSentence(why)} ${t.sftpErrSetAside(target, _leaf(error.asidePath), _leaf(error.stagedPath))}';
   }
 
   if (error is SftpStatusError) {

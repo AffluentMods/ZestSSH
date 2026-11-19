@@ -1526,6 +1526,22 @@ abstract final class ErrorCodes {
     since: '4.0',
   );
 
+  static const screenHandshakeTimeout = ErrorCode(
+    'ZS-1828',
+    title: 'The remote screen did not finish connecting',
+    means: 'The screen\'s server (or the RD Gateway in front of it) took the connection and then said nothing more for '
+        'a minute, or stopped half way, so ZestSSH stopped waiting and closed the connection. Nothing was changed on '
+        'the server, and your other sessions are not affected.',
+    fix: [
+      'Try again in a moment: a server that is starting, or very busy, can be slow to answer.',
+      'Check the port in the host\'s settings: something other than a VNC or RDP server listening there takes the '
+          'connection and never answers as one.',
+      'Where the screen is reached through an SSH host or a VPN, check that it is still connected.',
+    ],
+    support: 'Copy details says how long it waited.',
+    since: '4.0',
+  );
+
   static const xProgramToolsMissing = ErrorCode(
     'ZS-1809',
     title: 'The SSH host has no Xvnc or no xauth for an X program',
@@ -2070,6 +2086,7 @@ abstract final class ErrorCodes {
     screenGatewayUnsupported,
     screenGatewayRefused,
     screenGatewayUnavailable,
+    screenHandshakeTimeout,
     updateDownloadFailed,
     updateNotSigned,
     updateFileMismatch,

@@ -129,7 +129,7 @@ void main() {
     expect(ScreenOptions.decode(importedScreenOptions(row)).gateway, isNull, reason: 'not offered: it connects directly');
     final none = readRdpFileHosts('full address:s:pc.example.test\n', rdp: true).rows.single;
     expect(none.gateway, isNull);
-    expect(importedScreenOptions(none, gateway: true), ScreenOptions.encodeDefaults());
+    expect(importedScreenOptions(none, gateway: true), ScreenOptions.forNewHost.encode());
   });
 
   test('every monitor, or the ones picked', () {

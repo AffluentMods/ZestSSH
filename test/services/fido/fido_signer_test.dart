@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zest_ssh_core/dartssh2.dart';
+import 'package:zestssh/services/fido/cbor.dart';
 import 'package:zestssh/services/fido/ctap2.dart';
 import 'package:zestssh/services/fido/fido_key_pair.dart';
 import 'package:zestssh/services/fido/fido_platform.dart';
@@ -44,6 +45,14 @@ class _Person {
 }
 
 Matcher _fails(FidoFailureKind kind) => throwsA(isA<FidoFailure>().having((f) => f.kind, 'kind', kind));
+
+/// Whether [request] is clientPIN's getPinToken (or its CTAP 2.1 form with
+/// permissions): the one that sends the PIN.
+bool _sendsPin(Uint8List request) {
+  if (request[0] != 0x06) return false;
+  final p = cborDecode(Uint8List.sublistView(request, 1))! as Map;
+  return p[2] == 0x05 || p[2] == 0x09;
+}
 
 void main() {
   final data = Uint8List.fromList('the session and the request'.codeUnits);
@@ -117,6 +126,51 @@ void main() {
       final presents = person.seen.where((p) => p.step == FidoStep.present).toList();
       expect(presents.map((p) => p.again), [false, true]);
       expect(phone.nfcBegun, 2);
+    });
+
+    test('a wrong PIN whose answer is lost as the key leaves is not sent again: the key\'s count fell, so it is asked for',
+        () async {
+      final soft = SoftKey(pin: '1234');
+      final key = await keyOn(soft, flags: kSkUserPresenceRequired | kSkUserVerificationRequired, pin: '1234');
+      final phone = TestPhone()
+        ..cards.addAll([SoftNfcCard(soft, leavesAnswering: _sendsPin), SoftNfcCard(soft)]);
+      final signer = FidoSigner(platform: phone);
+      final person = _Person(signer, pins: ['0000', '1234']);
+      expect(await signer.sign(key, data, label: 'web-01'), isNotEmpty);
+      expect(soft.wrongPinTries, 1, reason: 'the wrong PIN reached the key once, and was not sent to it again');
+      final pins = person.seen.where((p) => p.step == FidoStep.pin).toList();
+      expect(pins, hasLength(2));
+      expect(pins.last.pinWrong, isTrue);
+      expect(pins.last.pinTriesLeft, 7);
+      expect(soft.pinRetries, 8);
+      expect(phone.nfcBegun, 2);
+    });
+
+    test('a right PIN whose answer is lost is sent again untyped: the key\'s count did not fall', () async {
+      final soft = SoftKey(pin: '1234');
+      final key = await keyOn(soft, flags: kSkUserPresenceRequired | kSkUserVerificationRequired, pin: '1234');
+      soft.pinRetries = 6;
+      final phone = TestPhone()
+        ..cards.addAll([SoftNfcCard(soft, leavesAnswering: _sendsPin), SoftNfcCard(soft)]);
+      final signer = FidoSigner(platform: phone);
+      final person = _Person(signer, pins: ['1234']);
+      expect(await signer.sign(key, data, label: 'web-01'), isNotEmpty);
+      expect(person.steps.where((s) => s == FidoStep.pin), hasLength(1));
+      expect(soft.wrongPinTries, 0);
+    });
+
+    test('a key that does not say its count of tries: a PIN whose answer was lost is typed again', () async {
+      final soft = SoftKey(pin: '1234', tellsPinRetries: false);
+      final key = await keyOn(soft, flags: kSkUserPresenceRequired | kSkUserVerificationRequired, pin: '1234');
+      final phone = TestPhone()
+        ..cards.addAll([SoftNfcCard(soft, leavesAnswering: _sendsPin), SoftNfcCard(soft)]);
+      final signer = FidoSigner(platform: phone);
+      final person = _Person(signer, pins: ['1234', '1234']);
+      expect(await signer.sign(key, data, label: 'web-01'), isNotEmpty);
+      final pins = person.seen.where((p) => p.step == FidoStep.pin).toList();
+      expect(pins, hasLength(2));
+      expect(pins.last.pinAgain, isTrue);
+      expect(pins.last.pinWrong, isFalse, reason: 'nothing says it was wrong');
     });
 
     test('a key that keeps leaving is given up on', () async {
@@ -237,7 +291,8 @@ void main() {
       final soft = SoftKey();
       final phone = TestPhone()..cards.addAll([SoftNfcCard(soft), SoftNfcCard(soft)]);
       final signer = FidoSigner(platform: phone);
-      final made = await signer.makeKey(ed25519: true, verifyRequired: false, label: 'My key', comment: 'made on a phone');
+      final made = (await signer.makeKey(ed25519: true, verifyRequired: false, label: 'My key', comment: 'made on a phone')).key;
+      expect(soft.lastRequest!.containsKey(6), isFalse, reason: 'no credProtect where the PIN is not asked every time');
       expect(made.type, OpenSSHSkKeyPair.ed25519Type);
       expect(made.application, 'ssh:');
       expect(made.flags, kSkUserPresenceRequired);
@@ -254,9 +309,51 @@ void main() {
       final signer = FidoSigner(platform: phone);
       final person = _Person(signer, pins: ['1234']);
       final made = await signer.makeKey(ed25519: false, verifyRequired: true, label: 'My key');
-      expect(made.type, OpenSSHSkKeyPair.ecdsaType);
-      expect(made.verifyRequired, isTrue);
+      expect(made.key.type, OpenSSHSkKeyPair.ecdsaType);
+      expect(made.key.verifyRequired, isTrue);
       expect(person.steps, [FidoStep.present, FidoStep.working, FidoStep.pin, FidoStep.working]);
+    });
+
+    test('asking for the PIN every time tells the security key too (credProtect 3): it then signs only with the PIN',
+        () async {
+      final soft = SoftKey(pin: '1234');
+      final phone = TestPhone()..cards.add(SoftNfcCard(soft));
+      final signer = FidoSigner(platform: phone);
+      _Person(signer, pins: ['1234', '1234']);
+      final made = await signer.makeKey(ed25519: true, verifyRequired: true, label: 'My key');
+      expect(soft.lastRequest![6], {'credProtect': kCredProtectUvRequired});
+      expect(made.keyRequiresPin, isTrue);
+
+      // Signing asks for the PIN, and the assertion is made with its token:
+      // user verified.
+      phone.cards.add(SoftNfcCard(soft));
+      final blob = await signer.sign(made.key, data, label: 'web-01');
+      expect(soft.lastRequest!.containsKey(6), isTrue, reason: 'getAssertion carries the PIN token\'s parameter');
+      final flags = blob[blob.length - 5];
+      expect(flags & 0x04, 0x04, reason: 'the signature says the user was verified');
+
+      // The key file's flag cleared: the security key itself still will not
+      // use the key with a touch alone.
+      final cleared = OpenSSHSkKeyPair(
+        type: made.key.type,
+        publicKey: made.key.publicKey,
+        application: made.key.application,
+        flags: kSkUserPresenceRequired,
+        keyHandle: made.key.keyHandle,
+      );
+      phone.cards.add(SoftNfcCard(soft));
+      await expectLater(signer.sign(cleared, data, label: 'web-01'), _fails(FidoFailureKind.wrongKey));
+    });
+
+    test('a security key without credProtect: the key is made, and the PIN rule is said to be the app\'s own', () async {
+      final soft = SoftKey(pin: '1234', supportsCredProtect: false);
+      final phone = TestPhone()..cards.add(SoftNfcCard(soft));
+      final signer = FidoSigner(platform: phone);
+      _Person(signer, pins: ['1234']);
+      final made = await signer.makeKey(ed25519: true, verifyRequired: true, label: 'My key');
+      expect(soft.lastRequest!.containsKey(6), isFalse, reason: 'not sent to a key that does not list it');
+      expect(made.keyRequiresPin, isFalse);
+      expect(made.key.verifyRequired, isTrue, reason: 'the app still asks for the PIN at every use');
     });
 
     test('a key that makes no Ed25519, and asking for a PIN each time of a key that has none', () async {

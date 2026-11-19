@@ -17,6 +17,7 @@ import 'package:zestssh/features/networks/engine/connection_resolver.dart';
 import 'package:zestssh/features/orchards/record/local_record.dart';
 import 'package:zestssh/features/orchards/record/orchard_record.dart';
 import 'package:zestssh/features/orchards/sync/crate_placement.dart';
+import 'package:zestssh/features/screens/model/screen_options.dart';
 import 'package:zestssh/features/screens/session/screen_shell_service.dart';
 import 'package:zestssh/features/screens/session/screen_target.dart';
 import 'package:zestssh/features/teams/crypto/account_keys.dart';
@@ -165,6 +166,22 @@ void main() {
     await server.next(SSH_Message_Channel_EOF.messageId);
     expect(sessions().isXProgram(id), isFalse);
     expect(sessions().isScreen(id), isFalse);
+  });
+
+  test("an X program's screen starts as a new host does: on a computer this device's clipboard goes to the remote "
+      'only when its person pastes into the picture (it went whenever the picture took the keyboard)', () async {
+    await start();
+    engine.onOpen = (s) => s.connect();
+    final id = await openX(program: 'xclock');
+    await server.letIn();
+    final exec = await scriptAsked();
+    server.send([exec.data('ZSX {"socket":"/tmp/zestssh-x.Q3/vnc.sock","display":3}\n')]);
+    await server.confirmChannel();
+    await until(() => stateOf(id)?.status == SessionStatus.connected, 'the X program to show');
+    final shell = stateOf(id)!.session!.shell as ScreenShellService;
+    expect(shell.options.clipboardOnPaste, isTrue);
+    expect(shell.options, ScreenOptions.forNewHost);
+    await sessions().endSession(id);
   });
 
   test('the program ends: the tab stays, ended with its exit status, and nothing connects again by itself',

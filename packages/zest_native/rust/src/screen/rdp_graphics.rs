@@ -670,16 +670,55 @@ fn count_surface_commands(d: &[u8], stats: &mut Stats) {
                     c => format!("surface/codec{c}"),
                 };
                 stats.fastpath.entry(name).or_default().add(u64::from(w) * u64::from(h), u64::from(len));
-                at = ex + 12 + header + len as usize;
+                let Some(next) = after_surface_bits(ex, header, len, d.len()) else {
+                    return;
+                };
+                at = next;
             }
             _ => return,
         }
     }
 }
 
+/// Where the command after a Surface Bits command starts: past its 12 byte header at `ex`, its
+/// extended header and its `len` bytes of data; None where that is past the end of the update
+/// (`total` bytes), which ends the count. Worked out in 64 bits: `len` is the server's, and
+/// where `usize` is 32 bits a length near 2^32 added in `usize` wraps back to an offset already
+/// counted, so the count never ended.
+fn after_surface_bits(ex: usize, header: usize, len: u32, total: usize) -> Option<usize> {
+    let next = (ex as u64).checked_add(12)?.checked_add(header as u64)?.checked_add(u64::from(len))?;
+    if next > total as u64 {
+        return None;
+    }
+    usize::try_from(next).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_surface_command_whose_length_wraps_a_32_bit_offset_ends_the_count() {
+        // The 22 byte update: Set Surface Bits at 0, its bitmap data header at 10, and a data
+        // length that brings a 32 bit offset back to 0.
+        let len = 0xFFFF_FFEA_u32;
+        assert_eq!(10u32.wrapping_add(12).wrapping_add(len), 0, "what 32 bit arithmetic made of it");
+        assert_eq!(after_surface_bits(10, 0, len, 22), None);
+        assert_eq!(after_surface_bits(10, 24, u32::MAX, 22), None);
+        // A command that fits is stepped over, to its end exactly and no further.
+        assert_eq!(after_surface_bits(10, 0, 0, 22), Some(22));
+        assert_eq!(after_surface_bits(10, 0, 8, 30), Some(30));
+        assert_eq!(after_surface_bits(10, 0, 9, 30), None, "its data runs past the update");
+        assert_eq!(after_surface_bits(10, 24, 4, 64), Some(50));
+
+        // The whole count over that update returns (it has nothing after the command to count).
+        let mut update = vec![0u8; 22];
+        update[0] = 0x01; // CMDTYPE_SET_SURFACE_BITS
+        update[18..22].copy_from_slice(&len.to_le_bytes());
+        let mut stats = Stats::new("test");
+        count_surface_commands(&update, &mut stats);
+        assert_eq!(stats.fastpath.len(), 1, "counted once");
+    }
 
     #[test]
     fn a_server_has_two_graphics_channels_at_once_however_many_it_asks_for() {

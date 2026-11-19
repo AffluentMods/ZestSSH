@@ -451,12 +451,6 @@ class SnippetDetailEditorState extends ConsumerState<SnippetDetailEditor> {
     }
   }
 
-  /// Footer "Clear" - discard the current draft (dirty guard first) and reset
-  /// the pane to a blank new snippet.
-  Future<void> _onClearPressed() async {
-    if (await confirmLeave()) widget.onRequestNew();
-  }
-
   /// Header "X" - leave the pane (dirty guard first). The host decides where
   /// that goes (reset-to-new when docked, pop when a narrow route).
   Future<void> _onClosePressed() async {
@@ -557,7 +551,6 @@ class SnippetDetailEditorState extends ConsumerState<SnippetDetailEditor> {
       subtitleMono: true,
       isDirty: _dirty,
       onSave: _onSavePressed,
-      onCancel: _onClearPressed,
       onClose: _onClosePressed,
       headerAction: Row(
         mainAxisSize: MainAxisSize.min,

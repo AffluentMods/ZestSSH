@@ -1831,10 +1831,15 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('host-panel-more')));
       await settle(tester);
       expect(find.text(lookupAppLocalizations(const Locale('en')).hpanelOpenInSplit), findsWidgets);
-      // A tap on the scrim, beside the menu, closes both.
+      // A tap beside the menu closes the menu alone (as every menu does: the
+      // sheet's own Open in split stays); a second tap on the scrim closes the sheet.
+      final splitText = find.text(lookupAppLocalizations(const Locale('en')).hpanelOpenInSplit);
+      final withMenu = splitText.evaluate().length;
       await tester.tapAt(const Offset(300, 700));
       await settle(tester);
-      expect(find.text(lookupAppLocalizations(const Locale('en')).hpanelOpenInSplit), findsNothing);
+      expect(splitText.evaluate().length, lessThan(withMenu), reason: 'the menu closed');
+      await tester.tapAt(const Offset(300, 700));
+      await settle(tester);
       expect(find.byKey(const ValueKey('host-panel-sheet')), findsNothing);
       final more = find.byKey(const ValueKey('host-card-more-c0'));
       expect(more, findsOneWidget, reason: 'in sight, nothing behind a hover');

@@ -50,6 +50,28 @@ class ScreenKeyboard {
   /// keyboard go). Null: the key goes to the remote like any key.
   VoidCallback? onMenuKey;
 
+  /// Called on the keys that leave full screen ([_leavesFullScreen]), which
+  /// then never reach the remote. Null, as it is outside full screen: the
+  /// keys go to the remote like any keys.
+  VoidCallback? onLeaveFullScreen;
+
+  /// Whether [e] going down is the way out of full screen: Break (Pause)
+  /// with Ctrl and Alt, as Windows' own Remote Desktop has it, on every
+  /// computer; and on a Mac also F with Control and Command, which is what
+  /// macOS itself leaves a full screen with.
+  bool _leavesFullScreen(KeyEvent e) {
+    final l = e.logicalKey;
+    if ((l == LogicalKeyboardKey.pause || l == LogicalKeyboardKey.cancel || e.physicalKey == PhysicalKeyboardKey.pause) &&
+        _ctrlAltAlone) {
+      return true;
+    }
+    if (defaultTargetPlatform == TargetPlatform.macOS && l == LogicalKeyboardKey.keyF) {
+      final k = HardwareKeyboard.instance;
+      return k.isControlPressed && k.isMetaPressed && !k.isAltPressed;
+    }
+    return false;
+  }
+
   /// The key that opens the screen menu: F8 unless Settings, Remote screens
   /// says another.
   LogicalKeyboardKey menuKey = LogicalKeyboardKey.f8;
@@ -65,6 +87,19 @@ class ScreenKeyboard {
   /// remote (4.0). Null, as it is while the remote has one display:
   /// the keys go to the remote like any keys.
   void Function(bool next)? onDisplayKey;
+
+  /// Asked on each key that goes down, before the remote has it: true where
+  /// the app took it for itself (one of the app's shortcuts for remote
+  /// screens: Alt and a digit shows that display), and then it never
+  /// reaches the remote. Null: none is.
+  bool Function(KeyEvent e)? onAppKey;
+
+  /// Called when a key that pastes on the remote goes down ([_pastes]),
+  /// before that key is sent: it sends this device's clipboard to the
+  /// remote, and the key follows when it is done, so what is pasted is what
+  /// this device holds. Null: the key goes at once like any key (the
+  /// clipboard is not shared, or goes as the picture takes the keyboard).
+  Future<void> Function()? onPaste;
 
   /// A Mac's Command key goes to the remote as Ctrl (4.0), so
   /// Cmd+C is the remote's Ctrl+C. Off: it goes as the Super (Windows)
@@ -85,6 +120,53 @@ class ScreenKeyboard {
   final Map<PhysicalKeyboardKey, List<ScreenKey>> _lifted = {};
   final Map<PhysicalKeyboardKey, List<ScreenKey>> _latchedFor = {};
   final Set<PhysicalKeyboardKey> _menuKeys = {};
+
+  // A key that pastes, held back while the clipboard goes ([onPaste]), and
+  // every key event after it, kept in their order until it has gone down: a
+  // Ctrl let go meanwhile reached the remote before the V it was held for,
+  // which then typed a v. [_pasteRun] tells a paste that was given up
+  // ([releaseAll]) from the one after it.
+  ({PhysicalKeyboardKey physical, ScreenKey key})? _pasting;
+  final List<KeyEvent> _afterPaste = [];
+  int _pasteRun = 0;
+
+  /// Whether [e] going down pastes on the remote, by what the remote holds
+  /// of the modifiers: V with Ctrl (and nothing but Shift beside it, as a
+  /// terminal's paste has), or Insert with Shift alone.
+  bool _pastes(KeyEvent e) {
+    if (e.logicalKey == LogicalKeyboardKey.keyV) return _ctrl && !_alt && !_meta;
+    if (e.logicalKey == LogicalKeyboardKey.insert) return _shift && !_ctrl && !_alt && !_meta;
+    return false;
+  }
+
+  /// Sends [k] of [physical] once [onPaste] is done, as its key down, then
+  /// every key event that came meanwhile, in its order (its own key up, a
+  /// modifier let go, the next keys typed).
+  void _sendAfterPaste(PhysicalKeyboardKey physical, ScreenKey k) {
+    _pasting = (physical: physical, key: k);
+    final run = ++_pasteRun;
+    void go() {
+      if (run != _pasteRun || _pasting == null) return;
+      final p = _pasting!;
+      _pasting = null;
+      if (enabled) {
+        _down[p.physical] = p.key;
+        _send(p.key.keysym, p.key.scancode, true);
+      }
+      // Until a key among them pastes again and holds the rest back.
+      while (_pasting == null && _afterPaste.isNotEmpty) {
+        handle(_afterPaste.removeAt(0));
+      }
+    }
+
+    Future<void> sent;
+    try {
+      sent = onPaste!();
+    } catch (_) {
+      sent = Future<void>.value();
+    }
+    sent.then((_) => go(), onError: (Object _) => go());
+  }
 
   /// The keys held now, as sent.
   Iterable<ScreenKey> get held => _down.values;
@@ -107,11 +189,29 @@ class ScreenKeyboard {
   /// A key event from the view's Focus.
   KeyEventResult handle(KeyEvent e) {
     final physical = e.physicalKey;
+    if (_pasting case final p?) {
+      // The pasting key's repeat (or a second key down for it) while it is
+      // held asks for nothing more; everything else, a new press after it was
+      // let go too, waits its turn behind the paste.
+      if (e is! KeyUpEvent &&
+          physical == p.physical &&
+          !_afterPaste.any((q) => q is KeyUpEvent && q.physicalKey == physical)) {
+        return KeyEventResult.handled;
+      }
+      _afterPaste.add(e);
+      return KeyEventResult.handled;
+    }
     switch (e) {
       case KeyDownEvent():
         if (e.logicalKey == menuKey && onMenuKey != null && !_ctrl && !_alt && !_meta && !_shift) {
           _menuKeys.add(physical);
           if (!(onReleaseKey?.call() ?? false)) onMenuKey!();
+          return KeyEventResult.handled;
+        }
+        if (onLeaveFullScreen != null && _leavesFullScreen(e)) {
+          // Swallowed with its repeats and its key up, as the menu key is.
+          _menuKeys.add(physical);
+          onLeaveFullScreen!();
           return KeyEventResult.handled;
         }
         if (onDisplayKey != null &&
@@ -122,11 +222,27 @@ class ScreenKeyboard {
           onDisplayKey!(e.logicalKey == LogicalKeyboardKey.arrowRight);
           return KeyEventResult.handled;
         }
+        if (onAppKey?.call(e) ?? false) {
+          // Swallowed with its repeats and its key up, as the menu key is.
+          _menuKeys.add(physical);
+          // Alt went to the remote as it went down: a Ctrl tap while it is
+          // held, so letting Alt go alone does not open the menu bar of the
+          // window there (Windows does on an Alt pressed and let go alone).
+          if (enabled && _alt) {
+            _send(ScreenKey.controlLeft.keysym, ScreenKey.controlLeft.scancode, true);
+            _send(ScreenKey.controlLeft.keysym, ScreenKey.controlLeft.scancode, false);
+          }
+          return KeyEventResult.handled;
+        }
         if (!enabled) return KeyEventResult.ignored;
         // A key down for a key already down (a lost key up): let it go first.
         if (_down.containsKey(physical)) _up(physical);
         final k = _keyFor(e);
         if (k == null) return KeyEventResult.ignored;
+        if (onPaste != null && _pastes(e)) {
+          _sendAfterPaste(physical, k);
+          return KeyEventResult.handled;
+        }
         final latched = _pressLatched();
         if (latched.isNotEmpty) _latchedFor[physical] = latched;
         // AltGr on Windows comes as Ctrl and Alt held with a character: the
@@ -226,6 +342,10 @@ class ScreenKeyboard {
 
   /// Lets go of every key held (focus gone, the view hidden, the app locked).
   void releaseAll() {
+    // A paste under way is given up: its key never goes, nor what came after.
+    _pasting = null;
+    _afterPaste.clear();
+    _pasteRun++;
     final keys = _down.keys.toList();
     for (final k in keys.reversed) {
       _up(k);

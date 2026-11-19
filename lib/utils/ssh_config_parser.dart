@@ -1,13 +1,17 @@
 /// Low-level parser for OpenSSH config file format.
 ///
 /// Handles `Host` blocks with directives like HostName, Port, User,
-/// IdentityFile, ProxyJump, etc. Wildcard blocks (`Host *`) are
-/// parsed but typically filtered out by the caller.
+/// IdentityFile, ProxyJump, etc. Wildcard blocks (`Host *`) are parsed as
+/// any other: what they say holds for every host they match ([valuesFor]).
 class SshConfigParser {
-  /// Parse SSH config content into a list of directive maps.
+  /// Parse SSH config content into a list of directive maps, in the file's
+  /// order.
   ///
-  /// Each map represents one `Host` block with key-value pairs
-  /// for directives found within that block.
+  /// Each map represents one `Host` block with key-value pairs for
+  /// directives found within that block. Of a directive written twice in a
+  /// block the first is kept, as OpenSSH takes the first value it gets.
+  /// What stands before the first `Host` line holds for every host: it comes
+  /// as a block of `Host *`, marked with [global].
   static List<Map<String, String>> parse(String content) {
     final blocks = <Map<String, String>>[];
     Map<String, String>? currentBlock;
@@ -30,14 +34,72 @@ class SshConfigParser {
         // Match blocks are more complex - treat as separate block
         currentBlock = {'Match': value};
         blocks.add(currentBlock);
-      } else if (currentBlock != null) {
+      } else {
+        if (currentBlock == null) {
+          currentBlock = {'Host': '*', global: ''};
+          blocks.add(currentBlock);
+        }
         // Normalise common directive names to canonical casing
         final normalised = _normaliseKey(key);
-        currentBlock[normalised] = value;
+        currentBlock.putIfAbsent(normalised, () => value);
       }
     }
 
     return blocks;
+  }
+
+  /// The key that marks the block of what stood before the first `Host` line.
+  static const global = ' global';
+
+  /// What [blocks] say for the host [alias], as OpenSSH works it out: the
+  /// blocks are gone through in the file's order, a `Host` block counts
+  /// where one of its patterns matches [alias] and none of its negated
+  /// patterns (`!name`) does, and of each directive the first value found is
+  /// the one that holds. `Match` blocks are left out: what they ask (a
+  /// command's answer, the local user) is not known here.
+  ///
+  /// For many hosts of one file, make a [SshConfigIndex] once and ask it.
+  static Map<String, String> valuesFor(List<Map<String, String>> blocks, String alias) =>
+      SshConfigIndex(blocks).valuesFor(alias);
+
+  /// Whether the `Host` line [spec] (patterns apart by white space) is for
+  /// [alias]: `*` is any run of characters, `?` any one, and a pattern with
+  /// `!` in front takes [alias] out where it matches.
+  static bool hostMatches(String spec, String alias) {
+    var matched = false;
+    for (final token in spec.split(RegExp(r'\s+'))) {
+      if (token.isEmpty) continue;
+      final negated = token.startsWith('!');
+      if (!_patternMatches(negated ? token.substring(1) : token, alias)) continue;
+      if (negated) return false;
+      matched = true;
+    }
+    return matched;
+  }
+
+  /// Whether [pattern] (with `*` and `?`) is all of [text]. By hand, two
+  /// places at a time, so a pattern of many stars costs no more than the
+  /// two lengths multiplied.
+  static bool _patternMatches(String pattern, String text) {
+    var p = 0, t = 0, star = -1, mark = 0;
+    while (t < text.length) {
+      if (p < pattern.length && (pattern[p] == '?' || pattern[p] == text[t])) {
+        p++;
+        t++;
+      } else if (p < pattern.length && pattern[p] == '*') {
+        star = p++;
+        mark = t;
+      } else if (star != -1) {
+        p = star + 1;
+        t = ++mark;
+      } else {
+        return false;
+      }
+    }
+    while (p < pattern.length && pattern[p] == '*') {
+      p++;
+    }
+    return p == pattern.length;
   }
 
   /// [line], trimmed, as its key and its value: the key ends at the first white
@@ -95,5 +157,63 @@ class SshConfigParser {
       'addkeystoagent': 'AddKeysToAgent',
     };
     return canonical[lower] ?? key;
+  }
+}
+
+/// The blocks of one config file, set out so that what the file says for a
+/// host is found without going through every block for every host: a file
+/// may hold thousands of each, and any file may come here.
+///
+/// A block whose `Host` line holds names only is found by those names. A
+/// block with a pattern in it (`*`, `?`, `!`) is asked for every host; the
+/// first [maxPatternBlocks] of a file are, which is far more than a config
+/// written by a person holds, and the rest say nothing for any host.
+class SshConfigIndex {
+  SshConfigIndex(this.blocks) {
+    for (var i = 0; i < blocks.length; i++) {
+      final spec = blocks[i]['Host'];
+      if (spec == null) continue;
+      final tokens = [
+        for (final t in spec.split(_space))
+          if (t.isNotEmpty) t,
+      ];
+      if (tokens.any((t) => t.contains('*') || t.contains('?') || t.startsWith('!'))) {
+        if (_patterns.length < maxPatternBlocks) _patterns.add(i);
+      } else {
+        for (final t in tokens) {
+          (_byName[t] ??= []).add(i);
+        }
+      }
+    }
+  }
+
+  static const maxPatternBlocks = 256;
+  static final _space = RegExp(r'\s+');
+
+  final List<Map<String, String>> blocks;
+  final _byName = <String, List<int>>{};
+  final _patterns = <int>[];
+
+  final _found = <String, Map<String, String>>{};
+
+  /// [SshConfigParser.valuesFor], for [alias]. Worked out once for a name:
+  /// a file may name one host line after line.
+  Map<String, String> valuesFor(String alias) => _found[alias] ??= _valuesFor(alias);
+
+  Map<String, String> _valuesFor(String alias) {
+    final named = _byName[alias] ?? const <int>[];
+    final matching = [
+      ...named,
+      for (final i in _patterns)
+        if (SshConfigParser.hostMatches(blocks[i]['Host']!, alias)) i,
+    ]..sort();
+    final out = <String, String>{};
+    for (final i in matching) {
+      for (final e in blocks[i].entries) {
+        if (e.key == 'Host' || e.key == SshConfigParser.global) continue;
+        out.putIfAbsent(e.key, () => e.value);
+      }
+    }
+    return out;
   }
 }

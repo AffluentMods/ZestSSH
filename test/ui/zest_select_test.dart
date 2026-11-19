@@ -118,4 +118,85 @@ void main() {
     await tester.pumpAndSettle();
     expect(chosen, 'free');
   });
+
+  testWidgets('sections and search: choices that are not searched come first, a heading over each part, and a '
+      'search over many hosts that filters them, Enter picking the first left', (tester) async {
+    String? chosen = 'gw';
+    final hosts = [for (var i = 1; i <= 12; i++) 'host-$i'];
+    await pump(
+      tester,
+      StatefulBuilder(
+        builder: (context, setState) => ZestSelect<String?>(
+          value: chosen,
+          hint: 'Reach through',
+          items: [
+            const ZestSelectItem(null, 'Directly', icon: LucideIcons.globe, note: 'Straight to its address'),
+            const ZestSelectItem('gw', 'An RD Gateway', icon: LucideIcons.shieldCheck),
+            for (final h in hosts)
+              ZestSelectItem(h, h, note: '10.50.0.${hosts.indexOf(h) + 1}', section: 'Through an SSH host', searchable: true),
+          ],
+          searchHint: 'Search hosts',
+          noMatches: 'No hosts match',
+          onChanged: (v) => setState(() => chosen = v),
+        ),
+      ),
+    );
+    await tester.tap(find.text('An RD Gateway'));
+    await tester.pumpAndSettle();
+    final search = find.byKey(const ValueKey('zest-select-search'));
+    expect(search, findsOneWidget);
+    expect(find.text('THROUGH AN SSH HOST'), findsOneWidget);
+    // Directly and the gateway are above the heading, the hosts under it.
+    final heading = tester.getTopLeft(find.text('THROUGH AN SSH HOST')).dy;
+    expect(tester.getTopLeft(find.text('Directly')).dy, lessThan(heading));
+    expect(tester.getTopLeft(find.text('An RD Gateway').last).dy, lessThan(heading));
+    expect(tester.getTopLeft(find.text('host-1')).dy, greaterThan(heading));
+
+    // Enter with nothing typed picks nothing.
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(chosen, 'gw');
+
+    // By name or address; the choices that are not searched stay.
+    if (search.evaluate().isEmpty) {
+      await tester.tap(find.text('An RD Gateway'));
+      await tester.pumpAndSettle();
+    }
+    await tester.enterText(search, '10.50.0.12');
+    await tester.pumpAndSettle();
+    expect(find.text('host-12'), findsOneWidget);
+    expect(find.text('host-2'), findsNothing);
+    expect(find.text('Directly'), findsOneWidget);
+    await tester.enterText(search, 'nothing like it');
+    await tester.pumpAndSettle();
+    expect(find.text('No hosts match'), findsOneWidget);
+    expect(find.text('THROUGH AN SSH HOST'), findsNothing);
+
+    await tester.enterText(search, 'host-1');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(chosen, 'host-1');
+    expect(search, findsNothing, reason: 'the menu closed');
+
+    // Opened again: the search is empty.
+    await tester.tap(find.text('host-1'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(search).controller!.text, isEmpty);
+    expect(find.text('host-7'), findsOneWidget);
+  });
+
+  testWidgets('with few searchable choices there is no search, and with no searchHint never', (tester) async {
+    await pump(
+      tester,
+      ZestSelect<int>(
+        value: null,
+        hint: 'Pick',
+        items: [for (var i = 0; i < 20; i++) ZestSelectItem(i, 'Item $i')],
+        onChanged: (_) {},
+      ),
+    );
+    await tester.tap(find.text('Pick'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('zest-select-search')), findsNothing);
+  });
 }

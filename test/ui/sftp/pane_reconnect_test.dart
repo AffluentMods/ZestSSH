@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io' show SocketException;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xterm/xterm.dart';
 import 'package:zest_ssh_core/dartssh2.dart';
 import 'package:zestssh/database/database.dart';
+import 'package:zestssh/features/notifications/notification_center.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/providers/core_providers.dart';
 import 'package:zestssh/providers/sftp_sessions_provider.dart';
@@ -539,6 +540,29 @@ void main() {
       await files.settleWithDatabase();
       expect(files.sessions.started, isEmpty);
       expect(find.text(en.sftpConnectToHost), findsOneWidget);
+      await finish(tester);
+    });
+
+    testWidgets('and whose host is saved as Telnet now: Reconnect opens no session (unencrypted, with no SFTP) and '
+        'says that SFTP needs SSH', (tester) async {
+      // Reconnect goes the way a host picked in the Files host pickers goes.
+      final files = await pumpFiles(tester);
+      final at = DateTime(2026, 10, 10);
+      await tester.runAsync(() => files.db.into(files.db.connections).insert(ConnectionsCompanion.insert(
+            id: 'c-s1',
+            label: 'web-01',
+            host: 'web-01.example.com',
+            protocol: const Value('telnet'),
+            createdAt: at,
+            updatedAt: at,
+          )));
+      await closeTab(files);
+      await tester.tap(find.text(en.sftpReconnect));
+      await files.settleWithDatabase();
+      expect(files.sessions.started, isEmpty);
+      // (On a computer a toast is a notice in the notification center.)
+      final said = files.container.read(notificationCenterProvider).history.map((n) => '${n.title} ${n.body ?? ''}');
+      expect(said.where((n) => n.contains(en.desktopShellSftpRequiresSsh)), hasLength(1));
       await finish(tester);
     });
 

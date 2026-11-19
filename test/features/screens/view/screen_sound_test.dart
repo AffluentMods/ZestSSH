@@ -7,6 +7,7 @@ import 'package:zest_native/screen_testing.dart';
 import 'package:zestssh/features/screens/model/screen_action.dart';
 import 'package:zestssh/features/screens/model/screen_options.dart';
 import 'package:zestssh/features/screens/view/screen_controller.dart';
+import 'package:zestssh/features/screens/view/screen_sound_gate.dart';
 import 'package:zestssh/features/screens/view/screen_viewport.dart';
 
 import 'screen_view_fixture.dart';
@@ -104,6 +105,43 @@ void main() {
       c.soundWanted = false;
       c.soundWanted = true;
       expect(engine.sounds, isEmpty);
+    });
+
+    // The sound does not outlive the views of its screen.
+    testWidgets('the view that goes silences the sound; of two views the last one does; a window of its own keeps '
+        'it until it closes; the lock or recording mode silences it with no view left', (tester) async {
+      final (engine, c) = await _connect(tester, {'rate': 48000, 'channels': 2});
+      final session = c.session;
+      c.soundAllowed = true;
+      expect(engine.sounds, [true]);
+      // A second view of the same session (a phone's and a computer's do not meet; a test can).
+      final second = ScreenController(session, decodeTile: syncDecode);
+      await tester.pump();
+      second.soundAllowed = true;
+      c.dispose();
+      expect(engine.sounds, [true], reason: 'the other view still sees it');
+      second.dispose();
+      expect(engine.sounds, [true, false], reason: 'no view left: silent');
+
+      // A view that goes while its screen is shown in a window of its own hands the sound to it.
+      final third = ScreenController(session, decodeTile: syncDecode);
+      await tester.pump();
+      third.soundAllowed = true;
+      expect(engine.sounds, [true, false, true]);
+      third
+        ..handSoundToOwnWindow('s1')
+        ..dispose();
+      expect(engine.sounds, [true, false, true], reason: 'the window of its own is seen');
+      final gate = ScreenSoundGate.of(session);
+      // Locked, or covered by recording mode, with no view left in the main window.
+      gate.blocked = true;
+      expect(engine.sounds, [true, false, true, false]);
+      gate.blocked = false;
+      expect(engine.sounds, [true, false, true, false, true]);
+      // The window closes: nobody sees it.
+      gate.release(ScreenSoundGate.ownWindow('s1'));
+      expect(engine.sounds, [true, false, true, false, true, false]);
+      expect(gate.playing, isFalse);
     });
 
     testWidgets('the session ended: nothing more is said', (tester) async {

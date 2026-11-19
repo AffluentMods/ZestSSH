@@ -1946,6 +1946,11 @@ class _TerminalPaneState extends ConsumerState<_TerminalPane> {
                           // keyboard.
                           keyboardOnTap: !onTouch || ref.watch(hardwareKeyboardUseProvider).keyboardOnTap,
                           onKeyboardInput: onTouch ? () => ref.read(hardwareKeyboardUseProvider.notifier).softText() : null,
+                          // What the on-screen keyboard commits from its
+                          // clipboard is a paste, with the questions every
+                          // other paste has (lines that would run, a
+                          // command that looks dangerous).
+                          onKeyboardPaste: (text) => pasteTextIntoTerminal(context, ref, terminal, text),
                           // Option as Meta on a Mac where Settings turns it
                           // on (off until then); Alt is Meta elsewhere.
                           altIsMeta: ref.watch(optionAsMetaProvider),

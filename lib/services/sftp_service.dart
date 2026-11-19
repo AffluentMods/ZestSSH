@@ -211,6 +211,27 @@ class SftpWrittenInPlaceException implements Exception, HasTypeName {
   String get typeName => 'SftpWrittenInPlaceException';
 }
 
+/// Thrown by an upload on a host without the one-step rename, where the file
+/// that was there was moved aside to make room, the new one then could not
+/// be put under its name, and the old one could not be put back either (the
+/// connection went in between): nothing is lost, and nothing is under the
+/// name. What the file held is at [asidePath], the new content at
+/// [stagedPath]. [cause] is what the putting in place ended with.
+class SftpSetAsideException implements Exception, HasTypeName {
+  const SftpSetAsideException(this.remotePath, this.asidePath, this.stagedPath, this.cause);
+  final String remotePath;
+  final String asidePath;
+  final String stagedPath;
+  final Object cause;
+
+  @override
+  String toString() => 'SftpSetAsideException: "$remotePath" was moved to "$asidePath" and not put back; '
+      'the new content is at "$stagedPath". It ended with: $cause';
+
+  @override
+  String get typeName => 'SftpSetAsideException';
+}
+
 /// Thrown by [SftpService.downloadFile] when the remote file is larger than
 /// the in-memory cap. Large files must stream to disk via
 /// [SftpService.downloadFileToPath]; buffering a multi-GB file in memory
@@ -1572,44 +1593,89 @@ class SftpService {
   /// Puts the staged upload [tempPath] in the place of [destination]. In one
   /// step where the host can (rename(2), an extension of OpenSSH's): there
   /// is no moment with no file under the name, and nothing is removed for
-  /// it, so nothing is lost where it fails. Where the host cannot, as it was
-  /// done: SFTP's own rename is refused for a name that is taken on most
-  /// servers, so what is there is removed first ([replaceByRename]).
+  /// it, so nothing is lost where it fails. Where the host cannot: SFTP's
+  /// own rename is refused for a name that is taken on most servers, so what
+  /// is there is moved aside first, and removed only once the new file is
+  /// under the name ([replaceByRename]).
+  ///
+  /// The name it is moved aside to is this upload's own ([asideName]): a file
+  /// already there under a name like it (one of the person's, or one an
+  /// upload that broke off left) is never removed or written over, as SFTP's
+  /// rename refuses a name that is taken.
   Future<void> _putInPlace(SftpClient sftp, String tempPath, String destination) async {
     if (debugOneStepRename && await sftp.canPosixRename) {
       await sftp.posixRename(tempPath, destination);
       return;
     }
+    final aside = asideName(destination);
     await replaceByRename(
       rename: () => sftp.rename(tempPath, destination),
-      remove: () => sftp.remove(destination),
+      moveAside: () => sftp.rename(destination, aside),
+      putBack: () => sftp.rename(aside, destination),
+      discard: () => sftp.remove(aside),
+      setAside: (cause) => SftpSetAsideException(destination, aside, tempPath, cause),
     );
   }
 
   /// SFTP's own rename of a staged file onto its name, on a host without the
-  /// one-step rename: when the host says the name is taken (SFTP version 3
-  /// answers "failure" for it, later versions "file already exists"), what is
-  /// there is removed and the rename made again. Any other refusal (no
-  /// permission, no such folder, a lost connection) goes to the caller with
-  /// the file left where it is and the new content beside it.
+  /// one-step rename. When the host may be saying the name is taken (SFTP
+  /// version 3 answers "failure" for it, later versions "file already
+  /// exists"), what is there is moved aside ([moveAside]), the rename made
+  /// again, and what was moved aside removed ([discard]) only when the new
+  /// file is under the name. The file that was there is never removed before
+  /// that: "failure" is what version 3 answers for many things, and between
+  /// removing a file and renaming another onto its name a connection can end.
   ///
-  /// Every refusal of the first rename removed the file: when the second
-  /// rename then failed as well, the name held no file at all (found in a code
-  /// audit). The FTPS twin already removed only for a name taken.
+  /// So: any other refusal of the first rename (no permission, no such
+  /// folder, a lost connection) goes to the caller with the file left where
+  /// it is and the new content beside it. So does the first refusal where
+  /// nothing could be moved aside (the name was not what was wrong). Where
+  /// the second rename fails, the file is put back ([putBack]) and that
+  /// failure goes to the caller. Where it cannot be put back either, the
+  /// caller gets [setAside]'s exception, which says where both now are.
   @visibleForTesting
   static Future<void> replaceByRename({
     required Future<void> Function() rename,
-    required Future<void> Function() remove,
+    required Future<void> Function() moveAside,
+    required Future<void> Function() putBack,
+    required Future<void> Function() discard,
+    Object Function(Object cause)? setAside,
   }) async {
     try {
       await rename();
+      return;
     } on SftpStatusError catch (e) {
       if (e.code != SftpStatusCode.failure && e.code != _sftpFileAlreadyExists) rethrow;
       try {
-        await remove();
-      } catch (_) {}
-      await rename();
+        await moveAside();
+      } catch (_) {
+        throw e;
+      }
     }
+    try {
+      await rename();
+    } catch (e) {
+      try {
+        await putBack();
+      } catch (_) {
+        throw setAside?.call(e) ?? e;
+      }
+      rethrow;
+    }
+    try {
+      await discard();
+    } catch (_) {
+      // The new file is in place; what was there stays beside it under its other name.
+    }
+  }
+
+  /// Where one upload moves the file it replaces aside ([_putInPlace]): beside
+  /// it, under a name of this upload's own.
+  @visibleForTesting
+  static String asideName(String destination, [Random? random]) {
+    final r = random ?? Random.secure();
+    final tag = [for (var i = 0; i < 4; i++) r.nextInt(256).toRadixString(16).padLeft(2, '0')].join();
+    return '$destination.zestold-$tag';
   }
 
   /// SSH_FX_FILE_ALREADY_EXISTS (SFTP version 5 and later).

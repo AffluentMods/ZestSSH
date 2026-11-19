@@ -166,8 +166,10 @@ class CsvPlace {
 /// clipboard off where the file had it off, and the displays it picked.
 String importedScreenOptions(CsvHostRow row, {bool gateway = false}) {
   final through = gateway ? row.gateway : null;
-  if (!row.clipboardOff && row.displays <= 1 && through == null) return ScreenOptions.encodeDefaults();
-  return ScreenOptions.defaults
+  // A new host's options, as the editor and Add a screen start from: this
+  // device's clipboard goes to the remote only on a paste.
+  if (!row.clipboardOff && row.displays <= 1 && through == null) return ScreenOptions.forNewHost.encode();
+  return ScreenOptions.forNewHost
       .copyWith(
           clipboard: row.clipboardOff ? false : null,
           displays: row.displays > 1 ? row.displays : null,

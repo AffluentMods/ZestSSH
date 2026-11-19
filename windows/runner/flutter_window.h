@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "pointer_hold.h"
+#include "view_windows.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -29,9 +30,11 @@ class FlutterWindow : public Win32Window {
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
 
+ public:
   // Subclasses a Flutter view's window so key messages injected without a
   // scan code (the Win+V clipboard history paste) reach the engine repaired.
-  // Public so the detached-window callback can apply it to secondary views.
+  // Public so the detached-window callback and the view windows
+  // (view_windows.cpp) can apply it to secondary views.
   static void RepairInjectedKeys(HWND flutter_view);
 
  private:
@@ -76,6 +79,10 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>>
       pointer_events_;
   std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> pointer_sink_;
+
+  // Windows of the app's own drawn by this window's engine, a view each
+  // (view_windows.h): a remote screen in a window of its own.
+  std::unique_ptr<ViewWindows> view_windows_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

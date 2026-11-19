@@ -110,6 +110,36 @@ class TransferItem {
   /// successful transfer when verification is applicable.
   SftpVerifyResult verify = SftpVerifyResult.none;
 
+  /// Finished files of this row's operation whose own rows the list no
+  /// longer keeps (past [SftpTransfersNotifier.maxFinishedRows] the oldest
+  /// go), counted on the operation's oldest row that is kept: its folder
+  /// row still says how many files it moved, and how many bytes.
+  int earlierCompleted = 0;
+  int earlierCancelled = 0;
+  int earlierTotalBytes = 0;
+  int earlierTransferredBytes = 0;
+
+  /// The files this row stands for in its folder row: itself and the
+  /// earlier ones counted on it.
+  int get fileCount => 1 + earlierCompleted + earlierCancelled;
+
+  /// Counts [gone], a row of the same operation that the list drops, and
+  /// what was counted on it, on this row.
+  void foldIn(TransferItem gone) {
+    earlierCompleted += gone.earlierCompleted + (gone.status == TransferStatus.completed ? 1 : 0);
+    earlierCancelled += gone.earlierCancelled + (gone.status == TransferStatus.cancelled ? 1 : 0);
+    earlierTotalBytes += gone.earlierTotalBytes + gone.totalBytes;
+    earlierTransferredBytes += gone.earlierTransferredBytes + gone.transferredBytes;
+  }
+
+  /// Forgets the earlier files counted on this row (Clear completed).
+  void forgetEarlier() {
+    earlierCompleted = 0;
+    earlierCancelled = 0;
+    earlierTotalBytes = 0;
+    earlierTransferredBytes = 0;
+  }
+
   /// Non-transfer operation kind (delete / chmod / mkdir). Null for a plain
   /// upload/download, where [direction] carries the kind. Drives count-based
   /// vs byte-based progress and the Activity row's icon.
@@ -819,7 +849,7 @@ class _TransferQueuePanelState extends State<TransferQueuePanel> {
                       ],
                       Text(
                         [
-                          l10n.sftpOpFilesProgress(done, group.items.length),
+                          l10n.sftpOpFilesProgress(done, group.fileCount),
                           if (failed > 0) l10n.sftpActivityFailed(failed),
                           if (cancelled > 0)
                             l10n.sftpActivityCancelled(cancelled),
@@ -841,7 +871,7 @@ class _TransferQueuePanelState extends State<TransferQueuePanel> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     LinearProgressIndicator(
-                      value: hasActive ? progress : (done == group.items.length
+                      value: hasActive ? progress : (done == group.fileCount
                           ? 1.0
                           : progress),
                       color: _statusColor(overallStatus),
@@ -1447,9 +1477,14 @@ class _OperationGroup {
     var active = 0;
     var pending = 0;
     var speed = 0.0;
+    var files = 0;
     for (final t in items) {
-      totalBytes += t.totalBytes;
-      transferredBytes += t.transferredBytes;
+      // With the finished files whose rows the list no longer keeps.
+      totalBytes += t.totalBytes + t.earlierTotalBytes;
+      transferredBytes += t.transferredBytes + t.earlierTransferredBytes;
+      completed += t.earlierCompleted;
+      cancelled += t.earlierCancelled;
+      files += t.fileCount;
       switch (t.status) {
         case TransferStatus.completed:
           completed++;
@@ -1469,6 +1504,7 @@ class _OperationGroup {
     return _OperationGroup._(
       id: id,
       items: items,
+      fileCount: files,
       totalBytes: totalBytes,
       transferredBytes: transferredBytes,
       completedCount: completed,
@@ -1483,6 +1519,7 @@ class _OperationGroup {
   const _OperationGroup._({
     required this.id,
     required this.items,
+    required this.fileCount,
     required this.totalBytes,
     required this.transferredBytes,
     required this.completedCount,
@@ -1495,6 +1532,10 @@ class _OperationGroup {
 
   final String id;
   final List<TransferItem> items;
+
+  /// The operation's files: one per row, and the finished ones whose rows
+  /// the list no longer keeps.
+  final int fileCount;
 
   final int totalBytes;
   final int transferredBytes;

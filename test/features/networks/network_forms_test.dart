@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zestssh/core/theme/group_color.dart';
 import 'package:zestssh/database/daos/connections_dao.dart';
+import 'package:zestssh/features/networks/engine/network_state.dart' show debugWifiNamesReadHere;
 import 'package:zestssh/features/networks/models/network.dart';
 import 'package:zestssh/features/networks/models/network_trigger.dart';
 import 'package:zestssh/features/networks/state/network_controller.dart';
@@ -91,6 +93,24 @@ void main() {
       ]);
       expect(find.text(l10n.netRuleEthernet), findsOneWidget);
       expect(find.text(l10n.netEdTailscaleNote), findsOneWidget, reason: 'what it really checks is said');
+    });
+
+    testWidgets("on a Mac no Wi-Fi name is offered, and the note is the Mac's, not the phones'", (tester) async {
+      tester.view.physicalSize = const Size(900, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      debugWifiNamesReadHere = false;
+      addTearDown(() => debugWifiNamesReadHere = null);
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final c = NetworkEditController();
+      c.bind(_net(const [SubnetTrigger('10.0.0.0/24')]), overrideRows: const [], mode: EditorMode.simple);
+      addTearDown(c.dispose);
+      await tester.pumpWidget(_host(liveForm(c), prefs));
+      await tester.pump();
+      expect(find.text(l10n.netWifiNamesNotOnMac), findsOneWidget);
+      expect(find.text(l10n.netWifiNamesNotOnPhones), findsNothing);
+      debugDefaultTargetPlatformOverride = null;
     });
 
     testWidgets('hosts directly, or through a jump host; the line says which', (tester) async {

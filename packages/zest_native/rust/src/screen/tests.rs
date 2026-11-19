@@ -858,6 +858,46 @@ fn many_layouts_in_one_update_resize_the_picture_once() {
     close(handle);
 }
 
+#[test]
+fn a_servers_layout_before_its_pixels_resizes_the_picture_first() {
+    // wayvnc sends its own new layout (ExtendedDesktopSize, reason server) and pixels in that
+    // size in one update: the picture takes the new size before the pixels are drawn (the session
+    // ended with invalid image data).
+    let handle = open(r#"{"kind":"vnc"}"#, callback).unwrap();
+    let s = session(handle).unwrap();
+    s.pipe.feed(&server_handshake(8, 8));
+    wait_for(handle, event::CONNECTED, 0);
+    wait_for(handle, event::RESIZE, 0);
+    let (w, h): (u16, u16) = (16, 10);
+    let mut b = vec![0u8, 0];
+    b.extend(2u16.to_be_bytes());
+    for v in [0u16, 0, w, h] {
+        b.extend(v.to_be_bytes());
+    }
+    b.extend((-308i32).to_be_bytes());
+    b.extend([1u8, 0, 0, 0]); // one screen
+    b.extend(1u32.to_be_bytes());
+    for v in [0u16, 0, w, h] {
+        b.extend(v.to_be_bytes());
+    }
+    b.extend(0u32.to_be_bytes());
+    // One raw pixel at the new picture's far corner.
+    for v in [w - 1, h - 1, 1, 1] {
+        b.extend(v.to_be_bytes());
+    }
+    b.extend(0i32.to_be_bytes());
+    b.extend([10u8, 20, 30, 0]);
+    b.push(2); // Bell: the update is done once it comes
+    s.pipe.feed(&b);
+    wait_for(handle, event::BELL, 0);
+    let size = {
+        let f = s.frame.lock().unwrap();
+        (f.width, f.height)
+    };
+    assert_eq!(size, (16, 10));
+    close(handle);
+}
+
 /// The last event of [kind] the session's callback got, once it is [want] (within 5 s).
 fn wait_last(handle: u64, kind: u32, want: impl Fn(i64, &[u8]) -> bool) {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);

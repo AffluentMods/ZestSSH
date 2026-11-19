@@ -20,8 +20,10 @@ import 'package:zestssh/features/cloud_import/cloud_accounts.dart';
 import 'package:zestssh/features/cloud_import/cloud_machine.dart';
 import 'package:zestssh/features/cloud_import/cloud_plan.dart';
 import 'package:zestssh/features/networks/engine/connection_resolver.dart';
+import 'package:zestssh/features/screens/model/screen_options.dart';
 import 'package:zestssh/features/screens/proxmox/proxmox_console.dart';
 import 'package:zestssh/features/screens/proxmox/proxmox_guest_of.dart';
+import 'package:zestssh/features/screens/session/screen_shell_service.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/l10n/l10n_global.dart';
 import 'package:zestssh/providers/core_providers.dart';
@@ -179,6 +181,17 @@ void main() {
       // A second console of the same guest is a tab of its own.
       final again = sessions().startConsole(host)!;
       expect(again, isNot(id));
+    });
+
+    test("a console starts as a new host does: on a computer this device's clipboard goes to the guest only when its "
+        'person pastes into the picture (it went whenever the picture took the keyboard)', () async {
+      await start(accounts: [lab]);
+      engine.onOpen = (s) => s.connect(name: 'web-vm console');
+      final id = sessions().startConsole(await guestHost())!;
+      await until(() => stateOf(id)?.status == SessionStatus.connected, 'the console to connect');
+      final shell = stateOf(id)!.session!.shell as ScreenShellService;
+      expect(shell.options.clipboardOnPaste, isTrue);
+      expect(shell.options, ScreenOptions.forNewHost);
     });
 
     test('no account for the cluster on this device: said so, and nothing is asked of anyone', () async {

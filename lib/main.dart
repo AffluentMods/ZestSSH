@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodCall;
+import 'package:zestssh/features/screens/window/view_windows.dart';
 import 'package:zestssh/app.dart';
 import 'package:zestssh/database/database.dart';
 import 'package:zestssh/features/orchards/setup/setup_command_host.dart';
@@ -531,7 +533,10 @@ void _runMainWindow() {
       // Track active terminal bridges: sessionId → (windowId, subscription)
       final Map<String, (int, StreamSubscription)> terminalBridges = {};
 
-      DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      // What a window of the app's own asks the main window: from a window of
+      // the plugin's (its own engine) over the channel, and from a window this
+      // engine draws as a view (view_windows.dart) straight here.
+      Future<Object?> onWindowCall(MethodCall call, int fromWindowId) async {
         switch (call.method) {
           // ── The app lock in pop-out windows (3.0) ──
           case 'appLockState':
@@ -645,7 +650,11 @@ void _runMainWindow() {
             );
         }
         return '';
-      });
+      }
+
+      DesktopMultiWindow.setMethodHandler(onWindowCall);
+      ViewWindows.instance.mainCall =
+          (method, arguments, from) => onWindowCall(MethodCall(method, arguments), from);
 
       // A tab moved into the main window's editor from a window of its own
       // joins its tabs (3.4.1); the windows of their own keep their drafts
@@ -677,14 +686,31 @@ void _runMainWindow() {
       // each hears every change.
       _sharedContainer!.listen<bool>(
         isAppLockedProvider,
-        (_, locked) => unawaited(MultiWindowService.instance.broadcastAppLock(locked)),
+        (_, locked) {
+          unawaited(MultiWindowService.instance.broadcastAppLock(locked));
+          ViewWindows.instance.locked.value = locked;
+        },
       );
+
+      // On Windows a remote screen's window of its own is a view of this
+      // engine (view_windows.dart): no second engine to race this one in the
+      // graphics driver.
+      if (ViewWindows.supported) {
+        final container = _sharedContainer!;
+        ViewWindows.instance
+          ..locked.value = container.read(isAppLockedProvider)
+          ..onActivity = () => container.read(idleClockProvider).touch();
+        final views = ViewWindowsBackend();
+        ScreenWindows.instance.backend = views;
+        EditorWindows.instance.backend = views;
+      }
     }
 
     _show(
       UncontrolledProviderScope(
         container: _sharedContainer!,
-        child: const ZestSSHApp(),
+        // The windows this engine draws as views of its own, beside the app.
+        child: const ViewWindowsHost(child: ZestSSHApp()),
       ),
     );
 

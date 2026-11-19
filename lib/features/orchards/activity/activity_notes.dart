@@ -57,7 +57,9 @@ Future<void> noteScreenActivity(
 
 /// Notes that this account did [kind] with the item [itemKey] of [itemKind]
 /// of [db], the database of the Orchard it is in (a session's, which has no
-/// screen of its own). Nothing for your Tree's. Never throws.
+/// screen of its own). Nothing for your Tree's. Never throws. [crateId] is
+/// the vault the item was in, for one that is no longer there to look up (a
+/// key moved out of the team).
 Future<void> noteActivityIn(
   OrchardService service,
   AppDatabase db,
@@ -65,6 +67,7 @@ Future<void> noteActivityIn(
   required String itemKind,
   required String itemKey,
   String? name,
+  String? crateId,
   DateTime? now,
 }) async {
   if (!db.isOrchard) return;
@@ -75,8 +78,8 @@ Future<void> noteActivityIn(
     // Nothing is noted, not even as seen, while the team records no activity.
     if (!(await LocalRecord.load(db, orchardId)).latest.tracking.activity) return;
     if (kind == ActivityKind.reveal && _revealedLately(orchardId, itemKind, itemKey, now ?? DateTime.now())) return;
-    final crateId = await CratePlacement(db).crateOf(itemKind, itemKey);
-    await service.recordActivity(orchardId, kind, crateId: crateId, itemKind: itemKind, itemKey: itemKey, name: name);
+    final crate = crateId ?? await CratePlacement(db).crateOf(itemKind, itemKey);
+    await service.recordActivity(orchardId, kind, crateId: crate, itemKind: itemKind, itemKey: itemKey, name: name);
   } catch (e) {
     AppLogger.info('Orchards: activity not noted ($e)');
   }

@@ -273,7 +273,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           // A new host of a kind its caller chose (a remote screen through
           // one of the hosts, 4.0).
           final target = state.extra is ConnectionEditorTarget ? state.extra as ConnectionEditorTarget : null;
-          final screen = ConnectionEditScreen(initialProtocol: target?.initialProtocol, initialVia: target?.initialVia);
+          final screen = ConnectionEditScreen(
+              initialProtocol: target?.initialProtocol,
+              initialVia: target?.initialVia,
+              initialHost: target?.initialHost,
+              initialLabel: target?.initialLabel);
           if (isDesktopPlatform) {
             return _DialogPage(child: screen);
           }

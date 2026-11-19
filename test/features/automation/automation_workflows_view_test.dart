@@ -753,7 +753,7 @@ void main() {
       await tapKey(tester, 'workflow-run');
       final ways = <String, Future<void> Function()>{
         'New': () async => container.read(automationNewWorkflowProvider.notifier).state++,
-        'Close': () => tester.tap(find.byTooltip(en.zestCommonCancel).first),
+        'Close': () => tester.tap(find.byTooltip(en.close).first),
         'Delete': () => tester.tap(find.byKey(const ValueKey('workflow-delete'))),
       };
       for (final MapEntry(key: name, value: way) in ways.entries) {
@@ -844,7 +844,7 @@ void main() {
       await pump(tester, workflows: [workflow(everywhere)], size: const Size(800, 1000));
       await open(tester);
       expect(find.byKey(const ValueKey('workflow-run')), findsOneWidget);
-      await tester.tap(find.byTooltip(en.zestCommonCancel).last);
+      await tester.tap(find.byTooltip(en.close).last);
       await settle(tester);
       expect(find.byKey(const ValueKey('workflow-run')), findsNothing, reason: 'back at the list');
       await open(tester);

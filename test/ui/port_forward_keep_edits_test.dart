@@ -14,6 +14,7 @@ import 'package:zestssh/ui/screens/desktop/widgets/port_forward_drafts.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/port_forward_edit_controller.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/port_forward_list_view.dart';
 import 'package:zestssh/ui/widgets/zest_button.dart';
+import 'package:zestssh/ui/widgets/zest_close_button.dart';
 import 'package:zestssh/ui/widgets/zest_dialog.dart';
 
 /// Two problems of the Port Forwarding editor:
@@ -421,7 +422,7 @@ void main() {
         expect(find.text(en.pfToSimpleSourceHost), findsNothing);
         expect(find.text(en.pfToSimpleFlags), findsNothing);
 
-        await tester.tap(find.text(en.zestCommonCancel).last);
+        await tester.tap(find.text(en.cancel).last);
         await settle(tester);
         expect(
           find.byKey(const ValueKey('pf-port-here')),
@@ -519,11 +520,11 @@ void main() {
       },
     );
 
-    testWidgets('Cancel and Discard leave no draft', (tester) async {
+    testWidgets('Close and Discard leave no draft', (tester) async {
       final (container, pageShown) = await open(tester);
       await fillRemote(tester);
       await awayAndBack(tester, pageShown);
-      await tester.tap(find.byKey(const ValueKey('pf-cancel')));
+      await tester.tap(find.byType(ZestCloseButton));
       await settle(tester);
       await tester.tap(find.text(en.zestDiscardDiscard));
       await settle(tester);

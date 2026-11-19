@@ -580,7 +580,9 @@ class _SshConfigImportDialogState extends ConsumerState<_SshConfigImportDialog> 
   /// recording mode never leaks an address.
   Widget _entrySubtitle(OnboardingSshEntry e) {
     final user = e.user;
-    final jump = e.proxyJumpHost;
+    // One host to go through, or the route as written where it names several
+    // (not set up by the import: it stays in the host's note).
+    final jump = e.proxyJumpHost ?? (e.hasJumpRoute ? e.proxyJump!.trim() : null);
     return Consumer(
       builder: (context, ref, _) => Text(
         '${user != null ? '${Redactable.username(user).displayIn(ref)}@' : ''}'

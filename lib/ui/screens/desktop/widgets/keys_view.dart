@@ -49,6 +49,7 @@ import 'package:zestssh/ui/widgets/recording_reveal_gate.dart';
 import 'package:zestssh/ui/widgets/top_snackbar.dart';
 import 'package:zestssh/ui/widgets/zest_dialog.dart';
 import 'package:zestssh/ui/widgets/zest_master_detail.dart';
+import 'package:zestssh/utils/kept_from_sync.dart';
 import 'package:zestssh/utils/platform_utils.dart' show isDesktopPlatform;
 
 /// Sentinel selection id used while composing a brand-new identity (before it
@@ -473,10 +474,18 @@ class _KeysViewState extends ConsumerState<KeysView> with KeepsEditDrafts<KeysVi
         }
       } else {
         final id = _selectedId!;
+        // A sync may have changed this key while the editor was open: its
+        // name, user, colour and unattended switch that the person did not
+        // touch keep what is there now, as a phone's key editor does. What
+        // signs in (its kind and secrets) is written as the form holds it.
+        final opened = _controller.original;
+        final now = await ref.read(identitiesDaoProvider).getById(id);
+        final keep = keptSince<Identity>(opened?.id == id ? opened : null, now, (i) => i.updatedAt);
+        final colorValue = keep(_controller.colorValue, (i) => i.colorValue);
         await crud.update(
           id: id,
-          label: name,
-          username: username,
+          label: keep(name, (i) => i.label),
+          username: keep(username, (i) => i.username),
           authMethod: method.name,
           keyType: _controller.keyType,
           publicKeyFingerprint: _controller.publicKeyFingerprint,
@@ -492,10 +501,10 @@ class _KeysViewState extends ConsumerState<KeysView> with KeepsEditDrafts<KeysVi
           clearPassword: kept?.clear ?? false,
           privateKeyPem: editable && method == AuthMethod.publicKey ? _controller.privateKeyPem : null,
           keyPassphrase: editable && method == AuthMethod.publicKey ? _controller.keyPassphrase : null,
-          colorIndex: _controller.colorIndex,
-          colorValue: _controller.colorValue,
-          clearColorValue: _controller.colorValue == null,
-          allowUnattended: _controller.allowUnattended,
+          colorIndex: keep(_controller.colorIndex, (i) => i.colorIndex),
+          colorValue: colorValue,
+          clearColorValue: colorValue == null,
+          allowUnattended: keep(_controller.allowUnattended, (i) => i.allowUnattended),
           passwordRef: editable && method == AuthMethod.passwordManager ? _controller.passwordRef : null,
           clearPasswordRef: editable && method != AuthMethod.passwordManager,
         );

@@ -3,22 +3,24 @@
 ZestSSH Cloud Sync is **end-to-end encrypted**. Your connections, identities,
 groups, snippets, and secrets are encrypted on your device with a key derived
 from your master password (Argon2id → AES‑256‑GCM) **before** anything leaves
-the app. Whatever storage you point ZestSSH at only ever holds an unreadable
-blob: it can't read your data, and neither can we.
+the app. Whatever storage you point ZestSSH at holds your data only encrypted:
+it can't read it, and neither can we. Beside it, the storage can see when a
+device last synced and what kind of device it was.
 
 Because the storage is "dumb" (it just holds one encrypted file), you can use
 almost anything as your sync backend:
 
 | Backend | Cost | Self-host? | Best for |
 |---|---|---|---|
-| **ZestSSH Cloud** | Juiced subscription | - | Zero setup |
+| **ZestSSH Cloud** | Juiced, bought once | - | Zero setup |
 | **WebDAV** | Free | ✅ | Nextcloud, a NAS, mailbox.org, Koofr |
 | **S3-compatible** | Free tier | ✅ | Cloudflare R2, Backblaze B2, MinIO |
 | **Google Drive** | Free (15 GB) | - | "just works" with a Google account |
 | **Custom server** | Free | ✅ | Running the ZestSSH sync protocol yourself |
 
-> Bring-your-own backends are **free**: they don't require the Cloud Sync
-> (Juiced) subscription, because you're providing the storage.
+> Bring-your-own backends are **free**: they don't need Juiced (ZestSSH Cloud,
+> a one-time purchase), because you're providing the storage. Sync itself is
+> free on every plan.
 
 Set it up in the app under **Profile → Sync storage**. Pick a provider, fill in
 the fields, tap **Test connection**, then **Save**. After that, set up sync as

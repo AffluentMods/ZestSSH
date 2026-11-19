@@ -14,7 +14,7 @@ const List<GuideEntry> kGuidesIndex = [
     keywords: ['host', 'hosts', 'server', 'servers', 'connection', 'connections', 'connect', 'new host', 'add host', 'ssh', 'sftp only', 'files only', 'mosh', 'telnet', 'serial', 'eternal terminal', 'et', 'local terminal', 'quick connect', 'address', 'port', 'nickname', 'group', 'groups', 'tags', 'host key', 'fingerprint', 'known hosts', 'tofu', 'test', 'reachability', 'wake on lan', 'wol', 'magic packet'],
     platforms: ['desktop', 'phone', 'tablet'],
     features: ['hosts', 'connect'],
-    appliesTo: '3.0.0',
+    appliesTo: '4.0.0',
   ),
   GuideEntry(
     slug: 'keys',
@@ -33,6 +33,24 @@ const List<GuideEntry> kGuidesIndex = [
     platforms: ['desktop', 'phone', 'tablet'],
     features: ['sftp'],
     appliesTo: '3.0.0',
+  ),
+  GuideEntry(
+    slug: 'remote-screens',
+    title: 'Remote screens (VNC and RDP)',
+    summary: 'See and use a computer\'s desktop over VNC or Remote Desktop, through one of your SSH hosts with no port opened on your device, on a computer, a phone or a tablet.',
+    keywords: ['vnc', 'rdp', 'remote screen', 'remote screens', 'screen', 'desktop', 'remote desktop', 'screen sharing', 'rfb', 'tigervnc', 'x11vnc', 'wayvnc', 'tightvnc', 'ultravnc', 'vencrypt', 'tls', 'certificate', 'socket', 'unix socket', 'rfbunixpath', 'reach through', 'carrier', 'add a screen', 'open screen', 'test the screen', 'more options', 'screen options', 'touch', 'mouse pointer', 'key bar', 'ctrl+alt+del', 'f8', 'screen menu', 'clipboard', 'send my clipboard only when i paste', 'paste to remote', 'view only', 'scaling', 'fit', 'full screen', 'exit full screen', 'ctrl+alt+break', 'recording mode', 'background', 'paused', 'allowtcpforwarding', 'allowstreamlocalforwarding', 'zs-1801', 'zs-1802', 'zs-1803', 'zs-1804', 'zs-1805', 'zs-1806', 'zs-1807', 'zs-1808', 'zs-1821', 'several displays', 'multiple monitors', 'displays', 'three fingers', 'own window', 'pop out', 'session details', 'round trip', 'send text', 'relative mouse', 'pointer lock', 'text size', 'frame rate limit', 'smooth scaling', 'command as ctrl', 'keep the bar shown', 'files', 'sftp', 'sound', 'rd gateway', 'proxmox console'],
+    platforms: ['desktop', 'phone', 'tablet'],
+    features: ['remote_screens'],
+    appliesTo: '4.0.0',
+  ),
+  GuideEntry(
+    slug: 'reach-your-pc-from-anywhere',
+    title: 'Reach your PC from anywhere',
+    summary: 'Use your Windows PC\'s desktop from another computer, a phone or a tablet, at home or away, with Remote Desktop over Tailscale, and no port opened to the internet.',
+    keywords: ['remote desktop', 'rdp', 'reach my pc', 'away from home', 'from anywhere', 'tailscale', 'tailnet', 'magicdns', 'vpn', 'windows hello', 'pin', 'password', 'microsoft account', 'sign in', 'remote desktop settings', 'windows home', '3389', 'port forwarding', 'full screen', 'handle'],
+    platforms: ['desktop', 'phone', 'tablet'],
+    features: ['remote_access'],
+    appliesTo: '4.0.0',
   ),
   GuideEntry(
     slug: 'port-forwarding',
@@ -167,7 +185,7 @@ const List<GuideEntry> kGuidesIndex = [
     keywords: ['theme', 'themes', 'appearance', 'look', 'dark mode', 'light mode', 'dark', 'light', 'colors', 'colors', 'color scheme', 'color scheme', 'terminal colors', 'accent', 'brand colors', 'graphite', 'ember', 'daylight', 'dracula', 'nord', 'solarized', 'font', 'fonts', 'font size', 'zoom', 'cursor', 'ligatures', 'custom theme', 'theme designer', 'import theme', 'itermcolors', 'zestheme'],
     platforms: ['desktop', 'phone', 'tablet'],
     features: ['themes', 'appearance'],
-    appliesTo: '3.0.0',
+    appliesTo: '4.0.0',
   ),
   GuideEntry(
     slug: 'import-from-other-apps',
@@ -185,6 +203,6 @@ const List<GuideEntry> kGuidesIndex = [
     keywords: ['phone', 'phones', 'mobile', 'iphone', 'ipad', 'ios', 'android', 'tablet', 'tablets', 'foldable', 'tabs', 'more tab', 'manage tab', 'needs you', 'host page', 'key style', 'swipe sessions', 'keyboard', 'extra keys', 'key row', 'keyboard row', 'ctrl', 'esc', 'tab key', 'arrows', 'function keys', 'gestures', 'pinch', 'swipe', 'background', 'disconnect', 'reconnect', 'auto reconnect', 'battery', 'split', 'split screen', 'voice', 'dictation', 'microphone', 'speech to text', 'hardware keyboard', 'bluetooth keyboard'],
     platforms: ['phone', 'tablet'],
     features: ['phone'],
-    appliesTo: '3.0.0',
+    appliesTo: '4.0.0',
   ),
 ];

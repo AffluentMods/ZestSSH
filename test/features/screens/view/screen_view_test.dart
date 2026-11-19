@@ -286,6 +286,68 @@ void main() {
       expect(ScreenViewSize.remoteOf(const Size(1281.7, 800.9)), (1280, 800));
     });
 
+    testWidgets('"Resize the remote" on a screen scaled to 150%: the remote is asked for the screen\'s own pixels '
+        'with its text 150% as large, so it is shown pixel for pixel, sharp', (tester) async {
+      final rig = await ScreenRig.connect(tester, width: 800, height: 500);
+      await pumpView(tester, rig.controller, size: const Size(600, 375));
+      // 400 x 250 logical pixels at 1.5.
+      tester.view.devicePixelRatio = 1.5;
+      await tester.pump();
+      rig.controller.followViewSize = true;
+      await tester.pump(Duration.zero);
+      expect(rig.engine.resizes, isEmpty);
+      expect(rig.engine.layouts, [
+        [
+          {'x': 0, 'y': 0, 'width': 600, 'height': 375, 'scale': 150, 'primary': true},
+        ],
+      ]);
+      expect((ScreenViewSize.lastFollowed, ScreenViewSize.lastFollowedRatio), (const Size(400, 250), 1.5));
+
+      // The remote takes it: fitted at 1 / 1.5, one remote pixel to one of the screen's.
+      rig.engine.emit(ScreenEventKind.resize, a: (600 << 32) | 375);
+      await tester.pump();
+      expect(rig.controller.viewport.scale * 1.5, closeTo(1, 1e-9));
+
+      // A text size chosen for the host is made as much larger again.
+      rig.controller.setTextScale(125);
+      expect(rig.engine.layouts.last.single['scale'], 188);
+
+      // The view grows: the new size in the screen's pixels, the same scale,
+      // which a resize keeps.
+      tester.view.physicalSize = const Size(900, 600);
+      await tester.pump();
+      await tester.pump(ScreenController.resizeSettle);
+      expect(rig.engine.resizes, [(900, 600)]);
+
+      // Moved to a monitor at 100%: the text size chosen alone again, said
+      // with the size (a resize would keep 188).
+      rig.engine.emit(ScreenEventKind.resize, a: (900 << 32) | 600);
+      await tester.pump();
+      final layouts = rig.engine.layouts.length;
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(600, 400);
+      await tester.pump();
+      await tester.pump(ScreenController.resizeSettle);
+      expect(rig.engine.layouts, hasLength(layouts + 1));
+      expect(rig.engine.layouts.last, [
+        {'x': 0, 'y': 0, 'width': 600, 'height': 400, 'scale': 125, 'primary': true},
+      ]);
+      ScreenViewSize.lastFollowedRatio = 1;
+    });
+
+    test('the ratio a followed remote takes, and the scale it is asked for', () {
+      expect(ScreenViewSize.ratioFor(1), 1);
+      expect(ScreenViewSize.ratioFor(0.75), 1);
+      expect(ScreenViewSize.ratioFor(1.25), 1.25);
+      expect(ScreenViewSize.ratioFor(3), 3);
+      expect(ScreenViewSize.ratioFor(3, phone: true), 2);
+      expect(ScreenViewSize.scaleOn(0, 1), 0, reason: 'at 1, nothing said as before');
+      expect(ScreenViewSize.scaleOn(150, 1), 150);
+      expect(ScreenViewSize.scaleOn(0, 1.5), 150);
+      expect(ScreenViewSize.scaleOn(200, 3), 500);
+      expect(ScreenViewSize.pixelsOf(const Size(400, 250), 1.5), const Size(600, 375));
+    });
+
     testWidgets('the remote cursor is drawn at the pointer in place of the system one', (tester) async {
       final rig = await ScreenRig.connect(tester, width: 64, height: 40);
       await pumpView(tester, rig.controller);

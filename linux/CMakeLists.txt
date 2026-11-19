@@ -92,6 +92,16 @@ include(flutter/generated_plugins.cmake)
 # SSLeay licence, which does not fit this project's, and SQLCipher 4.10 asks
 # for 3 (BUILDING.md). Checked after the plugins, whose search set the paths.
 find_package(OpenSSL QUIET)
+# An older CMake's search can find OpenSSL and give no version (a static OpenSSL 3 in a
+# build root of its own): read it from the header then, rather than take it for an old one.
+if(OPENSSL_FOUND AND "${OPENSSL_VERSION}" STREQUAL "" AND EXISTS "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h")
+  file(STRINGS "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h" _zest_ssl_major
+    REGEX "^#[ \t]*define[ \t]+OPENSSL_VERSION_MAJOR[ \t]+[0-9]+")
+  string(REGEX REPLACE ".*OPENSSL_VERSION_MAJOR[ \t]+([0-9]+).*" "\\1" _zest_ssl_major "${_zest_ssl_major}")
+  if(_zest_ssl_major)
+    set(OPENSSL_VERSION "${_zest_ssl_major}.0")
+  endif()
+endif()
 if(OPENSSL_FOUND AND OPENSSL_VERSION VERSION_LESS "3.0")
   message(FATAL_ERROR "OpenSSL ${OPENSSL_VERSION} was found (${OPENSSL_INCLUDE_DIR}): ZestSSH needs OpenSSL 3.0 or later. "
     "Install libssl-dev from OpenSSL 3, or set OPENSSL_ROOT_DIR to an OpenSSL 3 installation (BUILDING.md).")

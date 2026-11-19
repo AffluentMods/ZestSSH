@@ -358,6 +358,8 @@ void main() {
       // Asks once for the hosts ticked.
       'lib/features/broadcast/broadcast_to_hosts.dart': 1,
       'lib/features/hosts/connect_link.dart': 1,
+      // A host's own screens: a VNC or RDP host, never Telnet.
+      'lib/features/hosts/host_screens.dart': 1,
       // This device's own shell.
       'lib/features/hosts/local_terminal.dart': 1,
       'lib/features/hosts/open_many_hosts.dart': 2,

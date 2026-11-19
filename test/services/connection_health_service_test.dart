@@ -12,6 +12,7 @@
 
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -830,6 +831,18 @@ void main() {
     test('a host as it is saved, where there are no network settings at all', () async {
       expect(await savedProbeTarget(web), (host: 'web.example.com', port: 22));
       expect(await savedProbeTarget(inner), isNull);
+    });
+
+    test('nowhere for an RDP host reached through an RD Gateway, one this version reads or not: its address is the '
+        "PC's as the gateway knows it", () async {
+      for (final options in ['{"v":1,"gateway":{"host":"rdg.example.test"}}', '{"v":1,"gateway":{"host":"a b"}}']) {
+        final pc = host('pc').copyWith(protocol: 'rdp', port: 3389, screenOptions: Value(options));
+        expect(probeTargetFor(pc, resolved: resolved(pc), isPro: true), isNull, reason: options);
+        expect(probeTargetFor(pc, resolved: null, isPro: false), isNull, reason: options);
+        expect(await savedProbeTarget(pc), isNull, reason: options);
+      }
+      final direct = host('pc').copyWith(protocol: 'rdp', port: 3389, screenOptions: const Value('{"v":1}'));
+      expect(await savedProbeTarget(direct), (host: 'pc.example.com', port: 3389));
     });
   });
 

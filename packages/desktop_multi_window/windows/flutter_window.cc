@@ -31,8 +31,13 @@ void RegisterWindowClass(WNDPROC wnd_proc) {
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
     window_class.hInstance = GetModuleHandle(nullptr);
+    // ZestSSH patch: the app's own icon (the runner's resource 101,
+    // IDI_APP_ICON), not the system's default one.
     window_class.hIcon =
-        LoadIcon(window_class.hInstance, IDI_APPLICATION);
+        LoadIcon(window_class.hInstance, MAKEINTRESOURCE(101));
+    if (window_class.hIcon == nullptr) {
+      window_class.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    }
     window_class.hbrBackground = (HBRUSH) (COLOR_WINDOW + 1);
     window_class.lpszMenuName = nullptr;
     window_class.lpfnWndProc = wnd_proc;
@@ -97,6 +102,9 @@ FlutterWindow::FlutterWindow(
   RECT frame;
   GetClientRect(window_handle, &frame);
   flutter::DartProject project(L"data");
+  // ZestSSH patch: Skia, as the main window (windows/runner/main.cpp): two
+  // engines on Impeller's OpenGL (ANGLE) in one process crashed in a draw.
+  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
   project.set_dart_entrypoint_arguments({"multi_window", std::to_string(id), std::move(args)});
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project);

@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:zest_native/screen.dart';
+import 'package:zestssh/features/shortcuts/shortcut_key.dart';
 
 /// The payload's `type`, as the editor's windows have "editor".
 const kScreenWindowType = 'screen';
@@ -30,6 +31,13 @@ const kScreenWindowBackMethod = 'screenWindowBack';
 /// computer's clipboard to the remote then, as a tab does when its picture
 /// takes the keyboard. Nothing of the clipboard goes through the window.
 const kScreenWindowFocusMethod = 'screenWindowFocus';
+
+/// A screen's window to the main window: its person pastes into the
+/// picture (a host whose clipboard goes only then). The main window sends
+/// this computer's clipboard to the remote and answers when it has, and the
+/// window sends the key after. Nothing of the clipboard goes through the
+/// window.
+const kScreenWindowPasteMethod = 'screenWindowPaste';
 
 /// A screen's window to the main window: whether it is in front now (true)
 /// or not (anything else): its own engine's state, resumed or not. The main
@@ -57,7 +65,9 @@ class ScreenWindowPayload {
     this.displayCount = 1,
     this.smoothScaling = false,
     this.commandAsControl = false,
+    this.clipboardOnPaste = false,
     this.panelFolded = const [],
+    this.displayKeys = const [],
   });
 
   /// The tab's session in the main window (what "bring it back" names).
@@ -83,10 +93,19 @@ class ScreenWindowPayload {
   final bool smoothScaling;
   final bool commandAsControl;
 
+  /// This computer's clipboard goes to the remote only on a paste
+  /// (ScreenOptions.clipboardOnPaste): the window asks the main window then.
+  final bool clipboardOnPaste;
+
   /// The groups of the session panel that are folded on this device, by
   /// name: the window's panel opens as the tab's would. It has no settings
   /// store of its own; what is folded there holds while it is open.
   final List<String> panelFolded;
+
+  /// The keys that show displays 1 to 4 as the main window has them (null:
+  /// none set); the window has no settings store to read them from. Empty:
+  /// the defaults.
+  final List<ShortcutKey?> displayKeys;
 
   Map<String, Object?> toJson() => {
         'type': kScreenWindowType,
@@ -104,7 +123,9 @@ class ScreenWindowPayload {
         'displayCount': displayCount,
         'smoothScaling': smoothScaling,
         'commandAsControl': commandAsControl,
+        'clipboardOnPaste': clipboardOnPaste,
         'panelFolded': panelFolded,
+        'displayKeys': [for (final k in displayKeys) k?.toJson()],
       };
 
   /// The payload [json] holds, or null where it is none of a screen's or
@@ -135,10 +156,15 @@ class ScreenWindowPayload {
       displayCount: count(json['displayCount'], 1, 4, 1),
       smoothScaling: json['smoothScaling'] == true,
       commandAsControl: json['commandAsControl'] == true,
+      clipboardOnPaste: json['clipboardOnPaste'] == true,
       panelFolded: [
         if (json['panelFolded'] case final List<dynamic> names)
           for (final n in names.take(16))
             if (n is String && n.length <= 32) n,
+      ],
+      displayKeys: [
+        if (json['displayKeys'] case final List<dynamic> keys)
+          for (final k in keys.take(4)) k is Map ? ShortcutKey.fromJson(k.cast<String, dynamic>()) : null,
       ],
     );
   }

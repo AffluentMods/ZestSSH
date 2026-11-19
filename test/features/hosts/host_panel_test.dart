@@ -55,6 +55,7 @@ void main() {
   Future<ProviderContainer> pump(
     WidgetTester tester, {
     bool knownKey = false,
+    String firstProtocol = 'ssh',
   }) async {
     connected = [];
     sftp = [];
@@ -80,6 +81,7 @@ void main() {
             label: label,
             host: host,
             port: const Value(22),
+            protocol: Value(id == 'c0' ? firstProtocol : 'ssh'),
             createdAt: now,
             updatedAt: now,
           ));
@@ -174,6 +176,18 @@ void main() {
     expect(panel(), findsOneWidget);
     expect(connected, isEmpty, reason: 'a single click only selects');
     expect(find.text('Not known yet'), findsOneWidget);
+    await finish(tester);
+  });
+
+  testWidgets("a Telnet host's panel has no SFTP button: Telnet has no SFTP, and nothing is opened over it for one",
+      (tester) async {
+    await pump(tester, firstProtocol: 'telnet');
+    await tester.tap(find.text('db-primary'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(panel(), findsOneWidget);
+    expect(find.byKey(const ValueKey('host-panel-sftp')), findsNothing);
+    expect(find.byKey(const ValueKey('host-panel-primary')), findsOneWidget);
     await finish(tester);
   });
 

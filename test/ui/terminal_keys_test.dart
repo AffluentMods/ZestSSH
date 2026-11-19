@@ -26,6 +26,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:xterm/src/ui/custom_text_edit.dart';
 import 'package:xterm/xterm.dart';
 import 'package:zestssh/features/notifications/notification_center.dart';
 import 'package:zestssh/features/sharing/share_invitation.dart';
@@ -48,6 +49,7 @@ import 'package:zestssh/services/connection_health_service.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/desktop_terminal_area.dart';
 import 'package:zestssh/ui/screens/sharing/share_view_screen.dart';
 import 'package:zestssh/ui/screens/terminal/terminal_screen.dart';
+import 'package:zestssh/utils/platform_utils.dart' show debugTouchLayout;
 import 'package:zestssh/ui/screens/tmux/tmux_workspace.dart';
 import 'package:zestssh/ui/widgets/terminal_paste.dart';
 
@@ -661,6 +663,40 @@ void main() {
       expect(typed, isEmpty);
       await pasteBy(tester, ctrlShift, _safe);
       expect(typed.join(), _safe);
+      await finish(tester);
+    });
+
+    testWidgets('on a large tablet, what the on-screen keyboard commits from its clipboard is a paste with its '
+        'questions, as on a phone (it went straight in, unasked)', (tester) async {
+      debugTouchLayout = true;
+      addTearDown(() => debugTouchLayout = null);
+      final (terminal, typed) = await pumpPane(tester, TargetPlatform.android);
+      final client = tester.state<State>(find.byType(CustomTextEdit)) as TextInputClient;
+      // What the keyboard says: everything so far, composing nothing.
+      void commit(String text) {
+        final start = client.currentTextEditingValue!.text;
+        client.updateEditingValue(TextEditingValue(
+          text: '$start$text',
+          selection: TextSelection.collapsed(offset: start.length + text.length),
+        ));
+      }
+
+      commit('uptime\nwhoami\n');
+      await settle(tester);
+      expect(find.byKey(const ValueKey('paste-question')), findsOneWidget, reason: 'lines that would run');
+      expect(typed, isEmpty, reason: 'nothing until it is answered');
+      await tester.tap(find.text(l10n.cancel).last);
+      await settle(tester);
+      expect(typed, isEmpty, reason: 'Cancel pastes nothing');
+
+      // Where the shell waits for Enter, the danger question still comes.
+      terminal.write('\x1b[?2004h');
+      commit('$_dangerous\n');
+      await settle(tester);
+      expect(find.text(l10n.dangerPasteTitle), findsOneWidget);
+      await tester.tap(find.text(l10n.cancel).last);
+      await settle(tester);
+      expect(typed, isEmpty);
       await finish(tester);
     });
   });

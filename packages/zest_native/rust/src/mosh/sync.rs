@@ -235,12 +235,20 @@ impl Sender {
 
     /// The state the server is assumed to have: the acknowledged one, or a newer one sent
     /// within the retransmission timeout (in flight, and likely to arrive), never [except].
+    /// It stops at the first state that timed out, as Mosh does: each state in flight was a
+    /// diff from the one before it, so the server has none of those after one it did not get.
+    /// (Going on to a younger one made every diff start from a state the server never
+    /// reached, and it ignored them all until the person stopped typing for a timeout.)
     fn assumed(&self, now: u64, rto: u64, except: u64) -> SentState {
         let mut base = self.front();
         for s in self.sent.iter().skip(1) {
-            if s.num != except && now.saturating_sub(s.sent_at) < rto {
-                base = *s;
+            if s.num == except {
+                continue;
             }
+            if now.saturating_sub(s.sent_at) >= rto {
+                break;
+            }
+            base = *s;
         }
         base
     }
@@ -447,6 +455,29 @@ mod tests {
         let i = s.tick(361, &r, vec![]).unwrap();
         assert_eq!((i.old_num, i.new_num), (0, 2));
         assert_eq!(decode_user_message(&i.diff).unwrap(), vec![UserEvent::Keys(b"a".to_vec()), UserEvent::Keys(b"b".to_vec())]);
+    }
+
+    #[test]
+    fn input_after_a_state_timed_out_is_not_based_on_a_later_state_that_needs_it() {
+        let r = rtt();
+        let mut s = Sender::default();
+        s.push(UserEvent::Keys(b"a".to_vec()), 0);
+        s.tick(1, &r, vec![]).unwrap();
+        // Typed while state 1 is in flight: state 2 is a diff from state 1.
+        s.push(UserEvent::Keys(b"b".to_vec()), 250);
+        let i = s.tick(251, &r, vec![]).unwrap();
+        assert_eq!((i.old_num, i.new_num), (1, 2));
+        // State 1 was lost: nothing is heard, and at 301 it has timed out. State 2 is younger
+        // than the timeout, but the server cannot apply it without state 1, so it does not
+        // have state 2 either. What is typed now goes from the acknowledged state, with all of
+        // it, and is not one more diff from a state the server never reached.
+        s.push(UserEvent::Keys(b"c".to_vec()), 310);
+        let i = s.tick(320, &r, vec![]).unwrap();
+        assert_eq!((i.old_num, i.new_num), (0, 3));
+        assert_eq!(
+            decode_user_message(&i.diff).unwrap(),
+            vec![UserEvent::Keys(b"a".to_vec()), UserEvent::Keys(b"b".to_vec()), UserEvent::Keys(b"c".to_vec())]
+        );
     }
 
     #[test]

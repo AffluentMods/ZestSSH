@@ -17,7 +17,15 @@ import 'package:zestssh/services/profiles/active_profile.dart';
 /// is wiped on uninstall. On desktop the Documents folder persists, but
 /// we conservatively report `false` to encourage cloud destinations.
 class LocalBackupDestination extends BackupDestination {
-  LocalBackupDestination();
+  LocalBackupDestination({Future<Directory> Function()? folder, Future<File> Function(File from, String to)? copy})
+      : _folder = folder,
+        _copy = copy ?? ((from, to) => from.copy(to));
+
+  /// The folder backups are kept in, for a test; the platform's own otherwise.
+  final Future<Directory> Function()? _folder;
+
+  /// How a file is copied (a test breaks it off half way).
+  final Future<File> Function(File from, String to) _copy;
 
   @override
   String get id => 'local';
@@ -42,6 +50,8 @@ class LocalBackupDestination extends BackupDestination {
 
   /// Resolves the backup directory for the current platform.
   Future<Directory> _backupDir() async {
+    final given = _folder;
+    if (given != null) return given();
     final Directory dir;
     if (Platform.isAndroid) {
       // The Download folder where Android lets the app write there, else
@@ -66,10 +76,33 @@ class LocalBackupDestination extends BackupDestination {
     final dir = await _backupDir();
     final target = File('${dir.path}/$filename');
     if (target.path != file.path) {
-      await file.copy(target.path);
+      // Copied beside its name and put under it only when all of it is
+      // there: a copy that broke off (the app ended, the disk filled) left a
+      // short file under the backup's own name, listed and offered to restore
+      // from as any other. What is beside the name is no backup ([listBackups]
+      // takes names that end in .zest), and one left there goes with the next.
+      final part = File('${target.path}$_partSuffix');
+      try {
+        if (await part.exists()) await part.delete();
+      } catch (_) {}
+      try {
+        await _copy(file, part.path);
+        final sent = await file.length();
+        final has = await part.length();
+        if (has != sent) throw FileSystemException('The copy of the backup holds $has of $sent bytes', target.path);
+        await part.rename(target.path);
+      } catch (_) {
+        try {
+          if (await part.exists()) await part.delete();
+        } catch (_) {}
+        rethrow;
+      }
     }
     AppLogger.info('Local backup saved: ${target.path}');
   }
+
+  /// What a copy on its way is named after the backup's own name.
+  static const _partSuffix = '.part';
 
   @override
   Future<List<BackupFileInfo>> listBackups() async {

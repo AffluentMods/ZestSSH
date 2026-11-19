@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
@@ -138,16 +140,37 @@ class WindowService with WindowListener {
   bool get isFullscreen => _isFullscreen;
   bool get isAlwaysOnTop => _isAlwaysOnTop;
 
-  Future<void> toggleFullscreen() async {
-    _isFullscreen = !_isFullscreen;
-    fullscreen.value = _isFullscreen;
-    await windowManager.setFullScreen(_isFullscreen);
-  }
+  Future<void> toggleFullscreen() => setFullscreen(!_isFullscreen);
 
   Future<void> setFullscreen(bool value) async {
     _isFullscreen = value;
     fullscreen.value = value;
-    await windowManager.setFullScreen(value);
+    await _setWindowFullScreen(value);
+  }
+
+  /// Whether the window was maximised as it went into full screen, on
+  /// Windows: it is maximised again as it leaves.
+  bool _maximisedBeforeFullScreen = false;
+
+  /// The system's full screen. On Windows, window_manager makes a maximised
+  /// window full screen by restyling it in place, and Windows keeps it
+  /// maximised, so the taskbar and the window's frame could stay (a remote
+  /// screen in full screen did not cover the monitor): the window is
+  /// restored first, made full screen from there, and maximised again on
+  /// the way out.
+  Future<void> _setWindowFullScreen(bool on) async {
+    if (!Platform.isWindows) return windowManager.setFullScreen(on);
+    if (on) {
+      _maximisedBeforeFullScreen = await windowManager.isMaximized();
+      if (_maximisedBeforeFullScreen) await windowManager.unmaximize();
+      await windowManager.setFullScreen(true);
+      return;
+    }
+    await windowManager.setFullScreen(false);
+    if (_maximisedBeforeFullScreen) {
+      _maximisedBeforeFullScreen = false;
+      await windowManager.maximize();
+    }
   }
 
   Future<void> toggleAlwaysOnTop() async {

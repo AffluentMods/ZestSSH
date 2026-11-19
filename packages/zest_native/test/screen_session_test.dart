@@ -418,6 +418,51 @@ void main() {
       expect(gatewayTrust.asked, hasLength(1));
     });
 
+    test('connectTrusting: a server that never finishes the handshake is closed at the deadline, its engine and '
+        'channel with it', () async {
+      final native = FakeScreenNative();
+      final ch = FakeChannel();
+      final trust = FakeTrust();
+      final failed = ScreenSession.connectTrusting(
+        const ScreenConnectOptions.rdp(),
+        openChannel: () async => ch.channel(),
+        trust: trust,
+        native: native,
+        handshakeTimeout: const Duration(milliseconds: 50),
+      );
+      await expectLater(
+        failed,
+        throwsA(isA<ScreenConnectException>()
+            .having((e) => e.reason, 'reason', ScreenCloseReason.network)
+            .having((e) => e.closed.detail, 'detail', ScreenSession.handshakeTimedOut)),
+      );
+      expect(native.sessions.single.closed, isTrue, reason: 'the engine stops');
+      expect(ch.output.isClosed, isTrue, reason: 'the channel closes');
+      expect(trust.asked, isEmpty);
+    });
+
+    test('connectTrusting: the session is handed over as it opens, and closing it then ends the try at once', () async {
+      final native = FakeScreenNative();
+      final ch = FakeChannel();
+      ScreenSession? opened;
+      final failed = ScreenSession.connectTrusting(
+        const ScreenConnectOptions.rdp(),
+        openChannel: () async => ch.channel(),
+        trust: FakeTrust(),
+        native: native,
+        handshakeTimeout: const Duration(minutes: 1),
+        onSession: (s) => opened = s,
+      );
+      await settle();
+      expect(opened, isNotNull);
+      expect(opened!.state, isNot(ScreenSessionState.connected));
+      opened!.close();
+      await expectLater(
+          failed, throwsA(isA<ScreenConnectException>().having((e) => e.reason, 'reason', ScreenCloseReason.local)));
+      expect(native.sessions.single.closed, isTrue);
+      expect(ch.output.isClosed, isTrue);
+    });
+
     test('connectTrusting: other failures are not asked about', () async {
       final native = FakeScreenNative()..onOpen = (s) => s.closeWith('auth', 'the server refused the password');
       final trust = FakeTrust();

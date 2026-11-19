@@ -1914,7 +1914,7 @@ packages:
       path: "packages/zest_ssh_core"
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   zmodem:
     dependency: transitive
     description:

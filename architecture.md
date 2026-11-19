@@ -1,329 +1,183 @@
-# ZestSSH Architecture
+# ZestSSH architecture
 
-Last updated for **v1.5.41**.
+A map of the code as it is on `master`. For how to build and test, see [BUILDING.md](BUILDING.md). Most files open
+with a comment that says what they are for; follow the paths below and read those.
 
-This is the high-level map of the codebase. For specifics, follow the file
-links and read the comments: every non-trivial file has a docstring at the
-top explaining its role and gotchas.
+## The stack
 
----
+| Part | What is used |
+|---|---|
+| App | Flutter (version in `.fvmrc`), one `lib/` tree for Android, iOS, Windows, macOS and Linux |
+| State | Riverpod (`flutter_riverpod`), providers in `lib/providers/` and beside each feature |
+| Navigation | GoRouter (`lib/router/`) |
+| Local data | Drift over SQLCipher (`lib/database/`), schema 56 |
+| Secrets | the system's keystore, through `flutter_secure_storage` |
+| SSH | `packages/zest_ssh_core`, in Dart |
+| Terminal | `packages/xterm` |
+| Native code | `packages/zest_native`, in Rust: FTPS, remote screens, Mosh, sound |
+| Languages | 12, as ARB files in `lib/l10n/` (`flutter gen-l10n` writes `lib/l10n/generated/`, which is not in git) |
 
-## Tech stack
-
-| Layer | Choice | Why |
-|---|---|---|
-| Framework | Flutter (Dart 3.10+) | Single codebase across 5 platforms |
-| State | Riverpod (Notifier + StateProvider + FutureProvider) | Compile-time-safe DI, no global singletons |
-| Navigation | GoRouter | Declarative deep-link safe routing |
-| Local DB | Drift (SQLite via SQLCipher) | Type-safe queries, encrypted at rest |
-| Secrets | flutter_secure_storage | OS Keychain / Keystore / DPAPI¹ |
-| SSH | `packages/zest_ssh_core` (MIT-licensed fork of dartssh2) | Full control over the transport, KEX, ciphers |
-| Terminal | `packages/xterm` (custom-patched) | xterm.js-compatible renderer |
-| IAP | RevenueCat | Cross-platform purchase wrapper |
-| Cloud auth | Firebase Auth (Google + Apple sign-in) | Identity for sync only |
-| Cloud sync | Node.js + Postgres backend, AES-256-GCM E2EE | Zero-knowledge sync |
-| Theming | OLED-first dark, charcoal + chrome | Designed around terminal contrast |
-
-¹ **Windows secure-storage threat model:** `flutter_secure_storage` on Windows
-wraps secrets (incl. the SQLCipher DB key) with DPAPI bound to the *Windows
-user account*, with no app-specific entropy. This protects against other OS
-users and offline disk theft, but NOT against malware or another process
-running as the same user: such a process can call `CryptUnprotectData` and
-recover the DB key. "Encrypted at rest" should be read with that scope. See
-the security-audit notes for the optional per-app-entropy hardening path.
-
-Platforms: **Android, iOS, Windows, macOS, Linux**: all share `lib/`.
-
----
-
-## Project layout
+## The app: `lib/`
 
 ```
 lib/
-├── core/
-│   ├── data/                   static catalogs (OS icons, key types, etc.)
-│   ├── models/                 cross-feature domain types
-│   ├── theme/                  ZestColors, GroupColor enum
-│   └── widgets/                shared atoms (OsIcon, StatusPill)
-│
-├── database/
-│   ├── database.dart           AppDatabase + migrations (schema v18)
-│   ├── database.g.dart         generated Drift code (DON'T edit)
-│   ├── tables/                 12 Drift table definitions
-│   └── daos/                   12 DAOs, one per table
-│
-├── features/                   feature modules: self-contained
-│   ├── groups/                 connection groups (color + icon)
-│   ├── hosts/
-│   │   ├── data/               host-network-overrides repo
-│   │   ├── models/             host card settings, network override
-│   │   ├── pages/              hosts_home_page (grid view)
-│   │   └── widgets/            host_card, host_grid_area, multi-select
-│   ├── networks/
-│   │   ├── data/               network_repository, icon_catalog
-│   │   ├── engine/             detector, resolver, network_state
-│   │   ├── models/             Network, NetworkTrigger sealed hierarchy
-│   │   └── pages/              networks_page, network_editor_page
-│   ├── notifications/
-│   │   ├── models/             AppNotification
-│   │   ├── notification_center.dart   queue + history Notifier
-│   │   └── widgets/            bell, toast overlay
-│   └── shortcuts/
-│       ├── default_bindings.dart  built-in defaults map
-│       ├── shortcut_action.dart   23 actions across 5 categories
-│       ├── shortcut_key.dart      data class with HSV-style serialization
-│       └── widgets/               keyboard_shortcuts_panel
-│
-├── l10n/                       .arb files + flutter gen-l10n output
-├── models/                     domain types not tied to a single feature
-│                                 (Connection-with-details, PaneTree,
-│                                  WorkTab, Workflow, etc.)
-├── providers/                  Riverpod surface (one file per concern)
-│
-├── router/                     GoRouter routes + guards
-│
-├── services/                   long-lived services + IO
-│   ├── ssh_service.dart            owns one SSH session
-│   ├── sftp_service.dart           wraps zest_ssh_core SFTP
-│   ├── port_forward_service.dart   per-session forward registry
-│   ├── session_transcript_service  recording + replay
-│   ├── automation_service          workflow + scheduler executor
-│   ├── network_detector            connectivity_plus + SSID lookups
-│   ├── connection_resolver         host + network → ResolvedConnection
-│   ├── pinned_http_client          cloud sync HTTPS w/ cert pinning
-│   ├── prometheus_secure_settings  monitoring config
-│   ├── security_lock_service       app PIN / biometric gate
-│   ├── hardware_token/             YubiKey / FIDO2 ssh-agent integration
-│   └── ssh_cert/                   SSH user-certificate generation
-│
-├── theme/
-│   ├── app_colors.dart             every named color
-│   ├── desktop_dimensions.dart     every desktop layout token
-│   └── terminal_themes.dart        built-in xterm color schemes
-│
-└── ui/
-    └── screens/                screen widgets, organised by feature area
+  main.dart      start: the main window, and the detached windows of a computer (editor, remote screen)
+  app.dart       the root widget: lock, lifecycle, links, the things that run while the app is open
+  config/        official_identity.dart (the build's addresses) and feature_flags.dart
+  core/          shared catalogs, error codes, models and small widgets
+  database/      the Drift database: database.dart, tables/, daos/, and the generated *.g.dart
+  features/      one folder per feature (see below)
+  l10n/          the app's words
+  models/        types used across features (panes, tabs, workflows)
+  providers/     Riverpod providers that are not owned by one feature
+  router/        the routes (router.dart, routes.dart)
+  services/      long-lived services and input/output
+  theme/         colours, sizes, terminal themes
+  ui/            screens (ui/screens/), shared widgets (ui/widgets/), the detached windows (ui/windows/)
+  utils/         helpers
 ```
 
-External packages we own:
+A computer and a phone share the code and differ in their shell: `lib/ui/screens/desktop/desktop_shell.dart` on
+Windows, macOS and Linux, `lib/ui/screens/home/` on Android and iOS.
 
-```
-packages/
-├── xterm/                custom xterm renderer (Flutter port)
-└── zest_ssh_core/        SSH library, an MIT fork of dartssh2 (Ed448, ChaCha20, certs)
-```
+Some of `lib/features/`:
 
----
-
-## Database (schema v18)
-
-12 tables, all encrypted via SQLCipher:
-
-| Table | Purpose |
+| Folder | What it holds |
 |---|---|
-| `connections` | Hostname, port, protocol, jump host, env vars, colour, etc. |
-| `identities` | Passwords, key pairs, certificates, hardware-token refs |
-| `connection_groups` | User-defined groups (colour + icon) for hosts |
-| `known_hosts` | TOFU host key cache |
-| `snippets` | Reusable command templates with variables |
-| `port_forward_rules` | Saved -L/-R/-D rules, optionally pinned to a Network |
-| `automation_history` | Workflow execution log |
-| `workflows` | Visual automation pipelines (steps as JSON) |
-| `scheduled_tasks` | WorkManager-backed background automation |
-| `networks` | User-defined networks with triggers |
-| `host_network_overrides` | Per-host config that fires when a network matches |
-| `connection_tags` | Composite-PK (connectionId, tag) for free-form labels |
+| `hosts/`, `groups/`, `identity/`, `keys/`, `networks/` | hosts and their groups, sign-in details, keys, per-network settings |
+| `terminal/`, `tmux/`, `broadcast/`, `triggers/`, `snippets/`, `command_history/` | the terminal and what runs in it |
+| `sftp/` | files |
+| `screens/` | remote screens (below) |
+| `orchards/`, `teams/` | teams (below); `teams/` holds an account's keys |
+| `sharing/` | sharing a live session |
+| `automation/`, `monitoring/`, `workspaces/`, `shortcuts/`, `notifications/` | workflows and schedules, monitoring, saved layouts, keyboard shortcuts, the notification center |
+| `tickets/`, `feedback/`, `help/`, `assistant/`, `changelog/`, `onboarding/` | support and help |
 
-Migrations are append-only in `database.dart`'s `onUpgrade` block. **Never
-re-number a schema version.** When you add a column, add a `from < N` step.
+Some of `lib/services/`: `ssh_service.dart` and `ssh_connection_factory.dart` (an SSH session and how it is
+dialled, jump hosts included), `sftp_service.dart`, `port_forward_service.dart`, `mosh_service.dart` and `mosh/`,
+`eternal_terminal_service.dart`, `telnet_service.dart`, `serial_service.dart`, `local_shell_service.dart`,
+`ftps/`, `sync_service.dart` and `sync/` (below), `backup/`, `fido/` and `hardware_token/` (security keys),
+`ssh_cert/` (SSH certificates), `passkeys/`, `security_lock_service.dart` (the app lock),
+`app_updater.dart` and `update_check_service.dart` (the updater of the computer builds).
 
-Pre/post-migration row-count integrity check guards against silent data loss
-during migration (`_recordTableCounts` + `_verifyMigrationIntegrity`).
+Opening a host goes through `activeSessionsProvider` in `lib/providers/terminal_providers.dart`: it reads the host
+and its sign-in details from the database, dials (through the host's jump hosts when it has any), and gives the
+session to a terminal, a file browser or a remote screen.
 
----
+## The packages: `packages/`
 
-## Authentication flow
-
-1. User clicks a host card → `activeSessionsProvider.startSession(connection)`
-2. `_resolveIdentity` reads the identity row, decrypts secrets, materialises a
-   `SSHKeyPair` (PEM keys), optionally a password, and resolves any SSH cert
-3. `_buildJumpChain` walks `connectViaId` recursively (with cycle detection),
-   dials from outermost-first, returns a tunnel socket + list of intermediate
-   `SSHClient`s for cleanup
-4. `SshService` opens the SSH session using either the direct socket or the
-   tunnel socket, applies keep-alive, compression, agent-forwarding settings
-5. Session id stored in `activeSessionsProvider`, terminal widget mounts and
-   connects its xterm to the session's stdout/stdin streams
-
----
-
-## Networks feature (v1.5)
-
-Context-aware connection profiles:
-
-- **NetworkDetector** runs `connectivity_plus` plus SSID lookups (perm-gated
-  on Android via `ACCESS_FINE_LOCATION`, on iOS via the wifi-info
-  entitlement). Reports a `NetworkState` snapshot.
-- **NetworkRepository** stores user-defined `Network`s with one or more
-  `NetworkTrigger`s (sealed hierarchy: `SubnetTrigger`, `SsidTrigger`,
-  `CellularTrigger`, `ConnectivityTrigger`, `AlwaysTrigger`).
-- **ConnectionResolver** combines the detected network + per-host overrides
-  to produce a `ResolvedConnection`: the final address, port, username,
-  identity, jump chain, and optional `bringUpVpn` host id.
-- **HostNetworkOverride** lets each host specify `address / port / username /
-  identityKeyId / jumpHostId / jumpHostChain / skipHost` per network.
-- **PortForwardRule.networkId** (v1.5 addition) pins auto-start forwards to a
-  specific network: null = "all networks" (pre-v1.5 behaviour).
-
-The Default fallback network is pinned to the bottom of the eval order with
-an `AlwaysTrigger`, never deleted, and always present after `ensureDefault()`
-runs on first launch.
-
----
-
-## Cloud sync
-
-Zero-knowledge end-to-end encryption:
-
-1. User sets a Master Sync Password
-2. Argon2id(password, 256-bit salt) → 256-bit MEK (Memory: 128 MB, Iters: 3,
-   Parallelism: 4). 64 MB is the legacy v1 profile, kept for accounts created
-   before the v2 parameter bump.
-3. SHA-256(MEK) → verification hash (this is what the server compares; the
-   server never sees the MEK)
-4. Push flow: JSON → zlib → AES-256-GCM(MEK) → `salt|IV|tag|ciphertext` →
-   base64 → POST `/v1/sync/push`
-5. Pull flow: GET `/v1/sync/pull` → base64 → split → Argon2id → verify SHA-256
-   → decrypt → decompress → parse
-
-Backend lives at `backend/` (Node + Postgres + Firebase Admin). API base:
-`https://api.zestssh.com`. See [memory/cloud-sync.md](cloud-sync.md) for the
-table schema + endpoint list.
-
-**Bring-your-own-cloud (v1.5.41):** the hosted ZestSSH Cloud is now just one
-of several sync targets behind a `SyncBackend` abstraction (`lib/services/sync/`).
-The same E2E-encrypted blob can be pushed to WebDAV, S3-compatible object
-storage, Google Drive, a self-hosted "dumb store", or the ZestSSH server:
-the encryption model above is unchanged; only the transport differs. See
-[docs/self-hosted-sync.md](../docs/self-hosted-sync.md).
-
----
-
-## Notifications (IntelliJ-style)
-
-Single `NotificationCenter` Riverpod Notifier holds:
-
-- A history list (cap 50, oldest evicted)
-- A set of currently-visible toast ids (cap 4 concurrent)
-- An ordered queue of pending toasts when at capacity
-
-Severity-driven auto-dismiss:
-
-| Severity | Default dismiss |
+| Package | What it is |
 |---|---|
-| info | 4 s |
-| success | 4 s |
-| warning | 8 s |
-| error | ∞ (sticky) |
+| `zest_ssh_core/` | the SSH library, a fork of dartssh2 (MIT): transport, key exchange, ciphers, keys and certificates, SFTP, forwarding |
+| `zest_native/` | the Rust library (below) and its Dart bindings |
+| `xterm/` | the terminal emulator and its renderer, a fork of xterm.dart (MIT) |
+| `lucide_icons/` | the Lucide icons for Flutter, a fork (ISC) |
+| `desktop_multi_window/` | detached windows on a computer, a fork (Apache-2.0) |
+| `speech_to_text_windows/` | speech to text on Windows, a fork (BSD-3-Clause) |
 
-`showTopSnackBar(context, msg)` is platform-aware:
+### `zest_native`
 
-- **Desktop** → pushes to `NotificationCenter` (slide-in from the right,
-  click to dismiss)
-- **Mobile** → Material `SnackBar` pinned to the top, swipe-UP to dismiss
-  (the snackbar lives at the top via a huge `bottom: size.height - 100`
-  margin, so swipe-down would push it INTO the screen: `dismissDirection:
-  DismissDirection.up` is the natural gesture)
+The crate is `packages/zest_native/rust`. Its build hook (`hook/build.dart`) runs `cargo build --release --locked`
+for the platform's target on every Flutter build and test run, and the Dart side calls it through `dart:ffi`
+(`lib/src/*bindings.dart`). The app turns its cargo features on in `pubspec.yaml` (`cargo_features`): `vnc`, `rdp`,
+`mosh` and `sound`.
 
----
+| Module (`rust/src/`) | What it does |
+|---|---|
+| `ftps/` | FTPS (always built) |
+| `vnc/` | VNC: an RFB engine forked from vnc-rs (`vnc/engine`) |
+| `rdp/` | RDP through IronRDP, with the crate's own TLS (rustls with ring) |
+| `screen/` | a remote screen's session for both protocols: the frame buffer, RDP's graphics, clipboard, layout and sound (`rdp_sound.rs`, played through cpal), and RD Gateway (`rdp_gateway.rs`) |
+| `mosh/` | a Mosh client, so a Mosh host opens without a mosh program on the device |
 
-## Editable keyboard shortcuts
+Two IronRDP crates are vendored with changes under `rust/vendor/`. The fuzz targets are in `rust/fuzz/`.
 
-23 actions across 5 categories (General / Tabs / Layout / Terminal / Misc),
-all rebindable. Defaults in
-[`lib/features/shortcuts/default_bindings.dart`](lib/features/shortcuts/default_bindings.dart).
+## The database
 
-User overrides stored as JSON in SharedPreferences. The dispatcher
-(`shortcutBindingsProvider`) resolves `effective = override ?? default`. An
-explicit unbind sentinel (`keyId == 0`) lets the user say "this action has no
-shortcut" without losing the action entry.
+`lib/database/database.dart` defines `AppDatabase` (Drift). The file is encrypted with SQLCipher and its key is
+kept in the system's keystore. A debug build keeps its database unencrypted.
 
-`desktop_shell.dart`'s `_handleKeyEvent` dispatches the most common shortcuts
-via `bindings.matches(event, action)`. Deeper layout shortcuts (split, pane
-focus) still have direct handlers: those don't go through the dispatcher
-because they'd race the IME / focus traversal.
+- The schema version is `AppDatabase.currentSchemaVersion`, 56 on `master`. There are 36 tables
+  (`lib/database/tables/`): hosts (`connections`), sign-in details (`identities`), groups, tags, known host keys,
+  snippets, port forwards, networks, workflows and schedules, monitoring samples, command history, the tombstones
+  sync uses, local state, the support tickets, and the tables a team's database uses.
+- Migrations are the `if (from < N)` steps of `onUpgrade`, in order, never renumbered. Before migrating, the app
+  copies the database file and counts each table's rows; after, it compares the counts. `test/database/` has a test
+  for the steps (`migration_v*_test.dart`).
+- The generated code (`*.g.dart`) is in git. After changing a table or a DAO, run `dart run build_runner build`.
 
----
+## Sync
 
-## Branding
+A person's own data is synced as one encrypted file. `lib/services/sync_service.dart` is the cryptography and does
+no network work; the transports are behind `SyncBackend` (`lib/services/sync/`).
 
-| Tier | Internal name | Display name | Price |
-|---|---|---|---|
-| Free | `free` | Free | - |
-| Pro | `pro` | **Squeezed** | $9.99 |
-| Cloud Sync | `cloud_sync` | **Juiced** | $24.99 |
-| Pro + Cloud | both entitlements | **Orchard** | $29.99 (bundle) |
+- A random 256-bit data key encrypts the data (JSON, zlib, AES-256-GCM). That key is wrapped twice: by a key derived
+  from the sync password with Argon2id, and by one derived from the recovery key. Changing the password wraps the
+  data key again and leaves the data as it is.
+- The Argon2id parameters travel with the file. The app refuses parameters weaker than the weakest it has ever
+  written, and ones above a safe maximum.
+- No store sees the data, the data key, the password or the recovery key.
+- The stores: ZestSSH Cloud and a server of your own (`zest_server_backend.dart`), WebDAV, S3-compatible storage
+  and Google Drive (the three that extend `dumb_store_sync_backend.dart`). The guide for your own storage is
+  [docs/self-hosted-sync.md](docs/self-hosted-sync.md).
 
-RevenueCat product IDs: `zestssh_pro`, `zestssh_cloud_sync`, `zestssh_bundle`.
+## Teams
 
----
+In the code a team is an Orchard, a team vault is a Crate, and a person's own space is the Tree. Teams are compiled
+in with `ZEST_ORCHARDS=true` and need a ZestSSH Cloud account. The code is in `lib/features/orchards/`.
 
-## Build + ship
+- **A database per team.** Each team has its own database file (`orchards/<id>.db` beside the person's own), with
+  the same schema, opened by `AppDatabase.orchard`, which adds the triggers that note every change of an item for
+  its vault's sync.
+- **The record** (`record/orchard_record.dart`). A team's members, roles and rights are an append-only chain of
+  entries, each signed by the member who made the change and naming the hash of the entry before it. Every member's
+  app works out who is in the team and what each may do from the chain alone; the server applies the same rules.
+- **Keys** (`crypto/orchard_crypto.dart`, `lib/features/teams/crypto/`). A team's key and each vault's key are
+  random, sealed to each member's account key and signed by the account that sealed them. A device opens a copy
+  only when it matches the commitment in the signed record entry that made it.
+- **Sync** (`sync/crate_sync_engine.dart`). The items of a vault are encrypted under the vault's key before they
+  leave the device.
 
-All release builds need `--dart-define-from-file=.env` so the bundled config
-(RevenueCat keys, sync API base, Firebase config) is present:
+## Remote screens
 
-```bash
-flutter build windows --release --dart-define-from-file=.env
-flutter build appbundle --release --dart-define-from-file=.env
-flutter build ipa --release --dart-define-from-file=.env
-flutter build macos --release --dart-define-from-file=.env
-flutter build linux --release --dart-define-from-file=.env
-```
+`lib/features/screens/` is the app's side: the session (`session/`), the view and its input (`view/`, `desktop/`,
+`phone/`, `window/`), and the Proxmox console (`proxmox/`). The engine is `zest_native` (above).
 
-Windows ships as an Inno Setup installer (`installer/zestssh_setup.iss`,
-bump `MyAppVersion` before compiling). Sign with `signtool` before public
-distribution: comment block in the .iss has the exact incantation.
+- VNC and RDP. Where a remote screen's bytes go is a `ScreenTarget` (`session/screen_target.dart`): through an SSH
+  host (its carrier) to an address and port, to a Unix socket on that host or to an X program started there; to a
+  Proxmox guest's console; or, with no carrier, straight to the server (a VNC server only over TLS with a
+  certificate). An RDP host can be reached through an RD Gateway (`session/screen_gateway_route.dart`).
+- A team can set rules for remote screens (`session/screen_team_rules.dart`).
+- On a computer a remote screen can be moved to a window of its own.
 
-macOS is **not** sandboxed (see comments in
-`macos/Runner/Release.entitlements`). Sandboxing forced
-`com.apple.security.keychain-access-groups` to resolve `$(AppIdentifierPrefix)`
-at sign time, which broke every non-App-Store build with `errSecMissingEntitlement
-= -34018`. Plus an SSH client needs `~/.ssh` access, which the sandbox does
-not give.
+## Community build and official build
 
----
+Every setting is a compile-time define with a default; `.env.example` lists them.
+
+- A build without `ZEST_OFFICIAL=true` is a community build. It has no accounts, ZestSSH Cloud, teams, plans,
+  tickets or updater, and no links to a website, unless the build names its own addresses.
+- `lib/config/official_identity.dart` holds every address of the official builds (the API, the website, the docs,
+  the update host and its key, the store listings) and the define that replaces each. The rest of the code reads
+  them from there.
+- `ZEST_BUILD_NAME` names a build in About and in copied reports.
+
+## Tests
+
+| What | How |
+|---|---|
+| The app | `flutter test --no-pub --dart-define=ZEST_ORCHARDS=true` (`test/`, laid out like `lib/`) |
+| The repository's guards | `test/docs/`: licences and notices, the Rust advisories, the error codes, demo names and addresses in tests, the open source tree, platform build files |
+| The SSH library | `dart test -x integration` in `packages/zest_ssh_core` |
+| The native library | `cargo test --features vnc,rdp,mosh` in `packages/zest_native/rust` |
+| On a device | `integration_test/` |
+
+Tests that need a server skip themselves when it is not there; `tool/` has the scripts that start the local SSH,
+FTPS and remote screen servers. [BUILDING.md](BUILDING.md), section 7, has the details.
 
 ## Conventions
 
-| Rule | Why |
-|---|---|
-| `const` constructors wherever possible | Tree-shaking depends on it (icons especially) |
-| Every colour goes through `AppColors` | Re-themable, no inline hex |
-| Database icons stored as codePoint + looked up in a const catalog | Tree-shake-safe |
-| No `Co-Authored-By` lines in commits | Project convention |
-| Don't add file-based logging | Removed in 1.5: zero data on disk |
-| Brand names: Squeezed / Juiced / Orchard | Free / Pro / Cloud / Bundle |
-
----
-
-## Where to look
-
-| Looking for… | Look at… |
-|---|---|
-| Schema migrations | `lib/database/database.dart` `onUpgrade` |
-| SSH connect flow | `lib/providers/terminal_providers.dart` `_createSshShell` |
-| Network detection | `lib/features/networks/engine/network_detector.dart` |
-| Network resolver | `lib/features/networks/engine/connection_resolver.dart` |
-| Notification center | `lib/features/notifications/notification_center.dart` |
-| Keyboard shortcuts | `lib/features/shortcuts/` |
-| Pill bar + sidebar | `lib/ui/screens/desktop/desktop_shell.dart` |
-| Hosts grid + customization | `lib/features/hosts/widgets/host_card.dart` |
-| Theme designer + HSV picker | `lib/ui/screens/desktop/widgets/theme_designer_view.dart` |
-| Settings nav + sections | `lib/ui/screens/desktop/widgets/settings_inline_view.dart` |
-| Workflow editor | `lib/ui/screens/automation/workflow_editor_screen.dart` |
-| Identity edit dialog | `lib/ui/screens/identity/identity_edit_screen.dart` |
-| Connection edit dialog | `lib/ui/screens/connection/connection_edit_screen.dart` |
-| OS icons catalog | `lib/core/data/os_catalog.dart` |
-| Network icon catalog | `lib/features/networks/data/network_icon_catalog.dart` |
-| Theme tokens | `lib/theme/app_colors.dart`, `lib/theme/desktop_dimensions.dart` |
+- Every word a person sees is in all the ARB files of `lib/l10n/`.
+- Colours and sizes come from `lib/theme/`.
+- Errors carry a code. The codes are listed in `lib/core/errors/error_codes.dart`, `docs/ERROR-CODES.md` is written
+  from that list, and `test/docs/error_codes_test.dart` checks both.
+- Never run `dart format` on a directory.

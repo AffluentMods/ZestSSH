@@ -192,8 +192,8 @@ void main() {
         reason: 'the same alert, not a new one',
       );
 
-      // Cancel: the edit goes (as before), nothing is kept.
-      scaffold(tester).onCancel!();
+      // Close: the edit goes (as Cancel did), nothing is kept.
+      scaffold(tester).onClose!();
       await settle(tester);
       await awayAndBack(tester, pageShown);
       expect(container.read(alertDraftsProvider).isEmpty, isTrue);

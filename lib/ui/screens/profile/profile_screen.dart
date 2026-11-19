@@ -33,6 +33,7 @@ import 'package:zestssh/features/orchards/orchard_providers.dart';
 import 'package:zestssh/features/orchards/team/team_sync_offer.dart' show redeemTeamCode;
 import 'package:zestssh/features/orchards/widgets/fingerprint_view.dart';
 import 'package:zestssh/services/sync/join_with_handover.dart';
+import 'package:zestssh/services/sync/password_change.dart';
 import 'package:zestssh/ui/screens/profile/recovery_key_check.dart';
 import 'package:zestssh/ui/screens/profile/account_question.dart';
 import 'package:zestssh/ui/screens/profile/device_approval_dialogs.dart';
@@ -1639,6 +1640,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (setupComplete) ...[
             const SizedBox(height: 8),
             _PanelNote(text: l10n.syncMergeNoteThreeWay, standalone: true),
+            // A store that takes any write: said, where that is the one in use.
+            if (!ref.watch(syncProviderConfigProvider).kind.refusesCrossingWrites)
+              _PanelNote(
+                  key: const ValueKey('sync-note-crossing-writes'), text: l10n.syncNoteCrossingWrites, standalone: true),
           ],
         ],
       ),
@@ -3907,6 +3912,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Fresh MEK derived with the current default - store those params.
           argon2Params: SyncService.argon2Params,
           authorizeHash: oldVerHash,
+          // Only onto what was read: the new password was typed in between.
+          expectedVersion: pullResult.version,
         );
         await ref.read(autoSyncServiceProvider).storeSyncCredentials(
               dek, newVerHash,
@@ -3938,30 +3945,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // still-old recovery wrapper and permanently break the recovery key.
       // Keeping the account's params means password and recovery derivations
       // always agree.
-      final newSalt = SyncService.generateSalt();
-      final newMek = await SyncService.deriveKey(
-        newPassword,
-        newSalt,
-        params: pullResult.argon2Params,
-      );
-      final newVerHash =
-          await SyncService.computeVerificationHash(newMek);
-      final newWrappedDek = await SyncService.wrapDek(dek, newMek);
-
-      // Re-encrypt blob with existing DEK (needed because salt changes).
-      final data = await SyncService.decrypt(
-          pullResult.encryptedData, dek);
-      final (:version, :blobSize, updatedAt: _) = await _backend.push(
-        data: await _syncDataService.stampForPush(data),
+      //
+      // The blob is written again with the existing DEK (the salt changes),
+      // and only onto the version that was read: the new password was typed
+      // in between, and another device's upload since then is read and kept
+      // (lib/services/sync/password_change.dart).
+      final (:version, :blobSize, salt: newSalt, mek: newMek, verificationHash: newVerHash, argon2Params: _) =
+          await pushPasswordChange(
+        backend: _backend,
+        pulled: pullResult,
         dek: dek,
-        salt: newSalt,
-        verificationHash: newVerHash,
-        wrappedDekPassword: newWrappedDek,
+        currentMek: currentMek,
+        newPassword: newPassword,
+        oldVerificationHash: oldVerHash,
+        stamp: _syncDataService.stampForPush,
         deviceId: await _getDeviceId(),
-        // Preserve the account's params so they stay consistent with the
-        // carried-forward recovery wrapper.
-        argon2Params: pullResult.argon2Params,
-        authorizeHash: oldVerHash,
       );
 
       await ref.read(autoSyncServiceProvider).storeSyncCredentials(
@@ -4313,7 +4311,7 @@ enum _DeviceActionResult {
 }
 
 class _PanelNote extends StatelessWidget {
-  const _PanelNote({required this.text, this.standalone = false});
+  const _PanelNote({super.key, required this.text, this.standalone = false});
 
   final String text;
   final bool standalone;

@@ -18,6 +18,11 @@ What changed against 0.11.0, and nothing else:
     wants less than 256 MiB taken on a server's word cannot say so: a few hundred bytes from a
     server made the app allocate 256 MiB (found by ZestSSH's fuzzing, 8 November 2026, and by
     a review before 4.0), which a phone may not have.
+  - src/clearcodec/mod.rs (19 November 2026): a V-bar cache hit on an entry this decoder never
+    stored reads as an empty bar (a column of zero pixels, or no pixel rows for a short bar)
+    instead of failing the whole update, as FreeRDP does: Windows servers refer to such entries
+    after a cache reset, and text regions stayed unpainted. Upstream IronRDP's own fix,
+    9265fde83f (#2433), line for line; it goes with the next release made from upstream.
   - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
     not used by a build from a path.
   - Six long dashes in comments (src/dwt_extrapolate.rs, src/progressive.rs,

@@ -1,7 +1,8 @@
 // A security key in software, for tests: it answers CTAP2 as the
 // specification says a key does (getInfo, clientPIN with PIN/UV auth
 // protocols one and two, makeCredential, getAssertion), with P-256 and
-// Ed25519 keys, a PIN with its tries, and a counter.
+// Ed25519 keys, a PIN with its tries, a counter, and credProtect (a key
+// made at level 3 is used only with the PIN's token).
 //
 // Its PIN protocols are written here a second time, from the specification
 // and with the primitives called directly (HKDF by hand from HMAC), not
@@ -55,10 +56,13 @@ BigInt _big(List<int> bytes) => bytes.fold(BigInt.zero, (n, b) => (n << 8) | Big
 String _hex(List<int> b) => b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
 
 class _Credential {
-  _Credential(this.rpId, this.alg, {this.ec, this.ed});
+  _Credential(this.rpId, this.alg, {this.ec, this.ed, this.protect = 1});
 
   final String rpId;
   final int alg;
+
+  /// Its credProtect level: 1 unless made with another.
+  final int protect;
   final ECPrivateKey? ec;
   final c.SimpleKeyPair? ed;
 }
@@ -73,6 +77,8 @@ class SoftKey implements CtapDevice {
     this.tokensWithPermissions = true,
     this.makesEd25519 = true,
     this.listsAlgorithms = true,
+    this.supportsCredProtect = true,
+    this.tellsPinRetries = true,
     int seed = 7,
   }) : _random = Random(seed);
 
@@ -84,6 +90,15 @@ class SoftKey implements CtapDevice {
   final bool tokensWithPermissions;
   final bool makesEd25519;
   final bool listsAlgorithms;
+
+  /// Whether it lists and honours credProtect.
+  final bool supportsCredProtect;
+
+  /// Whether it answers clientPIN getPINRetries.
+  final bool tellsPinRetries;
+
+  /// How many PINs it was sent that were wrong, counted or not.
+  int wrongPinTries = 0;
 
   final Random _random;
   final Map<String, _Credential> _credentials = {};
@@ -149,6 +164,7 @@ class SoftKey implements CtapDevice {
 
   Uint8List _getInfo() => _ok({
         1: tokensWithPermissions ? ['U2F_V2', 'FIDO_2_0', 'FIDO_2_1'] : ['U2F_V2', 'FIDO_2_0'],
+        if (supportsCredProtect) 2: ['credProtect'],
         3: Uint8List(16),
         4: {
           'rk': true,
@@ -196,6 +212,7 @@ class SoftKey implements CtapDevice {
     if (protocol is! int || !pinProtocols.contains(protocol)) return _status(CtapError.invalidParameter);
     switch (sub) {
       case 0x01:
+        if (!tellsPinRetries) return _status(CtapError.invalidCommand);
         return _ok({3: pinRetries});
       case 0x02:
         _agreement = _newEcKey();
@@ -214,6 +231,7 @@ class SoftKey implements CtapDevice {
         pinRetries--;
         final right = sha256(pin!.codeUnits).sublist(0, 16);
         if (hash.length != 16 || _hex(hash) != _hex(right)) {
+          wrongPinTries++;
           _agreement = null; // a new agreement for the next try, as the specification asks
           return _status(pinRetries == 0 ? CtapError.pinBlocked : CtapError.pinInvalid);
         }
@@ -256,19 +274,26 @@ class SoftKey implements CtapDevice {
       }
     }
     if (alg == null) return _status(CtapError.unsupportedAlgorithm);
+    // credProtect: an unknown extension is passed over, as a key that does
+    // not support it does.
+    int? protect;
+    if (p[6] case {'credProtect': final int level} when supportsCredProtect) {
+      if (level < 1 || level > 3) return _status(CtapError.invalidParameter);
+      protect = level;
+    }
     final id = _bytes(48);
     final Map<int, Object?> cose;
     if (alg == kCoseEs256) {
       final key = _newEcKey();
-      _credentials[_hex(id)] = _Credential(rpId, alg, ec: key);
+      _credentials[_hex(id)] = _Credential(rpId, alg, ec: key, protect: protect ?? 1);
       final (x, y) = _point(key);
       cose = {1: 2, 3: kCoseEs256, -1: 1, -2: x, -3: y};
     } else {
       final pair = await c.Ed25519().newKeyPairFromSeed(_bytes(32));
-      _credentials[_hex(id)] = _Credential(rpId, alg, ed: pair);
+      _credentials[_hex(id)] = _Credential(rpId, alg, ed: pair, protect: protect ?? 1);
       cose = {1: 1, 3: kCoseEdDsa, -1: 6, -2: Uint8List.fromList((await pair.extractPublicKey()).bytes)};
     }
-    final flags = 0x01 | 0x40 | (verified == true ? 0x04 : 0);
+    final flags = 0x01 | 0x40 | (verified == true ? 0x04 : 0) | (protect != null ? 0x80 : 0);
     final authData = Uint8List.fromList([
       ...sha256(rpId.codeUnits),
       flags,
@@ -277,6 +302,7 @@ class SoftKey implements CtapDevice {
       id.length >> 8, id.length & 0xff,
       ...id,
       ...cborEncode(cose),
+      if (protect != null) ...cborEncode({'credProtect': protect}),
     ]);
     return _ok({1: 'none', 2: authData, 3: <Object?, Object?>{}});
   }
@@ -291,7 +317,8 @@ class SoftKey implements CtapDevice {
     for (final allowed in (p[3] as List?) ?? const []) {
       final candidate = (allowed as Map)['id'] as Uint8List;
       final found = _credentials[_hex(candidate)];
-      if (found != null && found.rpId == rpId) {
+      // A key made at credProtect level 3 is not there without the PIN.
+      if (found != null && found.rpId == rpId && (found.protect < 3 || verified == true)) {
         credential = found;
         id = candidate;
         break;
@@ -354,7 +381,7 @@ Uint8List derOf(BigInt r, BigInt s) {
 /// applet. [chunk] is how much of an answer it gives at a time (the rest by
 /// GET RESPONSE); [working] how many times it says "still working" first.
 class SoftNfcCard implements ApduChannel {
-  SoftNfcCard(this.key, {this.chunk = 255, this.working = 0, this.isFido = true, this.leavesAfter});
+  SoftNfcCard(this.key, {this.chunk = 255, this.working = 0, this.isFido = true, this.leavesAfter, this.leavesAnswering});
 
   final CtapDevice key;
   final int chunk;
@@ -363,6 +390,11 @@ class SoftNfcCard implements ApduChannel {
 
   /// The card leaves the field after this many commands.
   int? leavesAfter;
+
+  /// The card leaves the field after the key has taken a CTAP2 message
+  /// this says yes to, before its answer is read: the key acted on it,
+  /// and the phone never hears what it said.
+  bool Function(Uint8List request)? leavesAnswering;
 
   final List<Uint8List> seen = [];
   final BytesBuilder _message = BytesBuilder();
@@ -399,6 +431,10 @@ class SoftNfcCard implements ApduChannel {
       if (cla == 0x90) return _sw(0x9000);
       final request = _message.takeBytes();
       _answer = await key.cbor(request);
+      if (leavesAnswering?.call(request) ?? false) {
+        leavesAfter = 0;
+        throw StateError('Tag was lost.');
+      }
       _given = 0;
       if (working > 0 && command[2] & 0x80 != 0) {
         working--;

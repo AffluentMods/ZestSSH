@@ -177,6 +177,24 @@ void main() {
     expect(other.pointers, isNotEmpty);
   });
 
+  testWidgets('view only turned on and off again leaves relative mouse off for a finger too: it is a place again',
+      (tester) async {
+    final (engine, c) = await _connect(tester);
+    c
+      ..touchMode = ScreenTouchMode.mousePointer
+      ..relativeMouse = true
+      ..viewOnly = true
+      ..viewOnly = false;
+    expect(c.relativeMouse, isFalse, reason: 'the switch shows off');
+    engine.pointers.clear();
+    final finger = await tester.startGesture(const Offset(300, 200), kind: PointerDeviceKind.touch);
+    await finger.moveBy(const Offset(40, 0));
+    await finger.up();
+    await tester.pump();
+    expect(engine.relativePointers, isEmpty, reason: 'no movement is sent with the switch off');
+    expect(engine.pointers, isNotEmpty);
+  });
+
   testWidgets('turned off in the middle of a drag: the button is let go the way it was pressed', (tester) async {
     final (engine, c) = await _connect(tester);
     c

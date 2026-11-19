@@ -16,8 +16,15 @@ make it panic. The app's library ends the whole app on a panic, so each is fixed
 source, the day it is found, and listed below to be sent upstream. The same for what a server can
 make it keep in memory without limit, where the place to say no is inside this crate.
 
-What changed against 0.13.0, and nothing else (each line marked "ZestSSH" in the source):
+What changed against 0.13.0, and nothing else (each line marked "ZestSSH" in the source, but
+for the one change taken from upstream as it is):
 
+  - src/rfx.rs (19 November 2026): RemoteFX tile and clip rectangles no longer wrap u16 on what
+    a server sends (a large tile index, a zero width or height): tile positions are checked in
+    u16 and clip rectangles computed in u32 with exclusive bounds held to the channel; a tile
+    starting past the u16 range is skipped, one crossing its end is cut there. A release build
+    wrapped (a tile drawn in the wrong place), a debug build panicked. Upstream IronRDP's own
+    fix, 56d691e3ff (#2096), line for line.
   - src/fast_path.rs, process_surface_commands: a Set Surface Bits or Stream Surface Bits command
     whose destination rectangle is empty or inverted (right <= left or bottom <= top) is an
     error. Its right and bottom edges had 1 taken off unchecked: with right 0 that wrapped to

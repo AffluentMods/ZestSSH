@@ -33,7 +33,7 @@ class SftpDockPrefs {
     this.side = SftpDockSide.bottom,
     this.height = defaultHeight,
     this.width = defaultWidth,
-    this.twoPanes = false,
+    this.twoPanes = true,
     this.followTerminal = false,
   });
 
@@ -47,8 +47,8 @@ class SftpDockPrefs {
   final double width;
 
   /// Two panes side by side, with the rail of places (this computer, or
-  /// another host, beside the session's), as the dock had them before 4.0;
-  /// off, the session's host alone (4.0).
+  /// another host, beside the session's): the default, as a file transfer
+  /// usually has two sides; off, the session's host alone.
   final bool twoPanes;
 
   /// Whether the dock opens each folder its terminal goes to (4.0, "Follow
@@ -86,7 +86,7 @@ class SftpDockPrefsNotifier extends StateNotifier<SftpDockPrefs> {
         width: (p.getDouble(_kWidth) ?? SftpDockPrefs.defaultWidth)
             .clamp(SftpDockPrefs.minWidth, 3000)
             .toDouble(),
-        twoPanes: p.getBool(_kTwoPanes) ?? false,
+        twoPanes: p.getBool(_kTwoPanes) ?? true,
         followTerminal: p.getBool(_kFollowTerminal) ?? false,
       );
 

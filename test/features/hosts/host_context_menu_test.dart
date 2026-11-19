@@ -18,6 +18,7 @@ import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/providers/core_providers.dart';
 import 'package:zestssh/providers/desktop_providers.dart';
 import 'package:zestssh/providers/settings_providers.dart';
+import 'package:zestssh/theme/ui_density.dart' show ZestDensity;
 import 'package:zestssh/ui/screens/connection/connection_edit_screen.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/connection_editor_dock.dart';
 import 'package:zestssh/ui/widgets/zest_dialog.dart';
@@ -53,7 +54,7 @@ void main() {
   /// it: h2 and h3 in a vault where the role connects only, the rest in one
   /// where it may do anything.
   Future<void> pump(WidgetTester tester,
-      {int hosts = 6, Size size = window, double editorWidth = 700, bool team = false}) async {
+      {int hosts = 6, Size size = window, double editorWidth = 700, bool team = false, bool touch = false}) async {
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(
         const MethodChannel('dev.fluttercommunity.plus/connectivity'), (call) async => ['wifi']);
@@ -115,7 +116,12 @@ void main() {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: HostsHomePage(onConnectTo: (_) {}, onOpenSftp: (_) {})),
+                Expanded(
+                  child: Theme(
+                    data: Theme.of(context).copyWith(extensions: [ZestDensity(touch: touch)]),
+                    child: HostsHomePage(onConnectTo: (_) {}, onOpenSftp: (_) {}),
+                  ),
+                ),
                 if (target != null) ConnectionEditorDock(target: target),
               ],
             );
@@ -318,6 +324,139 @@ void main() {
     await finish(tester);
   });
 
+  group('The menu closes', () {
+    bool menuOpen() => find.byKey(const ValueKey('host-menu-connect')).evaluate().isNotEmpty;
+
+    /// A point of the Hosts page with no card and no menu under it: below the
+    /// last card, at the right of the page (the menus open at the left).
+    Offset emptySpot(WidgetTester tester) {
+      final page = tester.getRect(find.byType(HostsHomePage));
+      var bottom = 0.0;
+      for (final e in find.byType(HostCard).evaluate()) {
+        final r = tester.getRect(find.byWidget(e.widget));
+        if (r.bottom > bottom) bottom = r.bottom;
+      }
+      final at = Offset(page.right - 60, bottom + 40);
+      expect(page.contains(at), isTrue, reason: 'the spot is on the page');
+      for (final r in menuBoxes(tester)) {
+        expect(r.contains(at), isFalse, reason: 'the spot is not on a menu');
+      }
+      return at;
+    }
+
+    Future<void> leftClickAt(WidgetTester tester, Offset at) async {
+      final g = await tester.startGesture(at, kind: PointerDeviceKind.mouse);
+      await g.up();
+      await settle(tester);
+    }
+
+    testWidgets('on a left click on an empty part of the page', (tester) async {
+      await pump(tester);
+      await rightClickAt(tester, tester.getCenter(card('h1')));
+      expect(menuOpen(), isTrue);
+      await leftClickAt(tester, emptySpot(tester));
+      expect(menuOpen(), isFalse);
+      await finish(tester);
+    });
+
+    testWidgets('on a left click on another host card, which that click does not also open', (tester) async {
+      await pump(tester);
+      await rightClickAt(tester, tester.getCenter(card('h1')));
+      expect(menuOpen(), isTrue);
+      // A card the menu does not cover.
+      final other = ['h2', 'h3', 'h4', 'h5', 'h6'].firstWhere(
+          (id) => menuBoxes(tester).every((r) => !r.contains(tester.getCenter(card(id)))));
+      await leftClickAt(tester, tester.getCenter(card(other)));
+      expect(menuOpen(), isFalse);
+      expect(tester.widget<HostCard>(card(other)).highlighted, isFalse,
+          reason: 'the click that closes a menu does nothing else');
+      await finish(tester);
+    });
+
+    testWidgets('on a left click on the page with a submenu open, the submenu with it', (tester) async {
+      await pump(tester);
+      await rightClickAt(tester, tester.getCenter(card('h1')));
+      await tester.tap(find.byKey(const ValueKey('host-menu-tools')));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('host-menu-health')));
+      await settle(tester);
+      expect(find.text(l10n.hmenuMuteAll), findsOneWidget);
+      await leftClickAt(tester, emptySpot(tester));
+      expect(menuOpen(), isFalse);
+      expect(find.text(l10n.hmenuMuteAll), findsNothing);
+      expect(find.byType(MenuItemButton), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('on a left click on one of its items, which does what it says', (tester) async {
+      await pump(tester, size: const Size(2200, 1000), editorWidth: 980);
+      await rightClickAt(tester, tester.getCenter(card('h2')));
+      await leftClickAt(tester, tester.getCenter(find.byKey(const ValueKey('host-menu-edit'))));
+      expect(menuOpen(), isFalse);
+      expect(container.read(connectionEditorTargetProvider)?.connectionId, 'h2');
+      await finish(tester);
+    });
+
+    testWidgets('on a left click on an item of a submenu', (tester) async {
+      await pump(tester);
+      await rightClickAt(tester, tester.getCenter(card('h5')));
+      await tester.tap(find.byKey(const ValueKey('host-menu-organize')));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('host-menu-move')));
+      await settle(tester);
+      await leftClickAt(tester, tester.getCenter(find.byKey(const ValueKey('host-menu-move:g'))));
+      expect(find.byType(MenuItemButton), findsNothing);
+      await finish(tester);
+    });
+
+    testWidgets('on Esc, right after the right click', (tester) async {
+      await pump(tester);
+      await rightClickAt(tester, tester.getCenter(card('h1')));
+      expect(menuOpen(), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await settle(tester);
+      expect(menuOpen(), isFalse);
+      await finish(tester);
+    });
+
+    testWidgets('opened from the more button of the host panel (touch sized): on a tap on the page, and on Esc',
+        (tester) async {
+      await pump(tester, size: const Size(2200, 1000), editorWidth: 980, touch: true);
+      await tester.tap(card('h2'), kind: PointerDeviceKind.mouse);
+      await settle(tester);
+      expect(find.byKey(const ValueKey('host-panel-more')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('host-panel-more')));
+      await settle(tester);
+      expect(menuOpen(), isTrue);
+      await leftClickAt(tester, emptySpot(tester));
+      expect(menuOpen(), isFalse);
+      await tester.tap(find.byKey(const ValueKey('host-panel-more')));
+      await settle(tester);
+      expect(menuOpen(), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await settle(tester);
+      expect(menuOpen(), isFalse);
+      await finish(tester);
+    });
+
+    testWidgets('after a left click on the page, a right click opens it again where it is made', (tester) async {
+      await pump(tester);
+      await rightClickAt(tester, tester.getCenter(card('h1')));
+      await leftClickAt(tester, emptySpot(tester));
+      expect(menuOpen(), isFalse);
+      final firstAt = tester.getCenter(card('h1'));
+      final at = tester.getCenter(card('h6'));
+      await rightClickAt(tester, at);
+      expect(menuOpen(), isTrue);
+      // The menu's own box (moved to fit inside the window where it must)
+      // reaches the second click, not the first.
+      final menu = menuBoxes(tester).reduce((a, b) => a.expandToInclude(b)).inflate(8);
+      expect(menu.contains(at), isTrue, reason: '$menu, $at');
+      expect(menu.contains(firstAt), isFalse, reason: '$menu, $firstAt');
+      await finish(tester);
+    });
+  });
+
   group('One pane at the right', () {
     testWidgets('Edit swaps the details for the editor; Cancel brings the details of that host back', (tester) async {
       await pump(tester, size: const Size(2200, 1000), editorWidth: 980);
@@ -330,7 +469,7 @@ void main() {
       expect(container.read(connectionEditorTargetProvider)?.connectionId, 'h2');
       expect(find.byType(HostPanel), findsNothing, reason: 'never the details of one host beside the editor');
       expect(find.byType(ConnectionEditScreen), findsOneWidget);
-      await tester.tap(find.byTooltip(l10n.cancel).first);
+      await tester.tap(find.byTooltip(l10n.close).first);
       await settle(tester);
       expect(container.read(connectionEditorTargetProvider), isNull);
       expect(find.byKey(const ValueKey('host-panel-h2')), findsOneWidget, reason: 'back to the details of that host');

@@ -3,11 +3,16 @@
 // its code (ZS-1801 to ZS-1811, docs/ERROR-CODES.md). What the engine or the
 // SSH host said in English goes to the connection log and Copy details; no
 // password is ever in it.
-import 'package:zest_native/screen.dart' show ScreenCloseReason, ScreenClosed;
+import 'package:zest_native/screen.dart' show ScreenCloseReason, ScreenClosed, ScreenSession;
 import 'package:zest_ssh_core/dartssh2.dart' show SSHChannelOpenError;
 import 'package:zestssh/core/errors/error_codes.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/utils/type_name.dart';
+
+/// How long a screen's server has, once its connection is open, to finish
+/// connecting: one that takes the connection and then says nothing is closed
+/// then (ZS-1828), not waited on for ever.
+const kScreenHandshakeTimeout = Duration(seconds: 60);
 
 enum ScreenFailureKind {
   /// Nothing listens at the screen's address on the carrier (ZS-1801).
@@ -108,6 +113,10 @@ enum ScreenFailureKind {
   /// ZS-1827 by it.
   rdpGateway,
 
+  /// The screen's server took the connection and did not finish connecting
+  /// in time (ZS-1828): it said nothing more, or stopped half way.
+  handshakeTimeout,
+
   /// Anything else ([ScreenCloseReason.internal]).
   stopped,
 }
@@ -175,6 +184,7 @@ class ScreenFailure implements Exception, HasTypeName {
         'gateway_unavailable' => ErrorCodes.screenGatewayUnavailable,
         _ => ErrorCodes.screenGatewayRefused,
       },
+    ScreenFailureKind.handshakeTimeout => ErrorCodes.screenHandshakeTimeout,
     _ => null,
   };
 
@@ -234,7 +244,11 @@ class ScreenFailure implements Exception, HasTypeName {
   static ScreenFailure ofClosed(ScreenClosed closed, {bool rdp = false}) {
     // An RD Gateway's own refusals (its certificate is a certificate's).
     final gateway = rdp && closed.reason != ScreenCloseReason.certificate && (closed.detail?.startsWith('gateway_') ?? false);
-    final kind = gateway ? ScreenFailureKind.rdpGateway : switch (closed.reason) {
+    final kind = closed.detail == ScreenSession.handshakeTimedOut
+        ? ScreenFailureKind.handshakeTimeout
+        : gateway
+        ? ScreenFailureKind.rdpGateway
+        : switch (closed.reason) {
       ScreenCloseReason.auth when rdp => switch (closed.detail) {
           'account_locked' => ScreenFailureKind.rdpAccountLocked,
           'account_disabled' => ScreenFailureKind.rdpAccountDisabled,
@@ -334,6 +348,8 @@ String screenFailureText(AppLocalizations l10n, ScreenFailure e) {
         'gateway_unavailable' => l10n.screenGatewayUnavailable,
         _ => l10n.screenGatewayRefused,
       },
+    ScreenFailureKind.handshakeTimeout =>
+      l10n.screenHandshakeTimeout(kScreenHandshakeTimeout.inSeconds),
     ScreenFailureKind.stopped => l10n.screenStopped(e.detail),
   };
   final code = e.code;

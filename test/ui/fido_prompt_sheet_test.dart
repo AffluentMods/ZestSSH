@@ -47,7 +47,12 @@ const _nfcOnly = FidoWays(nfc: true, nfcOn: true, usb: false);
 const _usbOnly = FidoWays(nfc: false, nfcOn: false, usb: true);
 
 FidoPrompt _prompt(FidoStep step,
-        {FidoWays ways = _both, bool again = false, bool pinWrong = false, int? triesLeft, String label = 'web-01'}) =>
+        {FidoWays ways = _both,
+        bool again = false,
+        bool pinWrong = false,
+        bool pinAgain = false,
+        int? triesLeft,
+        String label = 'web-01'}) =>
     FidoPrompt(
       purpose: FidoPurpose.signIn,
       label: label,
@@ -55,6 +60,7 @@ FidoPrompt _prompt(FidoStep step,
       ways: ways,
       again: again,
       pinWrong: pinWrong,
+      pinAgain: pinAgain,
       pinTriesLeft: triesLeft,
     );
 
@@ -178,6 +184,14 @@ void main() {
       await tester.pump();
       expect(find.text(en.fidoPinWrong), findsOneWidget);
     });
+
+    testWidgets('a PIN asked again because the key left before it answered says so, and not that it was wrong',
+        (tester) async {
+      final signer = _Signer()..prompt.value = _prompt(FidoStep.pin, pinAgain: true);
+      await pump(tester, FidoPromptSheet(signer: signer));
+      expect(find.text(en.fidoPinAgain), findsOneWidget);
+      expect(find.text(en.fidoPinWrong), findsNothing);
+    });
   });
 
   testWidgets('Cancel ends the conversation, and the sheet goes when the conversation ends', (tester) async {
@@ -288,6 +302,7 @@ void main() {
             for (final p in [
               _prompt(FidoStep.present, again: true, label: 'a-long-host-name.example.org'),
               _prompt(FidoStep.pin, pinWrong: true, triesLeft: 3),
+              _prompt(FidoStep.pin, pinAgain: true),
             ]) {
               final before = problems.length;
               await pump(tester, FidoPromptSheet(signer: _Signer()..prompt.value = p),

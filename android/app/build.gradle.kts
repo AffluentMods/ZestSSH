@@ -41,6 +41,13 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.affluentlabs.zestssh"
     compileSdk = flutter.compileSdkVersion
+
+    // A release build runs no lint of its own: lint of AGP 9.3.1 crashes on a plugin's Java
+    // (google_sign_in_android: NoSuchMethodError in its Javadoc parser, which lint itself calls
+    // a bug in lint), and that stopped the build. Lint stays a step of its own (gradlew lint).
+    lint {
+        checkReleaseBuilds = false
+    }
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

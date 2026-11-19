@@ -21,8 +21,8 @@ under it: zest_ssh_core and xterm (MIT), desktop_multi_window (Apache-2.0),
 lucide_icons (ISC) and speech_to_text_windows (BSD-3-Clause). So do the code
 kept with its own licence files in packages/zest_native/rust, the Rust
 crates listed in packages/zest_native/NOTICES, and the fonts and copied
-code that third_party/ describes. The app lists every licence it carries
-under About, Open source licenses.
+code that third_party/ describes. The app lists these licences (and, on
+Windows and Linux, its native libraries') under About, Open source licenses.
 
 Contributions are accepted under the ZestSSH Contributor License Agreement
 (CLA.md); see CONTRIBUTING.md.

@@ -38,6 +38,11 @@ String shortcutName(AppLocalizations l, ShortcutAction action) => switch (action
       ShortcutAction.toggleSessionInfo => l.shortcutNameToggleSessionInfo,
       ShortcutAction.toggleBroadcast => l.shortcutNameToggleBroadcast,
       ShortcutAction.toggleRecordingMode => l.shortcutNameToggleRecordingMode,
+      ShortcutAction.screenDisplay1 ||
+      ShortcutAction.screenDisplay2 ||
+      ShortcutAction.screenDisplay3 ||
+      ShortcutAction.screenDisplay4 =>
+        l.shortcutNameScreenDisplay(action.screenDisplayIndex! + 1),
     };
 
 /// What [action] does, in a line.
@@ -71,6 +76,11 @@ String shortcutHelp(AppLocalizations l, ShortcutAction action) => switch (action
       ShortcutAction.toggleSessionInfo => l.shortcutHelpToggleSessionInfo,
       ShortcutAction.toggleBroadcast => l.shortcutHelpToggleBroadcast,
       ShortcutAction.toggleRecordingMode => l.shortcutHelpToggleRecordingMode,
+      ShortcutAction.screenDisplay1 ||
+      ShortcutAction.screenDisplay2 ||
+      ShortcutAction.screenDisplay3 ||
+      ShortcutAction.screenDisplay4 =>
+        l.shortcutHelpScreenDisplay(action.screenDisplayIndex! + 1),
     };
 
 /// What the group [category] is called.
@@ -80,4 +90,5 @@ String shortcutCategoryName(AppLocalizations l, ShortcutCategory category) => sw
       ShortcutCategory.layout => l.shortcutCategoryLayout,
       ShortcutCategory.terminal => l.shortcutCategoryTerminal,
       ShortcutCategory.misc => l.shortcutCategoryMisc,
+      ShortcutCategory.screens => l.shortcutCategoryScreens,
     };

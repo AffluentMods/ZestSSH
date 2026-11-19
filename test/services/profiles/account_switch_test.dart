@@ -1515,6 +1515,10 @@ const _nobodys = <String>{
   // Which build this is (the release or a community build), and the list of error codes: no person's.
   'config/official_identity.dart _official',
   'core/errors/error_codes.dart all',
+  // Whether each remote screen session's sound plays: an Expando keyed by the session, holding
+  // only on or off and which views want it; it goes with its session, which a change of profile
+  // ends.
+  'features/screens/view/screen_sound_gate.dart _gates',
   // The conversation with a security key: it holds what one sign-in asks while it runs (a label, the PIN
   // typed for it) and nothing once it ends; a change of profile ends the sessions that could ask.
   'services/fido/fido_signer.dart fidoSigner',

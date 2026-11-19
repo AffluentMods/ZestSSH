@@ -14,6 +14,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zestssh/database/database.dart';
 import 'package:zestssh/features/hosts/host_health_summary.dart';
+import 'package:zestssh/features/hosts/local_terminal.dart' show debugLocalTerminalOnThisDevice;
 import 'package:zestssh/features/hosts/pages/hosts_home_page.dart';
 import 'package:zestssh/features/hosts/state/host_multi_select.dart';
 import 'package:zestssh/features/hosts/state/host_sort_mode.dart';
@@ -191,6 +192,21 @@ void main() {
       expect(field.left - terminal.right, greaterThanOrEqualTo(24));
       expect(field.left - terminal.right, greaterThan(terminal.left - newHost.right));
       await finish(tester);
+    });
+
+    testWidgets("where the device has no shell of its own (an iPad in the computer's layout), Local terminal is not "
+        'offered, whole or as its icon (it was, and could only fail)', (tester) async {
+      debugLocalTerminalOnThisDevice = false;
+      addTearDown(() => debugLocalTerminalOnThisDevice = null);
+      for (final size in const [Size(1600, 1000), Size(1150, 1000)]) {
+        await pump(tester, size: size);
+        expect(key('hosts-terminal'), findsNothing, reason: '$size');
+        expect(key('hosts-terminal-compact'), findsNothing, reason: '$size');
+        expect(find.byTooltip(l10n.hostsToolbarTerminalTip), findsNothing);
+        expect(key('hosts-new-host'), findsOneWidget);
+        expect(tester.getCenter(key('hosts-quick-field')).dy, closeTo(tester.getCenter(key('hosts-new-host')).dy, 1));
+        await finish(tester);
+      }
     });
 
     testWidgets('in a narrow window it wraps into two rows, the views under the rest', (tester) async {
@@ -496,6 +512,9 @@ void main() {
       expect(find.text(l10n.hostMenuAddScreen), findsOneWidget);
       await tester.tap(key('host-menu-add_screen'));
       await settle(tester);
+      // VNC or RDP is asked first (4.0).
+      await tester.tap(key('host-screen-kind-vnc'));
+      await settle(tester);
       final target = container.read(connectionEditorTargetProvider);
       expect(target, isNotNull);
       expect(target!.connectionId, isNull);
@@ -572,6 +591,27 @@ void main() {
         await tester.tap(key('host-menu-tools'));
         await settle(tester);
         expect(key('host-menu-x_program'), findsNothing, reason: id);
+        await tester.tapAt(Offset(tester.getRect(key('host-menu-edit')).left - 40, 1080));
+        await settle(tester);
+      }
+      await finish(tester);
+    });
+
+    testWidgets("an SSH host's menu offers its file to share; a remote screen's and an FTPS host's do not (the "
+        'file would be refused where it is imported)', (tester) async {
+      await pump(tester, values: {HostsPagePrefs.viewKey: 'list'});
+      final db = container.read(databaseProvider);
+      await (db.update(db.connections)..where((c) => c.id.equals('h3')))
+          .write(const ConnectionsCompanion(protocol: Value('vnc')));
+      await (db.update(db.connections)..where((c) => c.id.equals('h4')))
+          .write(const ConnectionsCompanion(protocol: Value('ftps')));
+      await settle(tester);
+      for (final (id, offered) in [('h1', true), ('h3', false), ('h4', false)]) {
+        await tester.tap(key('host-row-menu-$id'));
+        await settle(tester);
+        await tester.tap(key('host-menu-organize'));
+        await settle(tester);
+        expect(key('host-menu-share_file'), offered ? findsOneWidget : findsNothing, reason: id);
         await tester.tapAt(Offset(tester.getRect(key('host-menu-edit')).left - 40, 1080));
         await settle(tester);
       }

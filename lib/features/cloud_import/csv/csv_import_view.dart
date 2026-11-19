@@ -572,7 +572,7 @@ class _CsvImportDialogState extends ConsumerState<CsvImportDialog> {
             child: switch (note) {
               // Where this build offers gateways the host goes through it (4.0);
               // else it connects directly, which the note warns of.
-              HostFileNote.rdpGateway when ref.watch(rdpGatewayOfferedProvider) => RedactedText(
+              HostFileNote.rdpGateway when ref.watch(rdpGatewayOfferedProvider) && file.rows.any((r) => r.gateway != null) => RedactedText(
                   Redactable.freeText(l10n.rdpFileNoteGatewayKept(file.gateway ?? '')),
                   key: const ValueKey('csv-note-rdpGateway-kept'),
                   style: TextStyle(fontSize: 12, height: 1.4, color: ZestTokens.textSecondary),

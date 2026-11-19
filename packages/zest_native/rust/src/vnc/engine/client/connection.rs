@@ -782,6 +782,11 @@ where
                 let mut updates = crate::vnc::engine::desktop::UpdateBatch::default();
                 let mut framebuffer_changed = false;
                 let mut work = crate::vnc::engine::limits::UpdateWork::default();
+                // Ours: the size the picture has. A server's own layout changes `screen` at once
+                // (the pixels after it are checked against it), and the picture follows once,
+                // before the first pixels that need it or at the end of the update: a run of
+                // layouts in one update (TigerVNC queues them) is one new picture.
+                let mut picture = screen;
                 for _ in 0..rect_num {
                     stopped(ctx)?;
                     tokio::task::consume_budget().await;
@@ -817,6 +822,10 @@ where
                             return Err(VncError::InvalidImageData);
                         }
                         framebuffer_changed = true;
+                        if rect.encoding != VncEncoding::DesktopSizePseudo && picture != screen {
+                            resize_picture(ctx, draw, Some(&mut work), screen, output_func).await?;
+                            picture = screen;
+                        }
                     }
 
                     match rect.encoding {
@@ -853,12 +862,31 @@ where
                             cursor.decode(pf, &rect.rect, stream, output_func).await?;
                         }
                         VncEncoding::ExtendedDesktopSizePseudo => {
-                            // Confirm only after the entire message excludes framebuffer changes.
-                            // Cursor metadata may accompany desktop layout updates.
-                            if framebuffer_changed {
-                                return Err(VncError::InvalidImageData);
+                            let update = crate::vnc::engine::DesktopUpdate::read(stream, rect.rect).await?;
+                            if update.reason == crate::vnc::engine::DesktopReason::ThisClient
+                                || !updates.is_empty()
+                            {
+                                // Confirm only after the entire message excludes framebuffer
+                                // changes: an answer to this client's resize stays atomic, and a
+                                // malformed or mixed batch never confirms a pending one. Cursor
+                                // metadata may accompany desktop layout updates.
+                                if framebuffer_changed {
+                                    return Err(VncError::InvalidImageData);
+                                }
+                                updates.push(update)?;
+                            } else {
+                                // A server's own new layout before pixels in that size, in the
+                                // same message (wayvnc, Raspberry Pi OS's server, does so): the
+                                // new size is taken at once, so the pixels after it fit (it was
+                                // refused as invalid image data). vnc-rs bfd802b19b; ours: the
+                                // picture follows before the pixels that need it (`picture`).
+                                if let Some(layout) = &update.layout {
+                                    screen = (layout.width, layout.height);
+                                    shared_screen.store(pack_screen(screen), Ordering::Release);
+                                }
+                                desktop.observe(&update);
+                                output_func(VncEvent::DesktopUpdate(update)).await?;
                             }
-                            updates.push(crate::vnc::engine::DesktopUpdate::read(stream, rect.rect).await?)?;
                         }
                         VncEncoding::DesktopSizePseudo => {
                             crate::vnc::engine::limits::dimensions(rect.rect.width, rect.rect.height)?;
@@ -868,6 +896,7 @@ where
                             // Ours: each new size makes a new picture; one an update.
                             work.resize()?;
                             screen = (rect.rect.width, rect.rect.height);
+                            picture = screen;
                             shared_screen.store(pack_screen(screen), Ordering::Release);
                             desktop.legacy_resize();
                             if let Some(d) = draw {
@@ -910,6 +939,10 @@ where
                 // the layout, so the picture kept its old size). An update may carry several
                 // layouts (TigerVNC queues its answers): the picture is resized once, at the last
                 // one, to the size the update ends with.
+                if picture != screen {
+                    // At the end of the update, as a queued layout's below: not counted.
+                    resize_picture(ctx, draw, None, screen, output_func).await?;
+                }
                 let updates = updates.into_updates();
                 let last_layout = updates.iter().rposition(|u| u.layout.is_some());
                 let before = screen;
@@ -1028,6 +1061,33 @@ where
 }
 
 /// After a resize: continuous updates cover the new screen.
+/// Ours: the picture made at `screen` after a server's own layout changed the size: counted as
+/// a new picture of the update where `work` is given (before pixels; one an update), drawn to
+/// at that size and said, and continuous updates follow it.
+async fn resize_picture<F, Fut>(
+    ctx: &LoopCtx,
+    draw: Option<&dyn DrawTarget>,
+    work: Option<&mut crate::vnc::engine::limits::UpdateWork>,
+    screen: (u16, u16),
+    output_func: &F,
+) -> Result<(), VncError>
+where
+    F: Fn(VncEvent) -> Fut,
+    Fut: Future<Output = Result<(), VncError>>,
+{
+    if let Some(work) = work {
+        work.resize()?;
+    }
+    if ctx.report_updates {
+        if let Some(d) = draw {
+            d.resize(screen.0, screen.1);
+        }
+        output_func(VncEvent::SetResolution(screen.into())).await?;
+        follow_resize(ctx, screen).await?;
+    }
+    Ok(())
+}
+
 async fn follow_resize(ctx: &LoopCtx, screen: (u16, u16)) -> Result<(), VncError> {
     if ctx.shared.cu_on.load(Ordering::Acquire) {
         send_request(
@@ -1105,3 +1165,6 @@ mod queue_tests;
 
 #[cfg(test)]
 mod resize_tests;
+
+#[cfg(test)]
+mod layout_order_tests;

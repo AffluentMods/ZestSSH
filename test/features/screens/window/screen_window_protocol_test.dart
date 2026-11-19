@@ -5,13 +5,15 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:zestssh/features/shortcuts/shortcut_key.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zest_native/screen.dart';
 import 'package:zestssh/features/screens/window/screen_window_protocol.dart';
 
 void main() {
   group('what the window starts with', () {
-    const payload = ScreenWindowPayload(
+    final payload = ScreenWindowPayload(
       sessionId: 's1',
       handle: 0x7fffffffffffffff,
       protocol: ScreenProtocol.rdp,
@@ -34,6 +36,11 @@ void main() {
       smoothScaling: true,
       commandAsControl: true,
       panelFolded: ['video', 'details'],
+      displayKeys: [
+        ShortcutKey(keyId: LogicalKeyboardKey.digit1.keyId, alt: true),
+        null,
+        ShortcutKey(keyId: LogicalKeyboardKey.f9.keyId, ctrl: true, shift: true),
+      ],
     );
 
     test('goes through text and comes back the same, a 64-bit number included', () {
@@ -46,6 +53,11 @@ void main() {
       expect((back.textScale, back.displayCount, back.smoothScaling, back.commandAsControl), (150, 2, true, true));
       expect(back.frameLimit, 30);
       expect(back.panelFolded, ['video', 'details']);
+      expect(back.displayKeys, [
+        ShortcutKey(keyId: LogicalKeyboardKey.digit1.keyId, alt: true),
+        null,
+        ShortcutKey(keyId: LogicalKeyboardKey.f9.keyId, ctrl: true, shift: true),
+      ]);
       expect(payload.toJson()['type'], 'screen');
       expect(payload.toJson()['handle'], isA<String>());
     });
@@ -79,11 +91,13 @@ void main() {
         'displayCount': 40,
         'smoothScaling': 1,
         'panelFolded': ['video', 7, 'x' * 40, null],
+        'displayKeys': [7, 'x', {'keyId': 'y'}, null, {'keyId': 49}],
       })!;
       expect(odd.info, isEmpty);
       expect((odd.menuKey, odd.viewOnly, odd.fit), ('f8', false, 'fit'));
       expect((odd.textScale, odd.displayCount, odd.smoothScaling), (0, 1, false));
       expect(odd.panelFolded, ['video']);
+      expect(odd.displayKeys, [null, null, null, null], reason: 'four at most, and none that is not a key');
     });
   });
 

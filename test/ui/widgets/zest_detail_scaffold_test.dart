@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/ui/widgets/zest_button.dart';
+import 'package:zestssh/ui/widgets/zest_close_button.dart';
 import 'package:zestssh/ui/widgets/zest_detail_scaffold.dart';
 
 // With the app's strings, as every screen of the app has them: the question about
@@ -50,20 +51,21 @@ void main() {
         onClose: () => closed++,
         body: const SizedBox(height: 40),
       )));
-      await tester.tap(find.byType(IconButton));
+      await tester.tap(find.byType(ZestCloseButton));
       await tester.pump();
       expect(closed, 1);
     });
 
-    testWidgets('footer renders footerLeading, Cancel and Save', (tester) async {
+    testWidgets('footer renders footerLeading and Save, and no Cancel (the X closes)', (tester) async {
       await tester.pumpWidget(_host(const ZestDetailScaffold(
         title: 'Detail',
         body: SizedBox(height: 40),
         footerLeading: Text('RUN'),
       )));
       expect(find.text('RUN'), findsOneWidget);
-      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Cancel'), findsNothing);
       expect(find.text('Save'), findsOneWidget);
+      expect(find.byTooltip('Close'), findsOneWidget);
     });
 
     testWidgets('shows the dirty dot and title when dirty', (tester) async {

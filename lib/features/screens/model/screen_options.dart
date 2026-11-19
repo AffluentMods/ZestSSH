@@ -136,6 +136,7 @@ class ScreenOptions {
     this.auth = ScreenAuth.auto,
     this.clipboard,
     this.clipboardLocked = false,
+    this.clipboardOnPaste = false,
     this.scaling = ScreenScaling.fit,
     this.quality = ScreenQuality.auto,
     this.viewOnly = false,
@@ -164,6 +165,25 @@ class ScreenOptions {
   /// The options a new VNC host starts with.
   static const defaults = ScreenOptions();
 
+  /// What a host made now starts with: [defaults], and this device's
+  /// clipboard sent to the remote only on a paste ([clipboardOnPaste]).
+  static const forNewHost = ScreenOptions(clipboardOnPaste: true);
+
+  /// The options column [raw] of a host that is being made, with what a new
+  /// host says and [raw] does not: where it does not say when the clipboard
+  /// is sent, it is on a paste. What it does say is kept as it is (a host
+  /// copied from one that sends on taking the keyboard stays so).
+  static String withNewHostDefaults(String? raw) {
+    if (raw == null || raw.isEmpty) return forNewHost.encode();
+    try {
+      final json = jsonDecode(raw);
+      if (json is Map && json.containsKey('clipboard_send')) return raw;
+    } catch (_) {
+      // Not options at all: read as the defaults, as everywhere.
+    }
+    return decode(raw).copyWith(clipboardOnPaste: true).encode();
+  }
+
   final ScreenTargetKind target;
 
   /// The Unix socket's path on the carrier, for [ScreenTargetKind.unix]; may
@@ -180,6 +200,16 @@ class ScreenOptions {
   /// on. Part of the host's record, so only someone who may edit the host in
   /// its Crate sets it.
   final bool clipboardLocked;
+
+  /// On a computer, when this device's clipboard goes to the remote while
+  /// the clipboard is shared: only when its person pastes into the screen
+  /// (true), or whenever the picture takes the keyboard (false). What the
+  /// remote copies comes to this device either way. A host made before this
+  /// was asked says nothing ("clipboard_send" is not in its options) and
+  /// stays as it was, on taking the keyboard; a host made since is made
+  /// with "paste" ([forNewHost], [withNewHostDefaults]). A phone sends its
+  /// clipboard only when asked, whatever this says.
+  final bool clipboardOnPaste;
 
   final ScreenScaling scaling;
   final ScreenQuality quality;
@@ -283,6 +313,7 @@ class ScreenOptions {
     'auth',
     'clipboard',
     'clipboard_locked',
+    'clipboard_send',
     'scaling',
     'quality',
     'view_only',
@@ -307,16 +338,24 @@ class ScreenOptions {
   /// null, an empty or over-long column, or anything that is not a JSON
   /// object.
   static ScreenOptions decode(String? raw) {
-    if (raw == null || raw.isEmpty || raw.length > maxChars) return defaults;
+    if (raw == null || raw.isEmpty) return defaults;
+    // A column this version cannot read that names a gateway is a host with a gateway it cannot
+    // read (refused, never opened directly), not one with none.
+    final unreadable = raw.contains('"gateway"') ? _unreadableGateway : defaults;
+    if (raw.length > maxChars) return unreadable;
     final Object? json;
     try {
       json = jsonDecode(raw);
     } on FormatException {
-      return defaults;
+      return unreadable;
     }
-    if (json is! Map<String, dynamic>) return defaults;
+    if (json is! Map<String, dynamic>) return unreadable;
     return fromJson(json);
   }
+
+  /// The defaults, with a gateway that cannot be read (written back as such).
+  static const _unreadableGateway =
+      ScreenOptions(gateway: ScreenGateway.unreadable, unknown: {'gateway': {'unreadable': true}});
 
   /// The options [json] holds, each value checked.
   static ScreenOptions fromJson(Map<String, dynamic> json) {
@@ -346,6 +385,7 @@ class ScreenOptions {
       auth: pick(ScreenAuth.values, json['auth'], ScreenAuth.auto),
       clipboard: clipboard,
       clipboardLocked: flag(json['clipboard_locked'], false),
+      clipboardOnPaste: json['clipboard_send'] == 'paste',
       scaling: pick(ScreenScaling.values, json['scaling'], ScreenScaling.fit, (s) => _scalingNames[s]!),
       quality: pick(ScreenQuality.values, json['quality'], ScreenQuality.auto),
       viewOnly: flag(json['view_only'], false),
@@ -398,6 +438,7 @@ class ScreenOptions {
         'auth': auth.name,
         if (clipboard != null) 'clipboard': clipboard! ? 'on' : 'off',
         'clipboard_locked': clipboardLocked,
+        'clipboard_send': clipboardOnPaste ? 'paste' : 'focus',
         'scaling': _scalingNames[scaling],
         'quality': quality.name,
         'view_only': viewOnly,
@@ -418,7 +459,8 @@ class ScreenOptions {
   String encode() {
     final whole = jsonEncode(toJson());
     if (whole.length <= maxChars || unknown.isEmpty) return whole;
-    return jsonEncode(copyWith(unknown: const {}).toJson());
+    // A gateway this version cannot read stays: without it the host would open directly.
+    return jsonEncode(copyWith(unknown: {if (unknown.containsKey('gateway')) 'gateway': unknown['gateway']}).toJson());
   }
 
   ScreenOptions copyWith({
@@ -429,6 +471,7 @@ class ScreenOptions {
     bool? clipboard,
     bool clearClipboard = false,
     bool? clipboardLocked,
+    bool? clipboardOnPaste,
     ScreenScaling? scaling,
     ScreenQuality? quality,
     bool? viewOnly,
@@ -451,6 +494,7 @@ class ScreenOptions {
         auth: auth ?? this.auth,
         clipboard: clearClipboard ? null : clipboard ?? this.clipboard,
         clipboardLocked: clipboardLocked ?? this.clipboardLocked,
+        clipboardOnPaste: clipboardOnPaste ?? this.clipboardOnPaste,
         scaling: scaling ?? this.scaling,
         quality: quality ?? this.quality,
         viewOnly: viewOnly ?? this.viewOnly,

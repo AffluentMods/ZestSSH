@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:zestssh/features/orchards/activity/activity_notes.dart';
 import 'package:zestssh/features/orchards/guardrails.dart' show revealAsksAgainNow;
 import 'package:zestssh/features/orchards/move/item_transfer.dart';
+import 'package:zestssh/features/orchards/orchard_service.dart' show ActivityKind;
 import 'package:zestssh/features/orchards/orchard_providers.dart';
 import 'package:zestssh/features/orchards/record/orchard_record.dart' show CrateSwitches;
 import 'package:zestssh/features/orchards/rules/reveal_gate.dart' show confirmItIsYou;
@@ -28,6 +30,11 @@ final itemTransferProvider = Provider<ItemTransfer>((ref) => ItemTransfer(
       tree: ref.watch(treeDatabaseProvider),
       openTeam: (id) => ref.read(orchardDatabasesProvider.notifier).open(id),
       storage: ref.watch(secureStorageProvider),
+      // A key that leaves its team is an export of it, in the team's activity
+      // (where the team records activity), as a key written to a file is.
+      onKeyLeftTeam: (team, {required key, required label, crateId}) => noteActivityIn(
+          ref.read(orchardServiceProvider), team, ActivityKind.export,
+          itemKind: 'key', itemKey: key, name: label, crateId: crateId),
     ));
 
 /// A place the picker lists: Personal, or a vault of a team.

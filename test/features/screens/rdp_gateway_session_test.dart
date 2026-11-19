@@ -199,28 +199,69 @@ void main() {
     }
   });
 
+  test("the PC's certificate through a gateway is asked about and kept for that route, and the team rule on where a "
+      "password goes sees the gateway's address", () async {
+    await start();
+    await pc('r-route', options: through, keyId: await key('pc', username: 'alex', password: 'pc-pass'));
+    engine.onOpen = (s) {
+      if (s.request['tls_pin'] != 'ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12') {
+        s.closeWith('certificate', 'certificate not trusted', extra: {
+          'sha256': 'ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12',
+          'der': base64.encode([0x30, 0x03, 0x02, 0x01, 0x01]),
+          'subject': 'CN=pc1.example.test',
+          'not_before': 1794086665,
+          'not_after': 4950000000,
+        });
+      } else {
+        s.connect(name: 'pc1', width: 1280, height: 800, security: 'TLS');
+      }
+    };
+    final id = await open('r-route');
+    await until(() => stateOf(id)?.status == SessionStatus.connected, 'the session');
+    final question = asked.single;
+    expect((question.host, question.port), ('pc1.example.test', 3389));
+    expect(question.via, 'rdg.example.test', reason: 'asked about as the PC behind that gateway');
+    final known = await tree.knownHostsDao.findAllForHostPortAnyRoute('pc1.example.test', 3389);
+    expect(known.single.viaScope, 'rdg.example.test:443', reason: "kept for the route, not the PC's bare address");
+    await sessions().endSession(id);
+
+    final row = (await tree.connectionsDao.getById('r-route'))!;
+    expect(await screenCarrierRouteIn(tree, row), (id: null, via: 'rdg.example.test:443'));
+  });
+
   test('a host that names a gateway is never opened without it: the switch off, a gateway this version cannot read, '
       'or an SSH host chosen too, each refused with ZS-1827 before anything is dialled', () async {
+    Future<void> refused(String hostId) async {
+      final id = await open(hostId);
+      await until(() => stateOf(id)?.status == SessionStatus.error, hostId);
+      expect(stateOf(id)!.errorMessage, allOf(contains(en.screenGatewayUnavailable), contains('ZS-1827')), reason: hostId);
+      expect(stateOf(id)!.isReconnecting, isFalse, reason: hostId);
+      await sessions().endSession(id);
+      expect(dialled, isEmpty, reason: hostId);
+      expect(engine.sessions, isEmpty, reason: hostId);
+      expect(asked, isEmpty, reason: hostId);
+    }
+
     await start(offered: false);
-    final keyId = await key('pc', username: 'alex', password: 'pc-pass');
-    await pc('off', options: through, keyId: keyId);
-    var id = await open('off');
-    await until(() => stateOf(id)?.status == SessionStatus.error, 'the switch off');
-    expect(stateOf(id)!.errorMessage, allOf(contains(en.screenGatewayUnavailable), contains('ZS-1827')));
-    expect(stateOf(id)!.isReconnecting, isFalse);
-    await sessions().endSession(id);
+    await pc('off', options: through, keyId: await key('pc', username: 'alex', password: 'pc-pass'));
+    await refused('off');
     container.dispose();
     await tree.close();
 
     await start();
+    final keyId = await key('pc', username: 'alex', password: 'pc-pass');
     await pc('unreadable', options: ScreenOptions.defaults, keyId: keyId, rawOptions: '{"v":1,"gateway":{"host":"bad host"}}');
-    id = await open('unreadable');
-    await until(() => stateOf(id)?.status == SessionStatus.error, 'the unreadable gateway');
-    expect(stateOf(id)!.errorMessage, contains('ZS-1827'));
-    await sessions().endSession(id);
-    expect(dialled, isEmpty);
-    expect(engine.sessions, isEmpty);
-    expect(asked, isEmpty);
+    await refused('unreadable');
+    // A gateway and an SSH host to reach it through: not in this version.
+    await tree.into(tree.connections).insert(ConnectionsCompanion.insert(
+          id: 'h-gw',
+          label: 'gw',
+          host: 'gw.example.test',
+          createdAt: at,
+          updatedAt: at,
+        ));
+    await pc('both', options: through, keyId: keyId, via: 'h-gw');
+    await refused('both');
   });
 }
 

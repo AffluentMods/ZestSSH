@@ -4,7 +4,9 @@
 // without it).
 import 'dart:convert';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zestssh/features/screens/model/rdp_gateway_offered.dart';
 import 'package:zestssh/features/screens/model/screen_options.dart';
 
 void main() {
@@ -44,6 +46,48 @@ void main() {
       expect(jsonDecode(set.encode())['gateway'], {'host': 'rdg.example.test'});
       expect(jsonDecode(o.copyWith(clearGateway: true).encode()).containsKey('gateway'), isFalse);
     }
+  });
+
+  test('a column too long drops the keys it keeps for later versions, but never a gateway it cannot read', () {
+    final raw = jsonEncode({
+      'v': 1,
+      'gateway': {'host': 'a b'},
+      'later': 'x' * (ScreenOptions.maxChars - 200),
+      'later2': 'y' * 300,
+    });
+    final o = ScreenOptions.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    final saved = jsonDecode(o.encode()) as Map<String, Object?>;
+    expect(saved.containsKey('later'), isFalse);
+    expect(saved['gateway'], {'host': 'a b'}, reason: 'without it the host would open directly');
+  });
+
+  test('every build offers the gateway once it ships; before that, only a development build made to try it', () {
+    expect(kRdpGatewayShipped, isTrue);
+    expect(ProviderContainer().read(rdpGatewayOfferedProvider), isTrue);
+    for (final official in [false, true]) {
+      for (final tryBuild in [false, true]) {
+        expect(rdpGatewayOffered(shipped: true, tryBuild: tryBuild, official: official), isTrue);
+      }
+    }
+    expect(rdpGatewayOffered(shipped: false, tryBuild: false, official: false), isFalse);
+    expect(rdpGatewayOffered(shipped: false, tryBuild: true, official: false), isTrue);
+    expect(rdpGatewayOffered(shipped: false, tryBuild: true, official: true), isFalse,
+        reason: "never by an official build's .env");
+  });
+
+  test('a column this version cannot read at all that names a gateway is a gateway it cannot read, never none', () {
+    for (final raw in [
+      '{"v":1,"gateway":{"host":"rdg.example.test"},"x":"${'x' * ScreenOptions.maxChars}"}',
+      '{"v":1,"gateway":{"host":"rdg.example.test"}',
+      '["gateway"]',
+    ]) {
+      final o = ScreenOptions.decode(raw);
+      expect(o.gateway, ScreenGateway.unreadable, reason: raw.length > 30 ? raw.substring(0, 30) : raw);
+      // Written back as one: still refused, never opened directly.
+      expect(ScreenOptions.decode(o.encode()).gateway, ScreenGateway.unreadable);
+    }
+    expect(ScreenOptions.decode('{"v":1,"x":"${'x' * ScreenOptions.maxChars}"}').gateway, isNull);
+    expect(ScreenOptions.decode('not json').gateway, isNull);
   });
 
   test('the addresses a gateway may have', () {

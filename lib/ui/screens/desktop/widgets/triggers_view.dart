@@ -1117,7 +1117,6 @@ class _AlertEditorPaneState extends ConsumerState<_AlertEditorPane> {
       isDirty: _dirty,
       onSave: _canSave ? _save : null,
       saveLabel: l10n.alertsSaveAlert,
-      onCancel: widget.onClose,
       onClose: widget.onClose,
       footerLeading: _isNew
           ? null

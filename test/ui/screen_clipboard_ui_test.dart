@@ -242,6 +242,57 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets("a host made now: this computer's clipboard goes only when its person pastes into the picture, "
+        "before the key; the remote's text comes here as before", (tester) async {
+      io.text = 'a password copied elsewhere';
+      final (shell, engine) = await connectScreen(tester, options: ScreenOptions.forNewHost);
+      await pumpPane(tester, shell);
+      expect(find.byTooltip(en.screenClipboardTurnOff), findsOneWidget, reason: 'shared, as any host of its own space');
+      // The picture took the keyboard as the tab opened: nothing went.
+      expect(engine.clipboard, isEmpty);
+      final focus = tester.widget<ScreenView>(find.byType(ScreenView)).focusNode!;
+      focus.unfocus();
+      await tester.pump();
+      focus.requestFocus();
+      await tester.pump();
+      await tester.pump();
+      expect(engine.clipboard, isEmpty, reason: 'nor as it takes the keyboard again');
+
+      await remoteCopies(tester, engine, 'copied there');
+      expect(io.written, ['copied there']);
+
+      // (The remote's text is what this computer holds now: something is copied here again.)
+      io.text = 'a password copied elsewhere';
+      // Typing does not send it; Ctrl+V does. (That the V goes after it: the keyboard's own test.)
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.pump();
+      expect(engine.clipboard, isEmpty);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyV);
+      await tester.pump();
+      await tester.pump();
+      expect(engine.clipboard, ['a password copied elsewhere']);
+      expect(engine.keys.where((k) => k.$1 == 0x76 && k.$3), hasLength(1));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyV);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+
+      // Turned off for the host: a paste sends nothing of this computer's.
+      await tester.tap(button);
+      await tester.pump();
+      io.text = 'something else';
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyV);
+      await tester.pump();
+      await tester.pump();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyV);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      expect(engine.clipboard, ['a password copied elsewhere']);
+      expect(engine.keys.where((k) => k.$1 == 0x76 && k.$3), hasLength(2), reason: 'the key itself still goes');
+      await tester.pump(const Duration(seconds: 6));
+      await finish(tester);
+    });
+
     // Found in a security review: the app switcher's snapshot.
     testWidgets("a computer's tab is not covered as the app leaves (its switcher shows live windows); a tablet's is",
         (tester) async {

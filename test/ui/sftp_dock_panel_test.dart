@@ -233,7 +233,9 @@ void main() {
     Map<String, Object> prefs = const {},
     ValueChanged<String>? onShowSession,
   }) async {
-    SharedPreferences.setMockInitialValues(prefs);
+    // One pane unless a test asks for two: most of these tests look at the
+    // single pane, which a person can pick in More (the default is two).
+    SharedPreferences.setMockInitialValues({'sftp_dock_two_panes': false, ...prefs});
     final p = await SharedPreferences.getInstance();
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1;
@@ -554,7 +556,7 @@ void main() {
     testWidgets('a dock opened while its session is dropped says so at once, and lists its files once it is back',
         (tester) async {
       final host = _deployHome();
-      SharedPreferences.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({'sftp_dock_two_panes': false});
       final p = await SharedPreferences.getInstance();
       tester.view.physicalSize = const Size(1600, 900);
       tester.view.devicePixelRatio = 1;

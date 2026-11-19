@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:zestssh/core/widgets/os_icon.dart';
 import 'package:zestssh/core/widgets/status_pill.dart';
 import 'package:zestssh/database/daos/connections_dao.dart';
+import 'package:zestssh/features/hosts/host_screens.dart';
 import 'package:zestssh/features/monitoring/monitor_state_ui.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/l10n/time_ago.dart';
@@ -234,6 +235,8 @@ class _HostsTableState extends ConsumerState<HostsTable> {
                 onConnect: releaseOnly ? null : () => widget.onConnect(rows[i].connectionWithDetails),
                 onTap: releaseOnly ? () => _tap(rows[i]) : null,
                 onMenu: (at) => widget.onMenu(at, rows[i]),
+                // Its own screen (4.0): a screen host opens as any host does.
+                onOpenScreen: multi.active ? null : widget.onConnect,
               ),
           ],
         ),
@@ -413,9 +416,14 @@ class _Row extends ConsumerStatefulWidget {
     required this.onMenu,
     this.onTap,
     this.checkbox = false,
+    this.onOpenScreen,
   });
 
   final HostRow row;
+
+  /// Opens one of the host's own screens: its monitor button after its name,
+  /// and a screen reader's action (none while hosts are selected).
+  final ValueChanged<ConnectionWithDetails>? onOpenScreen;
   final List<HostsListColumn> columns;
   final bool last;
   final bool selected;
@@ -492,6 +500,8 @@ class _RowState extends ConsumerState<_Row> {
       ...d.tags,
     ].join(', ');
     void menuAtRow() => widget.onMenu(globalCentreOf(context));
+    final openScreen = widget.onOpenScreen;
+    final screens = openScreen == null ? const <ConnectionWithDetails>[] : ref.watch(screensOfHostProvider(d.id));
     // Reached with Tab, opened with Enter (a computer's press opens the
     // panel), its menu under Shift+F10, the menu key and a reader's action.
     return ZestPressable(
@@ -507,6 +517,9 @@ class _RowState extends ConsumerState<_Row> {
         semanticActions: {
           if (widget.onConnect != null) CustomSemanticsAction(label: l10n.commonConnect): widget.onConnect!,
           CustomSemanticsAction(label: l10n.hostsListHostMenu): menuAtRow,
+          if (screens.isNotEmpty)
+            CustomSemanticsAction(label: hostScreenButtonLabel(l10n, ref, screens)): () =>
+                pickHostScreen(context, ref, screens, openScreen!, at: globalCentreOf(context)),
         },
         semanticLabel: spoken,
         checked: widget.checkbox ? widget.selected : null,
@@ -564,6 +577,11 @@ class _RowState extends ConsumerState<_Row> {
                     if (d.tmuxSessions > 0) ...[
                       const SizedBox(width: 6),
                       TmuxSessionsBadge(count: d.tmuxSessions, compact: true),
+                    ],
+                    // Its own screen, one press away (4.0).
+                    if (screens.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      HostScreenButton(hostId: d.id, onOpen: openScreen!, size: touch ? 44 : 26, iconSize: 14),
                     ],
                     const SizedBox(width: 8),
                   ],

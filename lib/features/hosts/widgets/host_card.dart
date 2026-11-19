@@ -23,6 +23,8 @@ import 'package:zestssh/models/redactable.dart';
 import 'package:zestssh/ui/widgets/redacted_text.dart';
 import 'package:zestssh/ui/widgets/selection_bar.dart' show SelectBox;
 import 'package:zestssh/models/enums.dart' show ConnectionProtocol;
+import 'package:zestssh/database/daos/connections_dao.dart' show ConnectionWithDetails;
+import 'package:zestssh/features/hosts/host_screens.dart';
 
 /// The built-in icon a host of [protocol] shows where its person chose none:
 /// a screen for a remote screen (4.0, VNC); null for any other host.
@@ -206,9 +208,16 @@ class HostCard extends ConsumerStatefulWidget {
     this.compact = false,
     this.onActivate,
     this.onConnect,
+    this.onOpenScreen,
   });
 
   final HostCardData data;
+
+  /// Opens one of the host's own screens (4.0, the screen hosts reached
+  /// through it): where given and the host has one, a monitor button at the
+  /// card's right opens it (a small menu of them where it has several), and a
+  /// screen reader has the same as an action. Connect still opens SSH.
+  final ValueChanged<ConnectionWithDetails>? onOpenScreen;
 
   /// What Enter or Space on the card, and a screen reader's double tap, do
   /// (4.0, the accessibility pass): where null, [onTap], else [onTapDown]. A
@@ -290,6 +299,12 @@ class _HostCardState extends ConsumerState<HostCard> {
     ];
   }
 
+  /// The card's middle, on the screen.
+  Offset? _centre() {
+    final box = context.findRenderObject() as RenderBox?;
+    return box?.localToGlobal(box.size.center(Offset.zero));
+  }
+
   /// Opens what a right click opens, at the card's middle (Shift+F10, the
   /// menu key, a screen reader's More actions).
   void _openMenu() {
@@ -306,6 +321,8 @@ class _HostCardState extends ConsumerState<HostCard> {
     final activate = _activate;
     final connect = _connect;
     final menu = widget.onSecondaryTap == null ? null : _openMenu;
+    final openScreen = widget.onOpenScreen;
+    final screens = openScreen == null ? const <ConnectionWithDetails>[] : ref.watch(screensOfHostProvider(widget.data.id));
     // One node to a screen reader: the card's focus and its words together
     // (the focus outside them made an empty stop before the card).
     return Semantics(
@@ -323,6 +340,9 @@ class _HostCardState extends ConsumerState<HostCard> {
           CustomSemanticsAction(label: l10n.commonConnect): connect,
         if (l10n != null && widget.onEdit != null && !widget.isSelectionMode)
           CustomSemanticsAction(label: l10n.edit): widget.onEdit!,
+        if (l10n != null && screens.isNotEmpty && !widget.isSelectionMode)
+          CustomSemanticsAction(label: hostScreenButtonLabel(l10n, ref, screens)): () =>
+              pickHostScreen(context, ref, screens, openScreen!, at: _centre()),
         if (l10n != null && menu != null && !widget.isSelectionMode)
           CustomSemanticsAction(label: l10n.zestCommonMoreActions): menu,
       },
@@ -689,6 +709,16 @@ class _HostCardState extends ConsumerState<HostCard> {
                         const SizedBox(width: 10),
                         ExcludeSemantics(child: signals),
                       ],
+                      // Its own screen, one press away (4.0).
+                      if (widget.onOpenScreen != null && !widget.isSelectionMode)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(start: 6),
+                          child: HostScreenButton(
+                            hostId: widget.data.id,
+                            onOpen: widget.onOpenScreen!,
+                            size: touchSizedAt(context) ? 44 : 30,
+                          ),
+                        ),
                     ],
                   ),
                 ),

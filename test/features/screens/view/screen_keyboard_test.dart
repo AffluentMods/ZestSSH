@@ -339,4 +339,63 @@ void main() {
     expect(usCharsOf(PhysicalKeyboardKey.keyA), (0x61, 0x41));
     expect(usCharsOf(PhysicalKeyboardKey.enter), isNull);
   });
+
+  group('the keys that leave full screen', () {
+    test('Ctrl+Alt+Break leaves, and Break never reaches the remote; Ctrl and Alt went as they were pressed', () {
+      final r = _Rig();
+      var left = 0;
+      r.keyboard.onLeaveFullScreen = () => left++;
+      r.down(PhysicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlLeft);
+      r.down(PhysicalKeyboardKey.altLeft, LogicalKeyboardKey.altLeft);
+      expect(r.down(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause), KeyEventResult.handled);
+      expect(r.repeat(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause), KeyEventResult.handled);
+      expect(r.up(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause), KeyEventResult.handled);
+      r.up(PhysicalKeyboardKey.altLeft, LogicalKeyboardKey.altLeft);
+      r.up(PhysicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlLeft);
+      expect(left, 1, reason: 'once, its repeat not again');
+      expect(r.take().map((k) => k.$1), [0xffe3, 0xffe9, 0xffe9, 0xffe3]);
+    });
+
+    test('Windows says Ctrl+Pause as Break (cancel): the same', () {
+      final r = _Rig();
+      var left = 0;
+      r.keyboard.onLeaveFullScreen = () => left++;
+      r.down(PhysicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlLeft);
+      r.down(PhysicalKeyboardKey.altLeft, LogicalKeyboardKey.altLeft);
+      r.down(PhysicalKeyboardKey.pause, LogicalKeyboardKey.cancel);
+      expect(left, 1);
+    });
+
+    test('Break alone, Ctrl+Break, Ctrl+Alt+Shift+Break, and any key outside full screen go to the remote', () {
+      final r = _Rig();
+      var left = 0;
+      r.keyboard.onLeaveFullScreen = () => left++;
+      r.down(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause);
+      r.up(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause);
+      r.down(PhysicalKeyboardKey.controlLeft, LogicalKeyboardKey.controlLeft);
+      r.down(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause);
+      r.up(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause);
+      r.down(PhysicalKeyboardKey.altLeft, LogicalKeyboardKey.altLeft);
+      r.down(PhysicalKeyboardKey.shiftLeft, LogicalKeyboardKey.shiftLeft);
+      r.down(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause);
+      r.up(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause);
+      r.up(PhysicalKeyboardKey.shiftLeft, LogicalKeyboardKey.shiftLeft);
+      expect(left, 0);
+      // Outside full screen there is nothing to leave: Ctrl+Alt+Break is the remote's.
+      r.keyboard.onLeaveFullScreen = null;
+      r.take();
+      r.down(PhysicalKeyboardKey.pause, LogicalKeyboardKey.pause);
+      expect(r.take().map((k) => k.$1), [0xff13]);
+    });
+
+    test('Esc goes to the remote in full screen', () {
+      final r = _Rig();
+      var left = 0;
+      r.keyboard.onLeaveFullScreen = () => left++;
+      r.down(PhysicalKeyboardKey.escape, LogicalKeyboardKey.escape);
+      r.up(PhysicalKeyboardKey.escape, LogicalKeyboardKey.escape);
+      expect(left, 0);
+      expect(r.take().map((k) => k.$1), [0xff1b, 0xff1b]);
+    });
+  });
 }

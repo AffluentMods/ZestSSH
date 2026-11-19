@@ -279,6 +279,8 @@ class _PhoneScreenViewState extends ConsumerState<PhoneScreenView> with WidgetsB
     _showToolbar();
     _covered = false;
     _syncCover(ref.read(recordingModeProvider));
+    // A view just opened and seen lets the sound play (the cover's sync says so only on a change).
+    _syncSound();
   }
 
   void _drop() {

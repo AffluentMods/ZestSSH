@@ -30,7 +30,6 @@ class WorkflowDetailPane extends ConsumerWidget {
     required this.controller,
     required this.runController,
     required this.hasSelection,
-    required this.onNew,
     required this.onSave,
     required this.onClose,
     required this.onDelete,
@@ -41,7 +40,6 @@ class WorkflowDetailPane extends ConsumerWidget {
   final WorkflowEditController controller;
   final WorkflowRunController runController;
   final bool hasSelection;
-  final VoidCallback onNew;
   final Future<bool> Function() onSave;
   final VoidCallback onClose;
   final VoidCallback onDelete;
@@ -96,8 +94,6 @@ class WorkflowDetailPane extends ConsumerWidget {
       isDirty: controller.isDirty,
       onSave: () => onSave(),
       saveLabel: l10n.autoSaveWorkflow,
-      // Clear resets to a blank new workflow (runs the dirty guard first).
-      onCancel: onNew,
       onClose: onClose,
       // Run, Run on… and, for a saved workflow, Delete in the head, beside its
       // close: the foot is Cancel and Save workflow.

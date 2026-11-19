@@ -49,7 +49,8 @@ class PaletteBuilder {
       case 14:
         return theme.brightCyan;
       case 15:
-        return theme.white;
+        // Bright white (it was plain white: upstream d35ba2cc72).
+        return theme.brightWhite;
     }
 
     if (colNum < 232) {

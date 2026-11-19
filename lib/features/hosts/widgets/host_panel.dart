@@ -17,6 +17,7 @@ import 'package:zestssh/core/widgets/os_icon.dart';
 import 'package:zestssh/database/daos/connections_dao.dart';
 import 'package:zestssh/database/database.dart';
 import 'package:zestssh/features/hosts/host_attention.dart';
+import 'package:zestssh/features/hosts/host_screens.dart';
 import 'package:zestssh/features/hosts/widgets/host_card.dart';
 import 'package:zestssh/features/orchards/widgets/crate_session_logs_view.dart' show HostSessionsLoggedNote;
 import 'package:zestssh/features/orchards/widgets/crate_offline_limit_view.dart' show HostCrateClosedNote;
@@ -73,6 +74,7 @@ class HostPanel extends ConsumerWidget {
     this.onOpenMonitor,
     this.onOpenHistory,
     this.onMore,
+    this.onOpenScreen,
   });
 
   final HostCardData card;
@@ -104,6 +106,11 @@ class HostPanel extends ConsumerWidget {
   /// controls are touch sized (4.0, a tablet in landscape).
   final ValueChanged<Offset>? onMore;
 
+  /// Opens one of the host's own screens (4.0, the screen hosts reached
+  /// through it): its Screens section, and a monitor at the foot beside
+  /// Connect while it has one.
+  final ValueChanged<ConnectionWithDetails>? onOpenScreen;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
@@ -118,6 +125,7 @@ class HostPanel extends ConsumerWidget {
     final view = ref.watch(monitoredHostViewsProvider)[conn.id];
     final tmux = ref.watch(tmuxSessionCountsProvider)[conn.id] ?? 0;
     final forwards = ref.watch(portForwardRulesForConnectionProvider(conn.id)).valueOrNull ?? const <PortForwardRule>[];
+    final screens = onOpenScreen == null ? const <ConnectionWithDetails>[] : ref.watch(screensOfHostProvider(conn.id));
     final label = AppColors.resolveConnectionLabelColorOrNull(
       connColorValue: card.colorValue,
       connColorIndex: card.colorIndex,
@@ -324,6 +332,8 @@ class HostPanel extends ConsumerWidget {
                   else
                     HostPanelHealth(connectionId: conn.id, hostName: hostName, view: view),
                 ],
+                // Its own screens (4.0), and Add a screen.
+                if (onOpenScreen != null) HostScreensSection(hostId: conn.id, onOpen: onOpenScreen!),
                 if (HostPanelRecentSessions.hasAny(ref, conn.id)) ...[
                   _Head(label: l10n.hpanelRecentSessions, action: l10n.narrowSidebarHistory, onAction: onOpenHistory),
                   HostPanelRecentSessions(connectionId: conn.id),
@@ -436,14 +446,28 @@ class HostPanel extends ConsumerWidget {
             // after a Spacer).
             child: Row(
               children: [
-                // SFTP runs over SSH: a local shell's host has none.
-                if (conn.protocol.toLowerCase() != 'localshell') ...[
+                // SFTP runs over SSH: a local shell's host has none, and
+                // neither has a Telnet host (as in the host's menu).
+                if (!const {'localshell', 'telnet'}.contains(conn.protocol.toLowerCase())) ...[
                   Expanded(
                     child: _FooterButton(
                       key: const ValueKey('host-panel-sftp'),
                       icon: LucideIcons.folderOpen,
                       label: 'SFTP',
                       onTap: onOpenSftp,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                // Its own screen, one press away (a menu of them where it
+                // has several).
+                if (onOpenScreen != null && screens.isNotEmpty) ...[
+                  Builder(
+                    builder: (button) => _FooterButton(
+                      key: const ValueKey('host-panel-screen'),
+                      icon: LucideIcons.monitor,
+                      tooltip: hostScreenButtonLabel(l10n, ref, screens),
+                      onTap: () => pickHostScreen(button, ref, screens, onOpenScreen!, at: globalCentreOf(button)),
                     ),
                   ),
                   const SizedBox(width: 8),

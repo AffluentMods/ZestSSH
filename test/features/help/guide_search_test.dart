@@ -23,7 +23,7 @@ void main() {
 
     test('a synonym finds the guide that lists it', () {
       expect(slugs('bastion').first, 'networks-and-jump-hosts');
-      expect(slugs('tailscale').first, 'networks-and-jump-hosts');
+      expect(slugs('tailscale').take(2), containsAll(['reach-your-pc-from-anywhere', 'networks-and-jump-hosts']));
       expect(slugs('wifi'), contains('networks-and-jump-hosts'));
       expect(slugs('scp').first, 'sftp');
       expect(slugs('upload files').first, 'sftp');
@@ -78,7 +78,7 @@ void main() {
         'snippets-and-workflows', 'automation-and-api-keys', 'alerts', 'history-and-suggestions',
         'server-monitor', 'sync-and-backups', 'team-create-and-invite', 'team-roles-and-vaults',
         'team-rules', 'joining-a-team', 'session-sharing', 'certificates', 'themes',
-        'import-from-other-apps', 'phones-and-tablets',
+        'import-from-other-apps', 'phones-and-tablets', 'remote-screens',
       ]) {
         expect(guideBySlug(slug), isNotNull, reason: slug);
       }
@@ -134,6 +134,7 @@ void main() {
     test('each page opens the guide that is about it', () {
       expect(guideForFeature('networks')!.slug, 'networks-and-jump-hosts');
       expect(guideForFeature('hosts')!.slug, 'hosts-and-connecting');
+      expect(guideForFeature('remote_screens')!.slug, 'remote-screens');
       expect(guideForFeature('port_forwards')!.slug, 'port-forwarding');
       expect(guideForFeature('alerts')!.slug, 'alerts');
       expect(guideForFeature('monitor')!.slug, 'server-monitor');

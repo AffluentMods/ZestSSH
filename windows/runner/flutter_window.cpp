@@ -114,6 +114,7 @@ bool FlutterWindow::OnCreate() {
       });
 
   SetUpPointerCapture();
+  view_windows_ = std::make_unique<ViewWindows>(flutter_controller_.get());
 
   // Register plugin re-initialization for secondary (detached) windows.
   // desktop_multi_window creates child windows with their own Flutter engines;
@@ -228,6 +229,8 @@ void FlutterWindow::SetUpPointerCapture() {
 
 void FlutterWindow::OnDestroy() {
   single_instance::UnmarkMainWindow(GetHandle());
+  // The windows drawn by this window's engine go before the engine does.
+  view_windows_ = nullptr;
   // The pointer first: given back before anything it reports to is gone.
   pointer_hold_ = nullptr;
   pointer_sink_ = nullptr;

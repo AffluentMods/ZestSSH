@@ -298,8 +298,9 @@ void main() {
         await pump(tester, protocol: protocol);
         await openHostPanel(tester);
         expect(find.byKey(const ValueKey('host-panel-test-reachability')), shown ? findsOneWidget : findsNothing);
-        expect(find.byKey(const ValueKey('host-panel-sftp')), protocol == 'localShell' ? findsNothing : findsOneWidget,
-            reason: 'a local shell has no SFTP');
+        expect(find.byKey(const ValueKey('host-panel-sftp')),
+            protocol == 'localShell' || protocol == 'telnet' ? findsNothing : findsOneWidget,
+            reason: 'a local shell and a Telnet host have no SFTP');
         await finish(tester);
       });
     }

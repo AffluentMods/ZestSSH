@@ -183,6 +183,19 @@ void main() {
     expect(await keychain.read(key: 'device_session_v1'), 'a session');
   });
 
+  test("a key's secret that is kept and opens no more is kept but unread (a sync must not send the key as one "
+      'with no secret); one the key never had is not', () async {
+    final store = SecureStorageIdentitySecrets(keychain);
+    world.device.kept['p.aaaa.identity_key_k'] = '${SecretSeal.prefix}AAAA';
+    expect(await store.read('k', IdentitySecret.privateKey), isNull);
+    expect(await store.keptButUnread('k', IdentitySecret.privateKey), isTrue);
+    expect(await store.keptButUnread('k', IdentitySecret.passphrase), isFalse);
+    // One that opens is read, and is not unread.
+    await keychain.write(key: 'identity_key_k2', value: 'PRIVATE');
+    expect(await store.read('k2', IdentitySecret.privateKey), 'PRIVATE');
+    expect(await store.keptButUnread('k2', IdentitySecret.privateKey), isFalse);
+  });
+
   test('an entry that opens no more reads as none, so it can be replaced, with the database open', () async {
     world.device.kept['p.aaaa.sync_salt'] = '${SecretSeal.prefix}AAAA';
     expect(await keychain.read(key: 'sync_salt'), isNull);

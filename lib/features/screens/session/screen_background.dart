@@ -84,7 +84,13 @@ class ScreenBackgroundKeeper {
     _closeTimer = null;
     if (!_away) return;
     for (final id in connectedScreens().toList()) {
+      // Back in front while an earlier one was closing: the rest stay open.
+      if (!_away) break;
       await park(id);
+      // Back in front while this one was closing: [resumed] ran before it
+      // was paused and so did not connect it again. It is connected again
+      // here, in its place, instead of staying paused in front of the person.
+      if (!_away && parkedScreens().contains(id)) reconnect(id);
     }
     await _giveBack();
   }

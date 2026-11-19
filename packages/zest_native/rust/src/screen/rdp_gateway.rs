@@ -55,10 +55,27 @@ const MAX_ROUNDS: usize = 3;
 /// One MS-TSGU packet comes in one WebSocket message, and the longest a gateway sends is a data
 /// packet: its header, its length, and 65,535 bytes.
 pub(crate) const MAX_MESSAGE: usize = 8 + 2 + 65_535;
-/// Each step of the setting up (TLS aside: the session's own timeout holds it).
+/// Each step of the setting up: one HTTP round (its head and a refusal's body), one packet of
+/// the tunnel's (however many keepalives, pings or service messages come before it).
+#[cfg(not(test))]
 pub(crate) const STEP_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(test)]
+pub(crate) const STEP_TIMEOUT: Duration = Duration::from_secs(2);
+/// The TLS handshake to the gateway, and then the whole of the rest of the setting up (the HTTP
+/// rounds, the tunnel and the channel), each at most this.
+#[cfg(not(test))]
+pub(crate) const SETUP_TIMEOUT: Duration = Duration::from_secs(60);
+#[cfg(test)]
+pub(crate) const SETUP_TIMEOUT: Duration = Duration::from_secs(5);
+/// The most of the gateway's data waiting for the session to read it; while it is full, the
+/// gateway is not read (its TCP slows it), and the session's own bytes still go out.
+const MAX_PENDING: usize = 256 * 1024;
 /// A keepalive while nothing else goes (a gateway ends an idle tunnel).
 const KEEPALIVE: Duration = Duration::from_secs(5 * 60);
+/// A ping is answered at most this often: a pong goes to the app's socket whatever the gateway
+/// reads, so one for every ping would let a gateway that pings without end, and reads nothing,
+/// fill the app's memory with them. (RFC 6455 lets a client answer the latest ping only.)
+const PONG_EVERY: Duration = Duration::from_secs(1);
 /// How much of the session's bytes go in one data packet.
 const DATA_CHUNK: usize = 16 * 1024;
 /// The name the tunnel's sign-in gives for this device (as the RDP connection's client name).
@@ -114,7 +131,9 @@ where
     S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     let pin = gw.tls_pin.as_deref().map(super::parse_sha256).transpose().map_err(|e| Closed::new(CloseReason::Internal, e))?;
-    let tls = gateway_tls(stream, &gw.host, pin).await?;
+    let tls = tokio::time::timeout(SETUP_TIMEOUT, gateway_tls(stream, &gw.host, pin))
+        .await
+        .map_err(|_| Closed::new(CloseReason::Network, format!("RD Gateway: no TLS within {} seconds", SETUP_TIMEOUT.as_secs())))??;
     let binding = tls.get_ref().1.peer_certificates().and_then(|c| c.first()).map(|der| tls_server_end_point(der.as_ref()));
     through(tls, gw, binding).await
 }
@@ -153,9 +172,17 @@ where
     let mut writer = WsWriter::new(write);
     let mut leftover = Vec::new();
     let mut read = read;
-    upgrade(&mut read, &mut writer, &mut leftover, gw, binding.as_deref()).await?;
-    let mut reader = WsReader::new(read, leftover);
-    tunnel(&mut reader, &mut writer, target, port).await?;
+    // The whole of the setting up within SETUP_TIMEOUT, whatever its steps do.
+    let reader = tokio::time::timeout(SETUP_TIMEOUT, async {
+        upgrade(&mut read, &mut writer, &mut leftover, gw, binding.as_deref()).await?;
+        let mut reader = WsReader::new(read, std::mem::take(&mut leftover));
+        tunnel(&mut reader, &mut writer, target, port).await?;
+        Ok::<_, Closed>(reader)
+    })
+    .await
+    .map_err(|_| {
+        Closed::new(CloseReason::Network, format!("RD Gateway: the tunnel was not open within {} seconds", SETUP_TIMEOUT.as_secs()))
+    })??;
     let (session_side, ours) = tokio::io::duplex(4 * DATA_CHUNK);
     let end: GatewayEnd = Arc::new(Mutex::new(None));
     let said = end.clone();
@@ -167,6 +194,13 @@ where
     Ok((session_side, end))
 }
 
+/// What the gateway's certificate is checked by: a certificate accepted for this gateway is the
+/// only one taken from then on, as a host key is (a different one is asked about, whoever signed
+/// it); before one is accepted, an authority's for the gateway's name is taken.
+pub(crate) fn gateway_policy(pin: Option<[u8; 32]>) -> Policy {
+    Policy { pinned: pin, allow_authority: pin.is_none() }
+}
+
 /// TLS to the gateway: an authority's certificate for its name, or the one pinned for it. No
 /// key log, no resumption.
 async fn gateway_tls<S>(stream: S, host: &str, pin: Option<[u8; 32]>) -> Result<tokio_rustls::client::TlsStream<S>, Closed>
@@ -175,7 +209,7 @@ where
 {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let verifier = Arc::new(
-        ZestVerifier::new(provider.clone(), Policy { pinned: pin, allow_authority: true }).map_err(|e| Closed::new(CloseReason::Internal, e))?,
+        ZestVerifier::new(provider.clone(), gateway_policy(pin)).map_err(|e| Closed::new(CloseReason::Internal, e))?,
     );
     let mut config = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
@@ -449,7 +483,9 @@ where
             101 if head.upgrade_websocket => return Ok(()),
             101 => return Err(protocol("a 101 that is not to a WebSocket")),
             401 => {
-                skip_body(read, leftover, &head).await?;
+                tokio::time::timeout(STEP_TIMEOUT, skip_body(read, leftover, &head))
+                    .await
+                    .map_err(|_| timed_out("the sign-in"))??;
                 if head.close {
                     return Err(protocol("the gateway closes the connection on the way through its sign-in"));
                 }
@@ -498,7 +534,11 @@ where
 
 /// The sign-ins a gateway offers, by name, for a refusal's words.
 fn offered(authenticate: &[String]) -> String {
-    let names: Vec<&str> = authenticate.iter().filter_map(|v| v.split_whitespace().next()).take(8).collect();
+    // A scheme's name is a token: letters, digits and a few marks, short. Whatever else a gateway
+    // puts there does not reach the log or Copy details.
+    let token = |n: &&str| n.len() <= 32 && n.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.+".contains(&b));
+    let names: Vec<&str> =
+        authenticate.iter().filter_map(|v| v.split_whitespace().next()).filter(token).take(8).collect();
     if names.is_empty() { "nothing it names".to_owned() } else { names.join(", ") }
 }
 
@@ -827,19 +867,10 @@ pub fn read_tunnel_response(body: &[u8]) -> Result<(), Closed> {
     if status != 0 {
         return Err(gateway_code("the tunnel", status));
     }
+    // Which optional fields follow (the tunnel's id, its capabilities, a health statement's nonce
+    // and certificate, a consent message): none of them is used but the consent's presence, so
+    // they are not read (a field read at the wrong size would refuse a gateway for nothing).
     let present = c.u16()?;
-    let _reserved = c.u16()?;
-    if present & 0x01 != 0 {
-        c.u32()?; // the tunnel's id
-    }
-    if present & 0x02 != 0 {
-        c.u32()?; // its capabilities
-    }
-    if present & 0x04 != 0 {
-        c.u16()?; // a nonce
-        let n = c.u16()? as usize;
-        c.take(n)?; // a certificate for the gateway's own sign-in cookie
-    }
     if present & 0x10 != 0 {
         return Err(Closed::new(
             CloseReason::Protocol,
@@ -873,16 +904,45 @@ pub fn read_data(body: &[u8]) -> Result<&[u8], Closed> {
     c.take(n)
 }
 
+/// Which pings get their pong: the first, and then one every [PONG_EVERY].
+#[derive(Default)]
+struct Pongs {
+    last: Option<tokio::time::Instant>,
+}
+
+impl Pongs {
+    fn due(&mut self) -> bool {
+        let now = tokio::time::Instant::now();
+        if self.last.is_some_and(|l| now.duration_since(l) < PONG_EVERY) {
+            return false;
+        }
+        self.last = Some(now);
+        true
+    }
+}
+
 /// The next packet of `want`, past keepalives and service messages; a ping is answered.
 async fn expect<R, W>(reader: &mut WsReader<R>, writer: &mut WsWriter<W>, want: u16, what: &str) -> Result<Vec<u8>, Closed>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
+    // One deadline for the step: a keepalive or a ping does not start it again.
+    let deadline = tokio::time::Instant::now() + STEP_TIMEOUT;
+    let mut pongs = Pongs::default();
     loop {
-        let frame = tokio::time::timeout(STEP_TIMEOUT, reader.next()).await.map_err(|_| timed_out(what))??;
+        // Looked at here too: while frames that are not the answer keep coming, the read below
+        // is ready each time and its time limit is never asked.
+        if tokio::time::Instant::now() >= deadline {
+            return Err(timed_out(what));
+        }
+        let frame = tokio::time::timeout_at(deadline, reader.next()).await.map_err(|_| timed_out(what))??;
         match frame {
-            Frame::Ping(p) => writer.pong(&p).await?,
+            Frame::Ping(p) => {
+                if pongs.due() {
+                    writer.pong(&p).await?;
+                }
+            }
             Frame::Close => {
                 return Err(Closed::new(CloseReason::ServerClosed, format!("RD Gateway: the gateway closed the connection at {what}")));
             }
@@ -929,39 +989,66 @@ where
 
 /// The channel's bytes both ways until either side ends: the gateway's data packets to the
 /// session, the session's bytes in data packets to the gateway, a keepalive now and then.
-async fn carry<R, W>(mut reader: WsReader<R>, mut writer: WsWriter<W>, mut session: DuplexStream) -> Result<(), Closed>
+///
+/// Never waits on the session's pipe without reading it: the gateway's data waits in a buffer of
+/// its own (at most [MAX_PENDING]) written as the session takes it, while the session's own
+/// bytes are read and sent on. (Waiting on a full pipe to the session while the session waited
+/// on a full pipe to here held both for good: a large clipboard answer while the screen moved.)
+async fn carry<R, W>(mut reader: WsReader<R>, mut writer: WsWriter<W>, session: DuplexStream) -> Result<(), Closed>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
+    let (mut from_session, mut to_session) = tokio::io::split(session);
     let mut out = vec![0u8; DATA_CHUNK];
+    let mut pending: Vec<u8> = Vec::new();
     let mut keepalive = tokio::time::interval_at(tokio::time::Instant::now() + KEEPALIVE, KEEPALIVE);
     keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut pongs = Pongs::default();
+    // The gateway's last data reaches the session before the channel's end does (within a step's
+    // time: a session that reads nothing more is not waited for).
+    async fn flush<T: AsyncWrite + Unpin>(to: &mut T, pending: &[u8]) {
+        if !pending.is_empty() {
+            let _ = tokio::time::timeout(STEP_TIMEOUT, to.write_all(pending)).await;
+        }
+    }
     loop {
         tokio::select! {
-            frame = reader.next() => match frame? {
-                Frame::Ping(p) => writer.pong(&p).await?,
+            frame = reader.next(), if pending.len() < MAX_PENDING => match frame {
+                // The gateway's connection ended: what it sent before still reaches the session.
+                Err(e) => {
+                    flush(&mut to_session, &pending).await;
+                    return Err(e);
+                }
+                Ok(frame) => match frame {
+                Frame::Ping(p) => {
+                    if pongs.due() {
+                        writer.pong(&p).await?;
+                    }
+                    // Pings without end are ready without end: the session's own work has its turn.
+                    tokio::task::yield_now().await;
+                }
                 Frame::Close => {
+                    flush(&mut to_session, &pending).await;
                     return Err(Closed::new(CloseReason::ServerClosed, "RD Gateway: the gateway closed the connection"));
                 }
                 Frame::Message(m) => {
                     let (ty, body) = packet(&m)?;
                     match ty {
-                        PKT_DATA => {
-                            let bytes = read_data(body)?;
-                            if session.write_all(bytes).await.is_err() {
-                                // The session went first.
-                                writer.close().await;
-                                return Ok(());
-                            }
-                        }
-                        PKT_KEEPALIVE | PKT_SERVICE_MESSAGE => {}
+                        PKT_DATA => pending.extend_from_slice(read_data(body)?),
+                        // As for pings: the session's own work has its turn.
+                        PKT_KEEPALIVE | PKT_SERVICE_MESSAGE => tokio::task::yield_now().await,
                         PKT_CLOSE_CHANNEL => {
                             let _ = writer.binary(&close_channel_response()).await;
+                            flush(&mut to_session, &pending).await;
                             return Err(closed_channel(body));
                         }
-                        PKT_CLOSE_CHANNEL_RESPONSE => return Ok(()),
+                        PKT_CLOSE_CHANNEL_RESPONSE => {
+                            flush(&mut to_session, &pending).await;
+                            return Ok(());
+                        }
                         PKT_REAUTH_MESSAGE => {
+                            flush(&mut to_session, &pending).await;
                             return Err(Closed::new(
                                 CloseReason::ServerClosed,
                                 "RD Gateway: the gateway asks to sign in again, which this version does not do",
@@ -971,8 +1058,19 @@ where
                         other => return Err(protocol(format!("packet type {other:#04x} in the channel"))),
                     }
                 }
+                },
             },
-            n = session.read(&mut out) => {
+            written = to_session.write(&pending), if !pending.is_empty() => match written {
+                Ok(n) if n > 0 => {
+                    pending.drain(..n);
+                }
+                // The session went first.
+                _ => {
+                    writer.close().await;
+                    return Ok(());
+                }
+            },
+            n = from_session.read(&mut out) => {
                 let n = n.unwrap_or(0);
                 if n == 0 {
                     writer.close().await;
@@ -1034,8 +1132,11 @@ mod tests {
         for short in 0..10 {
             assert!(read_handshake_response(&[0u8; 10][..short]).is_err() || short >= 6);
         }
-        assert!(read_tunnel_response(&[0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0]).is_err(), "every optional field said, none there");
-        assert!(read_tunnel_response(&[0, 0, 0, 0, 0, 0, 0x04, 0, 0, 0, 0, 0, 0xff, 0xff]).is_err(), "a certificate longer than it");
+        // The optional fields are not read: their presence alone changes nothing but the consent's.
+        assert!(read_tunnel_response(&[0, 0, 0, 0, 0, 0, 0x0f, 0, 0, 0]).is_ok(), "fields said, none there");
+        assert!(read_tunnel_response(&[0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0]).is_err(), "the consent among them");
+        assert!(read_tunnel_response(&[0, 0, 0, 0, 0, 0]).is_err(), "no flags at all");
+        assert_eq!(offered(&["NTLM".into(), "Basic realm=x".into(), format!("{} x", "A".repeat(40)), "bad\u{1b}[2J".into()]), "NTLM, Basic");
     }
 
     #[test]
@@ -1470,6 +1571,111 @@ mod tests {
         });
     }
 
+    /// A played gateway that lets anyone in (101 at once) and opens the tunnel and the channel.
+    async fn open_gateway(io: &mut DuplexStream, buf: &mut Vec<u8>) {
+        let _ = head_of(io, buf).await;
+        io.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n").await.unwrap();
+        let _ = client_frame(io, buf).await;
+        server_send(io, &packet_bytes(PKT_HANDSHAKE_RESPONSE, &[0, 0, 0, 0, 1, 0, 0, 0, 0, 0])).await;
+        let _ = client_frame(io, buf).await;
+        server_send(io, &packet_bytes(PKT_TUNNEL_RESPONSE, &[0; 10])).await;
+        let _ = client_frame(io, buf).await;
+        server_send(io, &packet_bytes(PKT_TUNNEL_AUTH_RESPONSE, &[0; 8])).await;
+        let _ = client_frame(io, buf).await;
+        server_send(io, &packet_bytes(PKT_CHANNEL_RESPONSE, &[0; 8])).await;
+    }
+
+    /// Both ways full at once: the gateway sends 320 KiB and reads nothing until it has, while
+    /// the session writes 320 KiB before it reads (a large clipboard answer while the screen
+    /// moves). Both get through: the carrier never waits on the session without reading it.
+    #[tokio::test]
+    async fn the_gateways_data_and_the_sessions_both_get_through_when_neither_reads_first() {
+        let (client, mut server) = tokio::io::duplex(1 << 21);
+        const TOTAL: usize = 20 * DATA_CHUNK;
+        let gateway = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            open_gateway(&mut server, &mut buf).await;
+            for _ in 0..TOTAL / DATA_CHUNK {
+                server_send(&mut server, &data_packet(&[7u8; DATA_CHUNK])).await;
+            }
+            // Then what the session sent.
+            let mut got = 0;
+            while got < TOTAL {
+                let m = client_frame(&mut server, &mut buf).await;
+                let (ty, body) = packet(&m).unwrap();
+                if ty == PKT_DATA {
+                    got += read_data(body).unwrap().len();
+                }
+            }
+            got
+        });
+        let (stream, _end) = through(client, &gw(), None).await.unwrap();
+        let (mut r, mut w) = tokio::io::split(stream);
+        let done = tokio::time::timeout(Duration::from_secs(10), async {
+            w.write_all(&vec![9u8; TOTAL]).await.unwrap();
+            let mut back = vec![0u8; TOTAL];
+            if let Err(e) = r.read_exact(&mut back).await {
+                panic!("{e}: the carrier ended with {:?}", _end.lock().unwrap().take());
+            }
+            assert!(back.iter().all(|b| *b == 7));
+            gateway.await.unwrap()
+        })
+        .await
+        .expect("the session and the gateway held each other");
+        assert_eq!(done, TOTAL);
+    }
+
+    /// A gateway that stops talking: a refusal whose body never comes, and a tunnel step answered
+    /// only by keepalives. Each ends within its step's time, said as the network's failure.
+    #[tokio::test]
+    async fn a_gateway_that_stops_answering_is_given_up_on_within_a_step() {
+        let (client, mut server) = tokio::io::duplex(1 << 16);
+        let _gateway = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = head_of(&mut server, &mut buf).await;
+            server
+                .write_all(b"HTTP/1.1 401 Access Denied\r\nWWW-Authenticate: NTLM\r\nContent-Length: 60000\r\n\r\nonly this")
+                .await
+                .unwrap();
+            // ... and nothing more, with the connection kept open.
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            drop(server);
+        });
+        let started = std::time::Instant::now();
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.reason, CloseReason::Network, "{e:?}");
+        assert!(started.elapsed() < STEP_TIMEOUT + Duration::from_secs(1), "{:?}", started.elapsed());
+
+        let (client, mut server) = tokio::io::duplex(1 << 16);
+        let _gateway = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = head_of(&mut server, &mut buf).await;
+            server.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n").await.unwrap();
+            let _ = client_frame(&mut server, &mut buf).await;
+            // Keepalives, never the handshake's answer.
+            loop {
+                server_send(&mut server, &packet_bytes(PKT_KEEPALIVE, &[])).await;
+                tokio::time::sleep(Duration::from_millis(300)).await;
+            }
+        });
+        let started = std::time::Instant::now();
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.reason, CloseReason::Network, "{e:?}");
+        assert!(e.message.contains("the handshake"), "{}", e.message);
+        assert!(started.elapsed() < STEP_TIMEOUT + Duration::from_secs(1), "{:?}", started.elapsed());
+    }
+
+    #[test]
+    fn a_pinned_gateway_certificate_is_the_only_one_taken() {
+        use crate::ftps::verify::{Decision, decide};
+        let pinned = gateway_policy(Some([1; 32]));
+        assert_eq!(decide(&pinned, None, &[1; 32], false), Decision::Trusted);
+        assert_eq!(decide(&pinned, None, &[2; 32], true), Decision::Refused, "another, even an authority's, is asked about");
+        let first = gateway_policy(None);
+        assert_eq!(decide(&first, None, &[2; 32], true), Decision::Trusted, "before one is accepted, an authority's");
+        assert_eq!(decide(&first, None, &[2; 32], false), Decision::Refused);
+    }
+
     #[test]
     fn the_gateways_sign_in_needs_a_name_and_a_password() {
         let mut g = gw();
@@ -1481,5 +1687,331 @@ mod tests {
         let mut client = NtlmHttp::new(&gw(), Some(b"tls-server-end-point:x")).unwrap();
         let first = client.step(None).unwrap();
         assert!(first.starts_with(b"NTLMSSP\0\x01"), "NTLM's first message");
+    }
+
+    // A gateway that is hostile or broken, after TLS: what it can make the client do.
+
+    /// An answer's head that never ends: sent a byte at a time for ever, or longer than a head
+    /// may be. The first ends within a step's time, the second as soon as it is too long.
+    #[tokio::test]
+    async fn a_head_that_never_ends_is_given_up_on() {
+        let (client, mut server) = tokio::io::duplex(1 << 16);
+        let _gateway = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = head_of(&mut server, &mut buf).await;
+            server.write_all(b"HTTP/1.1 401 Access Denied\r\n").await.unwrap();
+            loop {
+                if server.write_all(b"X").await.is_err() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+        let started = std::time::Instant::now();
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.reason, CloseReason::Network, "{e:?}");
+        assert!(started.elapsed() < STEP_TIMEOUT + Duration::from_secs(1), "{:?}", started.elapsed());
+
+        let (client, mut server) = tokio::io::duplex(1 << 16);
+        let gateway = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = head_of(&mut server, &mut buf).await;
+            let line = [b'a'; 1024];
+            let mut sent = 0usize;
+            // Until the client goes: it must, long before this much.
+            while sent < 64 * MAX_HEAD && server.write_all(&line).await.is_ok() {
+                sent += line.len();
+            }
+            sent
+        });
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.reason, CloseReason::Protocol, "{e:?}");
+        assert!(e.message.contains("head longer"), "{}", e.message);
+        // What it took before it said so: the head's bound and what was on the way, no more.
+        assert!(gateway.await.unwrap() <= MAX_HEAD + (1 << 16) + 8192);
+    }
+
+    /// A redirect is not followed and a sign-in that goes wrong is not tried again: one request
+    /// for the first, two for the second, and nothing more is asked of the gateway.
+    #[tokio::test]
+    async fn a_redirect_is_not_followed_and_a_bad_challenge_ends_the_sign_in() {
+        async fn requests(mut server: DuplexStream, answers: &'static [&'static [u8]]) -> usize {
+            let mut buf = Vec::new();
+            let mut asked = 0;
+            for answer in answers {
+                let _ = head_of(&mut server, &mut buf).await;
+                asked += 1;
+                server.write_all(answer).await.unwrap();
+            }
+            // Anything more the client asks is counted, until it goes.
+            let mut chunk = [0u8; 4096];
+            loop {
+                match tokio::time::timeout(Duration::from_secs(1), server.read(&mut chunk)).await {
+                    Ok(Ok(n)) if n > 0 => asked += 1,
+                    _ => return asked,
+                }
+            }
+        }
+        let (client, server) = tokio::io::duplex(1 << 16);
+        let gateway = tokio::spawn(requests(
+            server,
+            &[b"HTTP/1.1 302 Found\r\nLocation: https://other.example.test/remoteDesktopGateway/\r\nContent-Length: 0\r\n\r\n"],
+        ));
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.detail, Some("gateway_none"));
+        assert!(!e.message.contains("other.example"), "where it sends is not repeated: {}", e.message);
+        assert_eq!(gateway.await.unwrap(), 1);
+
+        // A challenge that is no NTLM message.
+        let (client, server) = tokio::io::duplex(1 << 16);
+        let gateway = tokio::spawn(requests(
+            server,
+            &[
+                b"HTTP/1.1 401 Access Denied\r\nWWW-Authenticate: NTLM\r\nContent-Length: 0\r\n\r\n",
+                b"HTTP/1.1 401 Access Denied\r\nWWW-Authenticate: NTLM AAAAAAAAAAAAAAAA\r\nContent-Length: 0\r\n\r\n",
+            ],
+        ));
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.reason, CloseReason::Protocol, "{e:?}");
+        assert!(!e.message.contains("made-up-password"));
+        assert_eq!(gateway.await.unwrap(), 2);
+
+        // A gateway that asks for Basic once NTLM has begun gets no password: the sign-in ends.
+        let (client, server) = tokio::io::duplex(1 << 16);
+        let gateway = tokio::spawn(async move {
+            let mut server = server;
+            let mut buf = Vec::new();
+            let _ = head_of(&mut server, &mut buf).await;
+            server.write_all(b"HTTP/1.1 401 Access Denied\r\nWWW-Authenticate: NTLM\r\nContent-Length: 0\r\n\r\n").await.unwrap();
+            let _ = head_of(&mut server, &mut buf).await;
+            server.write_all(b"HTTP/1.1 401 Access Denied\r\nWWW-Authenticate: Basic realm=\"x\"\r\nContent-Length: 0\r\n\r\n").await.unwrap();
+            let mut all = Vec::new();
+            let _ = tokio::time::timeout(Duration::from_secs(1), server.read_to_end(&mut all)).await;
+            all
+        });
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.reason, CloseReason::Protocol, "{e:?}");
+        let after = gateway.await.unwrap();
+        assert!(!String::from_utf8_lossy(&after).contains("Basic"), "no Basic sign-in is sent");
+        assert!(!after.windows(8).any(|w| w == b"made-up-"));
+    }
+
+    /// Pings without end in place of a tunnel step's answer, from a gateway that reads none of
+    /// the pongs: the setting up still ends, within its whole time at the latest.
+    #[tokio::test]
+    async fn pings_without_end_do_not_hold_the_setting_up() {
+        // A small pipe: the pongs fill it, as they fill a socket whose other end reads nothing.
+        let (client, mut server) = tokio::io::duplex(2048);
+        let _gateway = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = head_of(&mut server, &mut buf).await;
+            server.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n").await.unwrap();
+            let _ = client_frame(&mut server, &mut buf).await;
+            let ping = [0x89u8, 4, b'p', b'i', b'n', b'g'];
+            loop {
+                if tokio::time::timeout(Duration::from_millis(200), server.write_all(&ping)).await.is_err() {
+                    // Full both ways: held, with the connection kept open.
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            }
+        });
+        let started = std::time::Instant::now();
+        let e = through(client, &gw(), None).await.err().unwrap();
+        assert_eq!(e.reason, CloseReason::Network, "{e:?}");
+        assert!(started.elapsed() < SETUP_TIMEOUT + Duration::from_secs(1), "{:?}", started.elapsed());
+    }
+
+    /// Data without end for a session that reads none of it: the carrier keeps [MAX_PENDING] and
+    /// a packet, the pipe to the session its own, and then the gateway is not read any more.
+    #[tokio::test]
+    async fn data_without_end_is_not_kept_for_a_session_that_does_not_read() {
+        const PIPE: usize = 1 << 16;
+        let (client, mut server) = tokio::io::duplex(PIPE);
+        let gateway = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            open_gateway(&mut server, &mut buf).await;
+            let packet = data_packet(&[7u8; 0xFFFF]);
+            let mut sent = 0usize;
+            loop {
+                let mut f = vec![0x82, 127];
+                f.extend_from_slice(&(packet.len() as u64).to_be_bytes());
+                f.extend_from_slice(&packet);
+                match tokio::time::timeout(Duration::from_secs(1), server.write_all(&f)).await {
+                    Ok(Ok(())) => sent += packet.len(),
+                    // Not taken any more: the client stopped reading.
+                    _ => return (sent, server),
+                }
+            }
+        });
+        let (stream, _end) = through(client, &gw(), None).await.unwrap();
+        let (sent, _server) = gateway.await.unwrap();
+        // What the client holds: its buffer of the gateway's data, one more packet, the pipe to
+        // the session, the pipe from the gateway and a read's worth.
+        let most = MAX_PENDING + 2 * 0x1_0000 + 4 * DATA_CHUNK + PIPE + 0x1_0000;
+        assert!(sent <= most, "{sent} bytes taken from a gateway nobody reads (at most {most})");
+        assert!(sent >= MAX_PENDING, "{sent}");
+        drop(stream);
+    }
+
+    /// The app's own stream, as the engine sees it: a read is ready whenever bytes wait, and a
+    /// write is taken at once whatever the other end does (it is handed to the app's socket).
+    /// It gives `first`, then `again` over and over, `rounds` times, then ends.
+    struct Flood {
+        first: Vec<u8>,
+        again: &'static [u8],
+        rounds: usize,
+        written: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl AsyncRead for Flood {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            if !self.first.is_empty() {
+                let n = self.first.len().min(buf.remaining());
+                buf.put_slice(&self.first[..n]);
+                self.first.drain(..n);
+                return std::task::Poll::Ready(Ok(()));
+            }
+            while self.rounds > 0 && buf.remaining() >= self.again.len() {
+                buf.put_slice(self.again);
+                self.rounds -= 1;
+            }
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncWrite for Flood {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            data: &[u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            self.written.fetch_add(data.len(), std::sync::atomic::Ordering::SeqCst);
+            std::task::Poll::Ready(Ok(data.len()))
+        }
+        fn poll_flush(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+        fn poll_shutdown(self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    /// `through` over a [Flood], on a thread of its own: how it ended, how long it took and how
+    /// many bytes it wrote; None where it had not ended `within`.
+    fn through_a_flood(again: &'static [u8], rounds: usize, within: Duration) -> Option<(Closed, Duration, usize)> {
+        let written = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flood = Flood {
+            first: b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n".to_vec(),
+            again,
+            rounds,
+            written: written.clone(),
+        };
+        let (done, ended) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            let started = std::time::Instant::now();
+            let e = runtime.block_on(through(flood, &gw(), None)).err().unwrap();
+            let _ = done.send((e, started.elapsed()));
+        });
+        let (e, took) = ended.recv_timeout(within).ok()?;
+        Some((e, took, written.load(std::sync::atomic::Ordering::SeqCst)))
+    }
+
+    /// Pings as fast as they can be read, in place of a tunnel step's answer, on a stream that
+    /// is always ready (the app's own): the step still ends in its time, and the gateway is not
+    /// sent a pong for each (a write to the app's socket is never refused, so each one would
+    /// wait in the app for a gateway that reads none).
+    #[test]
+    fn a_flood_of_pings_neither_holds_a_step_nor_gets_a_pong_each() {
+        const PING: &[u8] = &[0x89, 4, b'p', b'i', b'n', b'g'];
+        // Enough to last far longer than a step (it ends by itself in the end, so a failing
+        // run does not spin for ever).
+        let (e, took, written) = through_a_flood(PING, 400_000_000, STEP_TIMEOUT + Duration::from_secs(3))
+            .expect("the step did not end in its time: the flood held it");
+        assert_eq!(e.reason, CloseReason::Network, "{e:?}");
+        assert!(e.message.contains("the handshake"), "{}", e.message);
+        assert!(took < STEP_TIMEOUT + Duration::from_secs(1), "{took:?}");
+        // The upgrade's request, the handshake, and a pong now and then: not one for each ping.
+        assert!(written < 4096, "{written} bytes written to a gateway that only pings");
+    }
+
+    /// The same with keepalives, which ask for no answer: the step ends in its time.
+    #[test]
+    fn a_flood_of_keepalives_does_not_hold_a_step() {
+        const KEEPALIVE_FRAME: &[u8] = &[0x82, 8, 0x0d, 0, 0, 0, 8, 0, 0, 0];
+        let (e, took, _) = through_a_flood(KEEPALIVE_FRAME, 400_000_000, STEP_TIMEOUT + Duration::from_secs(3))
+            .expect("the step did not end in its time: the flood held it");
+        assert_eq!(e.reason, CloseReason::Network, "{e:?}");
+        assert!(took < STEP_TIMEOUT + Duration::from_secs(1), "{took:?}");
+    }
+
+    /// The same once the channel is open, where no step's time runs: the session's own work
+    /// still has its turn (a timer of its own fires), and the pongs stay few.
+    #[test]
+    fn a_flood_of_pings_in_the_channel_leaves_the_session_its_turn() {
+        const PING: &[u8] = &[0x89, 4, b'p', b'i', b'n', b'g'];
+        fn framed(packet: &[u8]) -> Vec<u8> {
+            let mut f = vec![0x82, packet.len() as u8];
+            f.extend_from_slice(packet);
+            f
+        }
+        let mut first = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n".to_vec();
+        first.extend(framed(&packet_bytes(PKT_HANDSHAKE_RESPONSE, &[0, 0, 0, 0, 1, 0, 0, 0, 0, 0])));
+        first.extend(framed(&packet_bytes(PKT_TUNNEL_RESPONSE, &[0; 10])));
+        first.extend(framed(&packet_bytes(PKT_TUNNEL_AUTH_RESPONSE, &[0; 8])));
+        first.extend(framed(&packet_bytes(PKT_CHANNEL_RESPONSE, &[0; 8])));
+        let written = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let flood = Flood { first, again: PING, rounds: 400_000_000, written: written.clone() };
+        let (done, ended) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            runtime.block_on(async move {
+                let (stream, _end) = through(flood, &gw(), None).await.unwrap();
+                // The session's own work, beside the carrier on the one thread.
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                let _ = done.send(());
+                drop(stream);
+            });
+        });
+        ended.recv_timeout(Duration::from_secs(6)).expect("the session's timer never fired: the flood held the thread");
+        let written = written.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(written < 4096, "{written} bytes written to a gateway that only pings");
+    }
+
+    /// Frames a gateway may not send, each refused as it is read, before any of it is kept.
+    #[test]
+    fn frames_a_gateway_may_not_send_are_refused_without_being_kept() {
+        let refused = |bytes: &[u8]| parse_frame(&mut bytes.to_vec(), &mut None).is_err();
+        // A length of 2^63 and of 2^64 - 1 in the 64 bit form: refused on its ten bytes.
+        assert!(refused(&[0x82, 127, 0x80, 0, 0, 0, 0, 0, 0, 0]));
+        assert!(refused(&[0x82, 127, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]));
+        // One more than a message may be, in the 64 bit form.
+        let mut over = vec![0x82, 127];
+        over.extend_from_slice(&((MAX_MESSAGE as u64) + 1).to_be_bytes());
+        assert!(refused(&over));
+        // Pieces that add up to more than a message: refused at the piece that goes over.
+        let mut buf = vec![0x02, 126, 0xff, 0xff];
+        buf.extend_from_slice(&[0u8; 0xFFFF]);
+        let mut pieces = None;
+        assert_eq!(parse_frame(&mut buf, &mut pieces).unwrap(), None);
+        let mut more = vec![0x00, 126, 0x00, 0x20];
+        more.extend_from_slice(&[0u8; 0x20]);
+        assert!(parse_frame(&mut more, &mut pieces).is_err());
+        // Empty pieces without end keep nothing and end with the bytes given.
+        let mut pieces = None;
+        let mut buf = vec![0x02, 0];
+        for _ in 0..10_000 {
+            buf.extend_from_slice(&[0x00, 0]);
+        }
+        assert_eq!(parse_frame(&mut buf, &mut pieces).unwrap(), None);
+        assert!(buf.is_empty());
+        assert_eq!(pieces.as_deref(), Some(&[][..]));
+        // A data packet that says more bytes than it has, and a packet shorter than its header.
+        assert!(read_data(&[0xff, 0xff, 1, 2, 3]).is_err());
+        assert!(packet(&[0x0a, 0, 0, 0, 8, 0, 0]).is_err());
     }
 }

@@ -86,7 +86,25 @@ enum ShortcutAction {
       ShortcutCategory.misc),
   toggleRecordingMode('Toggle recording mode',
       'Mask host names, addresses and keys in the app chrome',
-      ShortcutCategory.misc);
+      ShortcutCategory.misc),
+
+  // ── Remote screens ───────────────────────────────────────────
+  // A remote with several displays (4.0): one of them shown, in its tab or
+  // in full screen. Caught by the screen before the remote has the keys.
+  screenDisplay1('Show display 1', 'In a remote screen with several displays, show display 1, in its tab or in full screen', ShortcutCategory.screens),
+  screenDisplay2('Show display 2', 'In a remote screen with several displays, show display 2, in its tab or in full screen', ShortcutCategory.screens),
+  screenDisplay3('Show display 3', 'In a remote screen with several displays, show display 3, in its tab or in full screen', ShortcutCategory.screens),
+  screenDisplay4('Show display 4', 'In a remote screen with several displays, show display 4, in its tab or in full screen', ShortcutCategory.screens);
+
+  /// The display a [screenDisplay1] to [screenDisplay4] shows, from 0; null
+  /// for every other action.
+  int? get screenDisplayIndex => switch (this) {
+        screenDisplay1 => 0,
+        screenDisplay2 => 1,
+        screenDisplay3 => 2,
+        screenDisplay4 => 3,
+        _ => null,
+      };
 
   const ShortcutAction(this.label, this.description, this.category);
 
@@ -113,7 +131,8 @@ enum ShortcutCategory {
   tabs('Tabs'),
   layout('Layout & panes'),
   terminal('Terminal'),
-  misc('Misc');
+  misc('Misc'),
+  screens('Remote screens');
 
   const ShortcutCategory(this.label);
   final String label;

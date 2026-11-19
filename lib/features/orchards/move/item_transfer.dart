@@ -328,14 +328,26 @@ class TransferResult {
   final List<String> copiedInstead;
 }
 
+/// Told that a key of a team, with its secrets, now also is (Copy) or only is
+/// (Move) outside that team: [team] is the team's database, [key] the key's
+/// id there and [crateId] the vault it was in.
+typedef KeyLeftTeam = Future<void> Function(AppDatabase team, {required String key, required String label, String? crateId});
+
 /// Moves and copies items between Personal and the vaults of teams.
 class ItemTransfer {
   ItemTransfer({
     required this.tree,
     required this.openTeam,
     required this.storage,
+    this.onKeyLeftTeam,
     String Function()? newId,
   }) : _newId = newId ?? (() => const Uuid().v4());
+
+  /// Called once for each key whose secrets left a team (to Personal or to
+  /// another team), after it is written there: the batch's own keys and the
+  /// keys that went along with a host. Not for a key that stays in its team
+  /// (another vault of it), nor for one whose copy was taken back.
+  final KeyLeftTeam? onKeyLeftTeam;
 
   /// Your own database (Personal).
   final AppDatabase tree;
@@ -1006,6 +1018,20 @@ class ItemTransfer {
             }
           }
           target.notifyOrchardItemsChanged();
+        }
+      }
+    }
+
+    final keyLeft = onKeyLeftTeam;
+    if (keyLeft != null && plan._source.isOrchard && !plan.sameDatabase) {
+      for (final u in written) {
+        if (u.kind != TransferKinds.key || u.secrets.isEmpty || failedUnits.contains(u)) continue;
+        // A new key an editor made was never the team's.
+        if (plan.isDraft && u.primary) continue;
+        try {
+          await keyLeft(plan._source, key: u.key, label: u.label, crateId: u.crateId);
+        } catch (e) {
+          AppLogger.info('Move/copy: a key that left its team was not noted (${errorKind(e)})');
         }
       }
     }

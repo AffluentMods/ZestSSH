@@ -79,6 +79,7 @@ import 'package:zestssh/ui/screens/identity/key_generation_screen.dart';
 import 'package:zestssh/ui/screens/terminal/widgets/host_key_changed_dialog.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/desktop_status_bar.dart';
 import 'package:zestssh/features/screens/view/screen_view.dart' show ScreenView;
+import 'package:zestssh/features/screens/view/screen_full_screen.dart' show screenFullScreenSessionProvider;
 import 'package:zestssh/ui/screens/desktop/widgets/automation_view.dart';
 import 'package:zestssh/features/hosts/connect_link.dart' show quickConnectLinkText;
 import 'package:zestssh/features/hosts/host_list_layout.dart';
@@ -98,8 +99,10 @@ import 'package:zestssh/ui/screens/desktop/widgets/quick_connect_v3.dart';
 import 'package:zestssh/providers/sftp_delete_hold_provider.dart';
 import 'package:zestssh/ui/widgets/top_snackbar.dart';
 import 'package:zestssh/ui/widgets/update_banner.dart';
-import 'package:zestssh/ui/widgets/update_dialog.dart' show showLastUpdateResult;
-import 'package:zestssh/providers/update_providers.dart' show UpdateRestart, appBuildNumberProvider, takeLastUpdate;
+import 'package:zestssh/ui/widgets/update_dialog.dart' show showLastUpdateResult, showUpdateDialog;
+import 'package:zestssh/services/update_check_service.dart' show UpdateInfo;
+import 'package:zestssh/providers/update_providers.dart'
+    show UpdateRestart, appBuildNumberProvider, autoUpdateStartProvider, inAppUpdateSupportedProvider, takeLastUpdate, updateOpenSessionCountProvider;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:zestssh/ui/widgets/zest_dialog.dart';
 import 'package:zestssh/ui/widgets/connection_picker_dialog.dart';
@@ -386,6 +389,13 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         return true;
       }
       return false;
+    }
+
+    // Speech to text stops on Esc (4.0), from the terminal it types into too:
+    // the one Esc is taken for that, and the next is the terminal's again.
+    if (_dictationStopKey(event)) {
+      unawaited(ref.read(dictationProvider.notifier).stop());
+      return true;
     }
 
     // ── Remote screen focus gate (4.0) ───────────────────────────
@@ -1260,6 +1270,18 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     ref.listen(serverStatsProvider, (_, _) => _pushTrayHealth());
     ref.listen(agentlessMonitorPollerProvider, (_, _) => _pushTrayHealth());
     ref.listen(connectionHealthProvider, (_, _) => _pushTrayHealth());
+    // Updates installed by themselves: the release found as the app started
+    // is installed now, in the update's dialog, which shows it under way and
+    // can stop it. Not where a session is open already (the restart would
+    // end it): the status bar's version offers it then.
+    ref.listen<UpdateInfo?>(autoUpdateStartProvider, (_, info) {
+      if (info == null) return;
+      ref.read(autoUpdateStartProvider.notifier).set(null);
+      if (!ref.read(inAppUpdateSupportedProvider) || ref.read(updateOpenSessionCountProvider) > 0) return;
+      afterNextFrame((_) {
+        if (mounted) showUpdateDialog(context, info, autoStart: true);
+      });
+    });
     // A remote screen's Files: its SSH connection's files in the tab's dock.
     ref.listen<String?>(screenFilesRequestProvider, (_, sid) {
       if (sid == null) return;
@@ -1338,6 +1360,17 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     // the Support Hub.
     ref.listen<HelpPage?>(helpDockProvider, (_, next) {
       if (next != null) _closeSupportHub();
+    });
+
+    // Speech to text stops when its session leaves the screen (another tab in
+    // front, its tab closed, its pane showing another session): its words
+    // would go where they are not seen.
+    ref.listen<WorkTabsState>(workTabsProvider, (_, tabs) {
+      final dictation = ref.read(dictationProvider);
+      final id = dictation.sessionId;
+      if (dictation.listening && id != null && !dictationSessionShown(tabs.activeTab, id)) {
+        unawaited(ref.read(dictationProvider.notifier).stop());
+      }
     });
 
     // Speech to text starting and stopping, said to a screen reader.
@@ -1885,13 +1918,18 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
             },
           );
 
+    // A remote screen in full screen lies over the whole window: what the
+    // window shows under it is neither read out nor reached by the keyboard.
+    final underScreen = ref.watch(screenFullScreenSessionProvider) != null;
+    Widget chrome(Widget child) =>
+        ExcludeSemantics(excluding: underScreen, child: ExcludeFocus(excluding: underScreen, child: child));
     return Column(
       children: [
         // ── Layer 1: Pill bar (persistent, 48px, pure black) ───
-        MediaQuery.withClampedTextScaling(
+        chrome(MediaQuery.withClampedTextScaling(
           maxScaleFactor: kDesktopFrameTextScale,
           child: pillBar(),
-        ),
+        )),
         // Upright on a touch screen: the session tabs under the app bar,
         // while there are any.
         if (upright && tabEntries.isNotEmpty)
@@ -1928,7 +1966,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               // the user pushes it in or the Hosts drawer is on screen - see
               // A1).
               FocusTraversalGroup(
-                child: MediaQuery.withClampedTextScaling(
+                child: chrome(MediaQuery.withClampedTextScaling(
                   maxScaleFactor: kDesktopFrameTextScale,
                   child: NarrowSidebar(
                     hostsPanelShown: hostsDrawerIsShown,
@@ -1960,7 +1998,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                       ref.read(workTabsProvider.notifier).clearActiveTab();
                     },
                   ),
-                ),
+                )),
               ),
 
               // A1: persistent, resizable Hosts fast-connect panel. Sits
@@ -2093,7 +2131,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         ),
 
         // ── Layer 3: Status bar (persistent, 28px, pure black) ─
-        _buildStatusBar(),
+        chrome(_buildStatusBar()),
       ],
     );
   }
@@ -2540,6 +2578,15 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   /// the focused pane's (as SFTP's shortcut finds it), else the one last
   /// clicked into, else the tab's first. A pane shows one session of its
   /// own tabs, the one in front.
+  /// Esc alone, while speech to text listens and nothing (a dialog) is over
+  /// the shell.
+  bool _dictationStopKey(KeyEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.escape) return false;
+    final keys = HardwareKeyboard.instance;
+    if (keys.isControlPressed || keys.isShiftPressed || keys.isAltPressed || keys.isMetaPressed) return false;
+    return _shellInFront && ref.read(dictationProvider).listening;
+  }
+
   /// Speech to text (4.0), from its key or the palette: started for the
   /// terminal the typing is in, else the one in front; stopped where it
   /// listens. Never for a remote screen or a session that is files only:
@@ -3509,6 +3556,12 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   }
 
   void _startSessionForSftp(ConnectionWithDetails item) {
+    // A Telnet host has no SFTP: said before anything connects, rather than
+    // an unencrypted session opened unasked that cannot give it.
+    if (isTelnetHost(item.connection)) {
+      showTopSnackBar(context, AppLocalizations.of(context)!.desktopShellSftpRequiresSsh);
+      return;
+    }
     final sid = ref
         .read(activeSessionsProvider.notifier)
         .startSession(item.connection);

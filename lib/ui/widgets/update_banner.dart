@@ -8,8 +8,9 @@ import 'package:zestssh/ui/widgets/update_check_now.dart' show openUpdate;
 
 /// A slim, dismissible banner shown when a newer app version is available.
 ///
-/// Renders nothing when there is no update (or it was dismissed / disabled),
-/// so it can be dropped at the top of any screen unconditionally. Desktop
+/// Renders nothing when there is no update (or it was dismissed / disabled,
+/// or the title bar's "Update available" is hidden for it:
+/// [updateNoticeHiddenProvider]), so it can be dropped at the top of any screen unconditionally. Desktop
 /// and sideloaded-Android builds are where it matters - the manifest check
 /// already skips iOS.
 class UpdateBanner extends ConsumerWidget {
@@ -18,7 +19,7 @@ class UpdateBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final update = ref.watch(updateBannerProvider);
-    if (update == null) return const SizedBox.shrink();
+    if (update == null || ref.watch(updateNoticeHiddenProvider)) return const SizedBox.shrink();
 
     final l10n = AppLocalizations.of(context)!;
     final accent = update.critical ? AppColors.v3Warning : AppColors.v3AccentPrimary;

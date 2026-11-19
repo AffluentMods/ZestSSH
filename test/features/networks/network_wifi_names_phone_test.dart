@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,6 +66,19 @@ void main() {
     expect(find.text(en.netWifiNamesNotOnPhones), findsOneWidget);
     expect(find.text('Wi-Fi name detection requires location permission on Android'), findsNothing,
         reason: 'it said to grant a permission the app never declares');
+  });
+
+  testWidgets("a Mac offers no Wi-Fi name rule either, and says why in a Mac's words (it showed the phones' note)",
+      (tester) async {
+    debugWifiNamesReadHere = false;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await open(tester);
+    expect(find.widgetWithText(InkWell, en.networkEditorTriggerSsid), findsNothing);
+    expect(find.byKey(const ValueKey('network-wifi-names-not-read')), findsOneWidget);
+    expect(find.text(en.netWifiNamesNotOnMac), findsOneWidget);
+    expect(find.text(en.netWifiNamesNotOnPhones), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('a computer offers it, with what reading the name may take', (tester) async {

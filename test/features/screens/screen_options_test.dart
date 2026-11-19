@@ -47,6 +47,7 @@ void main() {
         'auth': 'apple',
         'clipboard': 'off',
         'clipboard_locked': true,
+        'clipboard_send': 'focus',
         'scaling': 'remote_resize',
         'quality': 'low',
         'view_only': true,

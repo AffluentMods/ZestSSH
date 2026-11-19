@@ -1,3 +1,4 @@
+import 'package:zestssh/services/connection_share_service.dart';
 import 'dart:async' show unawaited;
 
 import 'package:zestssh/features/hosts/phone/phone_hosts_view.dart';
@@ -3126,6 +3127,8 @@ PhoneHostActions phoneHostActionsFor(
   final offer = transferOffer(ref, TransferKinds.host, [item.connection.id]);
   return PhoneHostActions(
     connect: () => onConnect(item),
+    // Its own screens (4.0): a screen host opens as any host does.
+    openScreen: onConnect,
     edit: () => context.push('/connection/edit/${item.connection.id}'),
     connectAs: onConnectAs == null ? null : (account) => onConnectAs(item, account),
     wake: canWake(item.connection) ? () => wakeHost(context, ref, item.connection) : null,
@@ -3138,7 +3141,9 @@ PhoneHostActions phoneHostActionsFor(
         ? () => ref.read(connectionCrudProvider).duplicate(item.connection,
             label: AppLocalizations.of(context)!.homeCopyLabelSuffix(item.connection.label))
         : null,
-    share: mayExportScreenSpace(ref) ? () => shareHostAsFile(context, ref, item) : null,
+    share: mayExportScreenSpace(ref) && ConnectionShareService.canShare(item.connection.protocol)
+        ? () => shareHostAsFile(context, ref, item)
+        : null,
     moveTo: offer.move
         ? () => showMoveCopyDialog(context, ref, kind: TransferKinds.host, keys: [item.connection.id], mode: TransferMode.move)
         : null,

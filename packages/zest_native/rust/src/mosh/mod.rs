@@ -68,10 +68,40 @@ pub struct Notifier {
     pub callback: Callback,
 }
 
+/// The most of a session's host output handed to Dart and not freed yet. Each instruction is
+/// bounded ([fragment::MAX_INSTRUCTION]), but a server sends them as fast as it likes and zlib
+/// makes 8 MiB of 8 KB: while Dart is this far behind, the session takes no datagram (its state
+/// synchronisation sends what was not taken again, as a diff from what was acknowledged), so
+/// what a server can make the app hold is this and one instruction more.
+pub const MAX_OUTSTANDING: usize = 16 << 20;
+
+/// Host output handed to Dart and not freed yet: by session, and each buffer by its address
+/// (what [free_bytes] is given), so one session's backlog holds back no other.
+#[derive(Default)]
+struct Outstanding {
+    by_session: HashMap<u64, usize>,
+    buffers: HashMap<usize, (u64, usize)>,
+}
+
+fn outstanding_map() -> std::sync::MutexGuard<'static, Outstanding> {
+    static MAP: OnceLock<Mutex<Outstanding>> = OnceLock::new();
+    MAP.get_or_init(|| Mutex::new(Outstanding::default())).lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// How much of [handle]'s host output Dart holds unread.
+pub fn outstanding(handle: u64) -> usize {
+    outstanding_map().by_session.get(&handle).copied().unwrap_or(0)
+}
+
 impl Notifier {
     pub fn bytes(&self, kind: u32, a: i64, bytes: Vec<u8>) {
         let len = bytes.len();
         let ptr = Box::into_raw(bytes.into_boxed_slice()).cast::<u8>();
+        if kind == event::HOST_BYTES && len > 0 {
+            let mut map = outstanding_map();
+            map.buffers.insert(ptr as usize, (self.handle, len));
+            *map.by_session.entry(self.handle).or_insert(0) += len;
+        }
         (self.callback)(self.handle, kind, a, ptr, len);
     }
 
@@ -86,6 +116,16 @@ impl Notifier {
 /// [ptr] and [len] must be one pair the callback gave, freed once.
 pub unsafe fn free_bytes(ptr: *mut u8, len: usize) {
     if !ptr.is_null() {
+        let mut map = outstanding_map();
+        if let Some((handle, held)) = map.buffers.remove(&(ptr as usize)) {
+            if let Some(total) = map.by_session.get_mut(&handle) {
+                *total = total.saturating_sub(held);
+                if *total == 0 {
+                    map.by_session.remove(&handle);
+                }
+            }
+        }
+        drop(map);
         // SAFETY: made by Box::into_raw of a boxed slice of this length.
         drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len)) });
     }

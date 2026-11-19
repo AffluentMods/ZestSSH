@@ -32,6 +32,7 @@ import 'package:zestssh/features/screens/model/screen_view_size.dart';
 import 'screen_keyboard.dart';
 import 'screen_pointer.dart';
 import 'screen_pointer_hold.dart';
+import 'screen_sound_gate.dart';
 import 'screen_touch.dart';
 import 'screen_viewport.dart';
 
@@ -212,7 +213,6 @@ class ScreenController extends ChangeNotifier {
   String? _soundUnavailable;
   bool _soundWanted = true;
   bool _soundAllowed = false;
-  bool? _soundSent;
 
   /// The session plays the remote's sound (an RDP host that plays it, on
   /// a device with an output).
@@ -245,17 +245,24 @@ class ScreenController extends ChangeNotifier {
     _soundPlays = c.sound != null;
     _soundUnavailable = c.soundUnavailable;
     // A session starts silent (asked for so: the session's request says
-    // "off"), a reconnect's too: only a change from that is said.
-    _soundSent = false;
+    // "off"), a reconnect's too: its gate says only a change from that.
     _applySound();
   }
 
+  /// This view holds the session's sound open while it is seen and its
+  /// person wants it ([ScreenSoundGate]); the session plays while any view
+  /// of it does, and nothing blocks it.
   void _applySound() {
     if (!_soundPlays || _disposed || _closed) return;
-    final on = _soundWanted && _soundAllowed;
-    if (on == _soundSent) return;
-    _soundSent = on;
-    session.playSound(on: on);
+    ScreenSoundGate.of(session).hold(this, on: _soundWanted && _soundAllowed);
+  }
+
+  /// This view goes while its screen is shown in a window of its own: what
+  /// it held of the sound passes to that window, which is seen ([sessionId]'s
+  /// window, ScreenSoundGate.ownWindow), so the sound goes on while it is.
+  void handSoundToOwnWindow(String sessionId) {
+    if (!_soundPlays || _disposed || _closed) return;
+    ScreenSoundGate.of(session).handOver(this, ScreenSoundGate.ownWindow(sessionId));
   }
 
   // Relative mouse.
@@ -739,6 +746,9 @@ class ScreenController extends ChangeNotifier {
       touch.cancel();
       // Nothing is sent to a screen that is only looked at: no movement either.
       _relativeMouse = false;
+      // A phone's fingers follow it: left on, they went on sending movement once view only
+      // was off again, with the switch showing off.
+      touch.relative = false;
       hold.release();
     }
     _viewOnly = value;
@@ -915,6 +925,13 @@ class ScreenController extends ChangeNotifier {
     final h = desktopHeight > 0 ? desktopHeight : height;
     if (_disposed || !ScreenOptions.textScales.contains(percent) || w <= 0 || h <= 0) return;
     textScale = percent;
+    // Where the remote follows the view in the screen's own pixels, the
+    // text made as much larger again (ScreenViewSize.scaleOn).
+    if (_followViewSize) {
+      percent = ScreenViewSize.scaleOn(
+          percent, ScreenViewSize.ratioFor(viewport.devicePixelRatio, phone: maxDesktopPixels != null));
+    }
+    _sentScale = percent;
     final have = displays.value.list;
     session.setDisplays(have.length > 1
         ? [
@@ -928,30 +945,62 @@ class ScreenController extends ChangeNotifier {
   /// Tells the session the view's [size] once it has stayed the same for
   /// [after], where it is not the remote's already.
   void _ask(Size size, {required Duration after}) {
-    if (size.isEmpty || size == _askedSize) return;
+    // In the screen's own pixels, the text made as much larger: sharp on a
+    // screen scaled above 100% (ScreenViewSize.ratioFor).
+    final ratio = ScreenViewSize.ratioFor(viewport.devicePixelRatio, phone: maxDesktopPixels != null);
+    if (size.isEmpty || (size == _askedSize && ratio == _askedRatio)) return;
+    // The first time: the scale this session started with, the one given for
+    // the view that last followed its tab (screen_shell_service's startScale).
+    _sentScale ??= ScreenViewSize.scaleOn(textScale, ScreenViewSize.lastFollowedRatio);
     _askedSize = size;
+    _askedRatio = ratio;
     ScreenViewSize.lastFollowed = size;
+    ScreenViewSize.lastFollowedRatio = ratio;
     _resizeTimer?.cancel();
     _resizeTimer = Timer(after, () {
       if (_disposed || !_followViewSize) return;
+      final pixels = ScreenViewSize.pixelsOf(size, ratio);
+      final scale = ScreenViewSize.scaleOn(textScale, ratio);
       if (displayCount > 1) {
         final want =
-            ScreenViewSize.displaysOf(displayCount, size, scale: textScale, maxDesktopPixels: maxDesktopPixels);
+            ScreenViewSize.displaysOf(displayCount, pixels, scale: scale, maxDesktopPixels: maxDesktopPixels);
         final have = displays.value.list;
-        final same = have.length == want.length &&
+        // The same size and the same scale: nothing to ask (a move to a
+        // monitor scaled otherwise that gives the same pixels still asks).
+        final same = scale == _sentScale &&
+            have.length == want.length &&
             [for (final d in have) (d.x, d.width, d.height)].toString() ==
                 [for (final d in want) (d.x, d.width, d.height)].toString();
         if (!same) session.setDisplays(want);
+        _sentScale = scale;
         return;
       }
-      final (w, h) = ScreenViewSize.remoteOf(size);
-      if (w != width || h != height) session.resize(w, h);
+      final one = ScreenViewSize.displaysOf(1, pixels, scale: scale).first;
+      final resized = one.width != width || one.height != height;
+      if (scale != _sentScale) {
+        // Another scale than the session has (a move to a monitor scaled
+        // otherwise, back to 100% included): said with the size, as a
+        // layout, since a resize keeps the session's scale.
+        session.setDisplays([one]);
+      } else if (resized) {
+        session.resize(one.width, one.height);
+      }
+      _sentScale = scale;
     });
   }
+
+  double _askedRatio = 1;
+
+  /// The scale the remote was last asked for (null until the view first
+  /// follows its tab; then the one the session started with).
+  int? _sentScale;
 
   @override
   void dispose() {
     if (_disposed) return;
+    // A view that goes no longer lets the sound play: the last one to go
+    // silences it (unless it handed its part to a window of its own).
+    if (_soundPlays && !_closed) ScreenSoundGate.of(session).release(this);
     _disposed = true;
     _resizeTimer?.cancel();
     _gate?.cancel();

@@ -3,6 +3,7 @@
 // picture through a view, sends its keys by the session's number, takes what
 // the main window passes on, asks to be brought back, and never ends the
 // session.
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -250,6 +251,96 @@ void main() {
     expect(find.byKey(const ValueKey('screen-window-full-screen-hint')), findsNothing);
     expect(tester.takeException(), isNull);
     await _close(tester);
+  });
+
+  testWidgets('full screen: the pointer at the top edge brings a bar with Exit full screen, the menu and the way back '
+      'to the tab; Exit leaves, and so does Ctrl+Alt+Break', (tester) async {
+    final r = await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('screen-window-full-screen')));
+    await tester.pump();
+    await tester.pump();
+    expect(r.fullScreens, [true]);
+    final bar = find.byKey(const ValueKey('screen-full-screen-bar'));
+    expect(bar, findsNothing);
+    final g = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await g.addPointer(location: const Offset(450, 320));
+    addTearDown(g.removePointer);
+    await tester.pump();
+    await g.moveTo(const Offset(450, 1));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(bar, findsOneWidget);
+    expect(find.byKey(const ValueKey('screen-full-screen-back')), findsOneWidget);
+    expect(find.byKey(const ValueKey('screen-full-screen-disconnect')), findsNothing, reason: "the tab's to end");
+    expect(find.byKey(const ValueKey('screen-full-screen-title')), findsNothing, reason: 'this window is never told the name');
+    await tester.tap(find.byKey(const ValueKey('screen-full-screen-exit')));
+    await tester.pump();
+    await tester.pump();
+    expect(r.fullScreens, [true, false]);
+    expect(find.byKey(const ValueKey('screen-window-bar')), findsOneWidget);
+
+    // Into full screen again, and out by the keys.
+    await tester.tap(find.byKey(const ValueKey('screen-window-full-screen')));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('screen-window-view')));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.pause);
+    await tester.pump();
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.pause);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(r.fullScreens, [true, false, true, false]);
+    expect(find.byKey(const ValueKey('screen-window-bar')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 6));
+    expect(tester.takeException(), isNull);
+    await _close(tester);
+  });
+
+  testWidgets('full screen: the handle on the edge the panel comes from sits in the room beside the picture, never over '
+      'it, and opens the session panel; on the left in a right-to-left language', (tester) async {
+    for (final (locale, rtl) in [('en', false), ('ar', true)]) {
+      final r = await _pump(tester, locale: locale);
+      final handle = find.byKey(const ValueKey('screen-full-screen-handle'));
+      expect(handle, findsNothing, reason: 'full screen only');
+      await tester.tap(find.byKey(const ValueKey('screen-window-full-screen')));
+      await tester.pump();
+      await tester.pump();
+      expect(r.fullScreens, [true]);
+      final c = _controller(tester);
+      final view = find.byKey(const ValueKey('screen-window-view'));
+      final picture = c.viewport.pictureRect.shift(tester.getTopLeft(view));
+      expect(picture.size, const Size(800, 500), reason: '$locale: the remote at its own size in 900 x 640');
+      final at = tester.getRect(handle);
+      if (rtl) {
+        expect(at.left, 0, reason: 'ar: on the left edge');
+        expect(at.right, lessThanOrEqualTo(picture.left), reason: 'ar: beside the picture, not over it');
+      } else {
+        expect(at.right, 900, reason: 'en: on the right edge');
+        expect(at.left, greaterThanOrEqualTo(picture.right), reason: 'en: beside the picture, not over it');
+      }
+      expect(at.size, const Size(16, 56));
+      // The keyboard's first stop where the picture does not hold it.
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(Focus.of(tester.element(find.descendant(of: handle, matching: find.byType(AnimatedOpacity)))).hasPrimaryFocus,
+          isTrue, reason: locale);
+      await tester.tap(handle);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('screen-panel')), findsOneWidget, reason: locale);
+      expect(r.engine.keys, isEmpty, reason: 'nothing of it reached the remote');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('screen-panel')), findsNothing);
+      expect(tester.takeException(), isNull);
+      await _close(tester);
+    }
   });
 
   testWidgets("the bar's options button opens the screen options, as the menu key does, named with the key",

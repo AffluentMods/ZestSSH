@@ -173,6 +173,9 @@ async fn session(request: OpenRequest, mut commands: UnboundedReceiver<Command>,
     // Datagrams from an address that is not the server's, dropped unopened.
     let mut foreign = 0u64;
     let mut reported_foreign = 0u64;
+    // Datagrams not opened while Dart was too far behind (crate::mosh::MAX_OUTSTANDING).
+    let mut held_back = 0u64;
+    let mut reported_held_back = 0u64;
     // The app's end of the commands: gone once it closed the session.
     let mut commands_open = true;
     let (mut b4, mut b6, mut bold) = (vec![0u8; RECV_BUFFER], vec![0u8; RECV_BUFFER], vec![0u8; RECV_BUFFER]);
@@ -228,10 +231,14 @@ async fn session(request: OpenRequest, mut commands: UnboundedReceiver<Command>,
                 event::STATUS,
                 serde_json::json!({ "last_heard_ms": heard, "srtt_ms": conn.rtt.srtt().round() as u64 }),
             );
-            if conn.dropped > reported_drops || foreign > reported_foreign {
+            if conn.dropped > reported_drops || foreign > reported_foreign || held_back > reported_held_back {
                 reported_drops = conn.dropped;
                 reported_foreign = foreign;
-                n.json(event::INFO, serde_json::json!({ "dropped": conn.dropped, "foreign": foreign }));
+                reported_held_back = held_back;
+                n.json(
+                    event::INFO,
+                    serde_json::json!({ "dropped": conn.dropped, "foreign": foreign, "held_back": held_back }),
+                );
             }
             if let (Some(h), Some(a)) = (heard, target)
                 && h >= HOP_AFTER_MS
@@ -297,6 +304,13 @@ async fn session(request: OpenRequest, mut commands: UnboundedReceiver<Command>,
             foreign += 1;
             continue;
         };
+
+        // Dart has not read this much of what came before: nothing more is opened until it has
+        // (the server sends it again, as a diff from what was acknowledged).
+        if crate::mosh::outstanding(n.handle) > crate::mosh::MAX_OUTSTANDING {
+            held_back += 1;
+            continue;
+        }
 
         let t = now();
         let heard_before = conn.last_heard;
@@ -427,6 +441,80 @@ mod tests {
         assert_eq!(events.first(), Some(&crate::mosh::wire::UserEvent::Resize { width: 100, height: 30 }));
         assert!(events.contains(&crate::mosh::wire::UserEvent::Keys(b"ls\r".to_vec())), "{events:?}");
         assert_eq!(events_of(h).last().map(|e| e.0), Some(event::CLOSED), "CLOSED is the last event");
+    }
+
+    /// Held by the test until it frees them: (address, length).
+    static HELD: Mutex<Vec<(usize, usize)>> = Mutex::new(Vec::new());
+    /// The most host output the session held unread at any callback.
+    static MOST_HELD: Mutex<usize> = Mutex::new(0);
+
+    /// A callback as a Dart isolate far behind: host output kept, not freed; the rest as [record].
+    extern "C" fn hold(handle: u64, kind: u32, a: i64, data: *mut u8, len: usize) {
+        if kind != event::HOST_BYTES || data.is_null() {
+            return record(handle, kind, a, data, len);
+        }
+        HELD.lock().unwrap().push((data as usize, len));
+        let now = crate::mosh::outstanding(handle);
+        let mut most = MOST_HELD.lock().unwrap();
+        *most = (*most).max(now);
+        EVENTS.lock().unwrap().push((handle, kind, Vec::new()));
+    }
+
+    /// A server that sends host output faster than the app reads it (zlib makes 4 MiB of a
+    /// repeated byte a few kilobytes): once Dart holds MAX_OUTSTANDING unread, nothing more is
+    /// opened, so what the session holds stays under that and one instruction; once Dart frees
+    /// it, nothing is held. On a real UDP socket.
+    #[test]
+    fn a_server_that_floods_output_is_held_back_while_dart_is_behind() {
+        let server = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        server.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let port = server.local_addr().unwrap().port();
+        let key = Key::from_bytes([7; 16]);
+        let req = serde_json::json!({
+            "addresses": ["127.0.0.1"], "port": port, "key": key.printed(), "cols": 100, "rows": 30,
+        });
+        let h = crate::mosh::open(&req.to_string(), hold).unwrap();
+        let mut fake = FakeServer::new(&key);
+        let srv = std::thread::spawn(move || {
+            let mut buf = [0u8; 65536];
+            let Ok((len, from)) = server.recv_from(&mut buf) else { return };
+            let _ = fake.take(&buf[..len]);
+            let chunk = vec![b'\n'; 4 << 20];
+            for i in 0..12u64 {
+                for d in fake.screen(i, i + 1, &chunk, true) {
+                    server.send_to(&d, from).unwrap();
+                }
+            }
+        });
+        srv.join().unwrap();
+        assert!(wait_for(h, event::CONNECTED, 5).is_some(), "connected");
+        // The INFO that counts what was held back comes once a datagram was.
+        let until = Instant::now() + Duration::from_secs(5);
+        let mut held_back = 0;
+        while Instant::now() < until && held_back == 0 {
+            for (kind, b) in events_of(h) {
+                if kind == event::INFO {
+                    let v: serde_json::Value = serde_json::from_slice(&b).unwrap();
+                    held_back = held_back.max(v["held_back"].as_u64().unwrap_or(0));
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(held_back > 0, "nothing was held back");
+        let most = *MOST_HELD.lock().unwrap();
+        assert!(
+            most <= crate::mosh::MAX_OUTSTANDING + crate::mosh::fragment::MAX_INSTRUCTION,
+            "held {most} bytes unread"
+        );
+        assert!(most > crate::mosh::MAX_OUTSTANDING, "the flood did reach the cap ({most})");
+        // Dart catches up: nothing is held any more.
+        for (ptr, len) in HELD.lock().unwrap().drain(..) {
+            // SAFETY: the callback's pointers, each freed once.
+            unsafe { crate::mosh::free_bytes(ptr as *mut u8, len) };
+        }
+        assert_eq!(crate::mosh::outstanding(h), 0);
+        crate::mosh::close(h);
+        let _ = wait_for(h, event::CLOSED, 5);
     }
 
     /// The client never follows the server to another address: a valid, newer datagram of the

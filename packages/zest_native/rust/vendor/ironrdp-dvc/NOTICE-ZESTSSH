@@ -1,0 +1,27 @@
+ZestSSH's copy of ironrdp-dvc (this folder) is a fork of the crate as published.
+
+  ironrdp-dvc 0.10.0, https://github.com/Devolutions/IronRDP (crates/ironrdp-dvc)
+  Copyright (c) Devolutions Inc. and the IronRDP contributors
+  Licensed under the MIT license or the Apache License 2.0, at your option: LICENSE-MIT and
+  LICENSE-APACHE beside this file are the crate's own.
+
+Forked on 19 November 2026 by Affluent Labs LLC for ZestSSH (4.0, RDP), and used in place of the
+crates.io package through [patch.crates-io] in zest_native's Cargo.toml. What came from the crate
+stays under its licence; our change follows this folder's licence too (MIT or Apache-2.0).
+
+What changed against 0.10.0, and nothing else:
+
+  - src/client.rs: a dynamic channel the client declines (NO_LISTENER) is remembered as one it
+    closed, on the transport its Create Request came on, so data the server sent for it before
+    it saw the decline is dropped instead of ending the session ("access to non existing DVC
+    channel"). GNOME Remote Desktop sends on AUDIO_PLAYBACK_DVC right after asking to open it,
+    and a session ended about a second after connecting. A channel remembered again on the same
+    transport moves to the newest end of the history instead of taking another place, and a
+    Soft-Sync request remembers the closed channels it lists only after it checked them all.
+    Upstream IronRDP's own fix, a7ab89bd84 (#2341), line for line.
+  - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
+    not used by a build from a path.
+  - Long dashes in src\client.rs are plain hyphens: this repository keeps
+    none. No code changed by it.
+
+When IronRDP releases the fix, this folder goes and the crate comes from crates.io again.

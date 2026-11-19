@@ -140,7 +140,9 @@ cpal = { version = "=0.18.2", optional = true, default-features = false }
 x509-cert = { version = "=0.3.0", optional = true, default-features = false, features = ["std"] }
 tokio = { version = "1.52", optional = true, default-features = false, features = ["rt", "net", "time", "io-util"] }
 # VNC (4.0, feature "vnc"): what our engine (src/vnc/engine) needs. zlib streams (Zlib, Tight,
-# ZRLE and the extended clipboard) through flate2's pure Rust backend; Tight's JPEG through
+# ZRLE and the extended clipboard) through flate2, whose backend is C zlib (libz-sys) in a build
+# with `rdp`, since winscard (through sspi) turns on flate2's `zlib` feature, and its pure Rust
+# backend otherwise; Tight's JPEG through
 # zune-jpeg; VeNCrypt's TLS through tokio-rustls with ring (the rustls FTPS uses); Apple Remote
 # Desktop's Diffie-Hellman, MD5 and AES-128 through num-bigint, md-5 and aes (RustCrypto);
 # random numbers through ring.
@@ -180,7 +182,9 @@ windows = { version = "=0.62.2", optional = true, default-features = false, feat
 # (feature "rdp"): fixes for inputs from a server that made it panic, each listed in
 # vendor/ironrdp-session/NOTICE-ZESTSSH.
 [patch.crates-io]
+ironrdp-dvc = { path = "vendor/ironrdp-dvc" }
 ironrdp-graphics = { path = "vendor/ironrdp-graphics" }
+ironrdp-rdpsnd = { path = "vendor/ironrdp-rdpsnd" }
 ironrdp-session = { path = "vendor/ironrdp-session" }
 
 # `cfg(fuzzing)`: set only by the fuzz targets' builds (fuzz/run.sh), never the app's.

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -121,7 +122,7 @@ class _Rules extends StatelessWidget {
         ),
         if (!wifiNamesReadHere) ...[
           const SizedBox(height: 10),
-          Text(l10n.netWifiNamesNotOnPhones,
+          Text(defaultTargetPlatform == TargetPlatform.macOS ? l10n.netWifiNamesNotOnMac : l10n.netWifiNamesNotOnPhones,
               style: TextStyle(fontSize: 12, height: 1.4, color: ZestTokens.textTertiary)),
         ],
       ],

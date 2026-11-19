@@ -88,6 +88,7 @@ import 'package:zestssh/providers/purchase_providers.dart';
 import 'package:zestssh/providers/jump_host_gate_notice.dart';
 import 'package:zestssh/providers/terminal_providers.dart';
 import 'package:zestssh/features/screens/session/screen_background.dart';
+import 'package:zestssh/features/screens/session/screen_sound_guard.dart';
 import 'package:zestssh/features/screens/window/screen_windows_recording.dart';
 import 'package:zestssh/models/redactable.dart';
 import 'package:zestssh/services/tray_service.dart';
@@ -1706,6 +1707,9 @@ class _ZestSSHAppState extends ConsumerState<ZestSSHApp>
     // Recording mode keeps a screen out of a window of its own whatever the
     // main window shows (its tab is not there while Settings is).
     ref.watch(screenWindowsRecordingGuardProvider);
+    // And the remote's sound is silent under the lock and recording mode's
+    // cover, whether a view of its screen is left or not.
+    ref.watch(screenSoundGuardProvider);
 
     // Said when automation did not run what a link or another app asked of
     // it: why, and an action that goes where that is put right.

@@ -12,6 +12,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:zest_native/screen.dart';
 import 'package:zest_ssh_core/dartssh2.dart' show SSHChannelOpenError;
 import 'package:zestssh/features/screens/model/screen_options.dart';
@@ -142,12 +143,17 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
     this.gateway,
     this.gatewayTrust,
     this.connectTimeout = const Duration(seconds: 15),
+    this.handshakeTimeout = kScreenHandshakeTimeout,
   }) : assert(carrier != null || target is DirectTlsTarget || (target is ProxmoxConsoleTarget && openConsole != null),
             'a screen through a carrier needs its connection, a console its opening');
 
   /// How many times a password the VNC server refused is asked for again in
   /// one try (then ZS-1803: no loop that would lock the person out).
   static const maxPasswordAsks = 3;
+
+  /// How long the server has, once the connection is open, to finish
+  /// connecting (ZS-1828).
+  final Duration handshakeTimeout;
 
   final ScreenTarget target;
 
@@ -254,6 +260,19 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
 
   /// Whether the screen is reached through an SSH host.
   bool get viaCarrier => carrier != null;
+
+  /// Whether this device's system is a phone's or a tablet's (Android, iOS),
+  /// whatever layout the app shows on it: the remote's sound is off there by
+  /// default ([ScreenOptions.soundOn]). A test's word where set.
+  @visibleForTesting
+  static bool? debugOnPhoneSystem;
+  static bool get _onPhoneSystem => debugOnPhoneSystem ?? (Platform.isAndroid || Platform.isIOS);
+
+  /// Whether a session of this host asks its RDP server for the remote's
+  /// sound: the server sends none otherwise. A view offers the session's
+  /// sound switch by this, so that a large tablet in the computer's layout
+  /// does not show the switch on for a session that asked for no sound.
+  bool get soundAsked => protocol == ScreenProtocol.rdp && options.soundOn(phone: _onPhoneSystem);
 
   /// RDP with Network Level Authentication, once connected: the account the
   /// server let in (DOMAIN\user, or the name alone). Null for VNC, without
@@ -374,8 +393,16 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
       }
 
       final followed = ScreenViewSize.lastFollowed;
-      final startAt = rdp && options.scaling == ScreenScaling.remoteResize && followed != null
-          ? ScreenViewSize.remoteOf(followed)
+      final follows = rdp && options.scaling == ScreenScaling.remoteResize && followed != null;
+      // Followed: in the screen's own pixels, its text made as much larger,
+      // so the picture is sharp on a screen scaled above 100%.
+      final ratio = follows ? ScreenViewSize.lastFollowedRatio : 1.0;
+      final startScale = follows ? ScreenViewSize.scaleOn(options.textScale, ratio) : options.textScale;
+      final startAt = follows
+          ? (() {
+              final d = ScreenViewSize.displaysOf(1, ScreenViewSize.pixelsOf(followed, ratio)).first;
+              return (d.width, d.height);
+            })()
           : null;
       // Several displays (4.0): each the size a view last had here, or the size a
       // session starts at. A phone asks for as many as a computer, under its own ceiling of pixels.
@@ -383,8 +410,8 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
       final displays = displayCount > 1
           ? ScreenViewSize.displaysOf(
               displayCount,
-              options.scaling == ScreenScaling.remoteResize && followed != null ? followed : ScreenViewSize.startSize,
-              scale: options.textScale,
+              follows ? ScreenViewSize.pixelsOf(followed, ratio) : ScreenViewSize.startSize,
+              scale: startScale,
               maxDesktopPixels: ScreenOptions.maxDesktopPixelsOn(phone: Platform.isAndroid || Platform.isIOS),
             )
           : null;
@@ -407,16 +434,17 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
                     width: startAt?.$1,
                     height: startAt?.$2,
                     displays: displays,
-                    // How large the remote draws its text: said only where the host's
-                    // person chose a size, so every other host connects as it did.
-                    scale: options.textScale == 0 ? null : options.textScale,
+                    // How large the remote draws its text: said where the host's person
+                    // chose a size, or where the remote follows a view on a screen scaled
+                    // above 100% (drawn in its own pixels, the text as much larger).
+                    scale: startScale == 0 ? null : startScale,
                     // Asked for only by a host whose person turned it on: it changes the
                     // client version the connection says.
                     relativeMouse: options.relativeMouse,
                     // The remote's sound where this host plays it here: the server
                     // sends none otherwise. Silent until a view of it is seen
                     // (ScreenController.soundAllowed): not under a cover, not locked.
-                    sound: options.soundOn(phone: Platform.isAndroid || Platform.isIOS),
+                    sound: soundAsked,
                     soundOn: false,
                     graphics: rdpGraphicsName(options.graphics.name),
                     // H.264 where the host's Graphics says Modern (and the device has a
@@ -439,6 +467,12 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
             trust: trust,
             gatewayTrust: gatewayTrust,
             native: native,
+            handshakeTimeout: handshakeTimeout,
+            // Closed by a Disconnect that comes while it is still connecting.
+            onSession: (s) {
+              _opening = s;
+              if (_disconnected) s.close();
+            },
           );
           break;
         } on ScreenConnectException catch (e) {
@@ -613,8 +647,15 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
     }
   }
 
+  /// The session of the try under way, before it has connected: a
+  /// Disconnect closes it too.
+  ScreenSession? _opening;
+  bool _disconnected = false;
+
   @override
   Future<void> disconnect() async {
+    _disconnected = true;
+    _opening?.close();
     _session?.close();
     await _closeCarrier();
   }

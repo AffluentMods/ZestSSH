@@ -420,6 +420,8 @@ class _HostGridAreaState extends ConsumerState<HostGridArea> {
                         ? () => _tap(entry)
                         : () => widget.onSelect!(entry.connectionWithDetails),
                     onConnect: () => widget.onConnect(entry.connectionWithDetails),
+                    // Its own screen (4.0): a screen host opens as any host does.
+                    onOpenScreen: widget.onConnect,
                     onSecondaryTap: (pos) =>
                         widget.onShowContextMenu(pos, entry),
                     onEdit: widget.onEdit == null

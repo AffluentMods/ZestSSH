@@ -1205,6 +1205,20 @@ the names of hosts, people and folders, addresses, keys and passwords taken out.
 
 *Since ZestSSH 4.0.*
 
+## ZS-1828: The remote screen did not finish connecting
+
+**What it means.** The screen's server (or the RD Gateway in front of it) took the connection and then said nothing more for a minute, or stopped half way, so ZestSSH stopped waiting and closed the connection. Nothing was changed on the server, and your other sessions are not affected.
+
+**What to do.**
+
+1. Try again in a moment: a server that is starting, or very busy, can be slow to answer.
+2. Check the port in the host's settings: something other than a VNC or RDP server listening there takes the connection and never answers as one.
+3. Where the screen is reached through an SSH host or a VPN, check that it is still connected.
+
+**For whoever is helping.** Copy details says how long it waited.
+
+*Since ZestSSH 4.0.*
+
 ## ZS-1901: The update could not be downloaded
 
 **What it means.** ZestSSH started downloading its new version from zestssh.com and the download did not finish: the network dropped, the site did not answer, or the disk had no room. Nothing was installed and nothing was closed: the app and every session go on as they were.

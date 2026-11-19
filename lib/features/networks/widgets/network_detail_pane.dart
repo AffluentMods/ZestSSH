@@ -106,10 +106,9 @@ class NetworkDetailPane extends ConsumerWidget {
       modeToggle: _modeToggle(context),
       isDirty: controller.isDirty,
       onSave: () => onSave(),
-      // "Save network" and Cancel, as the design
-      // has them; Cancel closes the editor (with the dirty guard first).
+      // "Save network"; the header's close leaves the editor (with the dirty
+      // guard first).
       saveLabel: l10n.netEdSave,
-      onCancel: onClose,
       onClose: onClose,
       footerLeading: showDelete
           ? ZestButton(

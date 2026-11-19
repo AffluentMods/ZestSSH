@@ -201,6 +201,16 @@ class ConnectionShareService {
   /// What the folders a share is written into start with.
   static const shareFolderPrefix = 'zestssh_share_';
 
+  /// The kinds of host a share carries: a `.zest` host file of any other is
+  /// refused on import, and a link or QR code carries no kind at all, so what
+  /// it adds is an SSH host at that address.
+  static const shareableProtocols = {'ssh', 'sftp', 'telnet', 'mosh', 'et'};
+
+  /// Whether a host saved with [protocol] can be shared (as a file, a link or
+  /// a QR code): only then is what the other person receives the same host.
+  /// A remote screen, an FTPS host, a serial or a local one is not offered.
+  static bool canShare(String? protocol) => shareableProtocols.contains(protocol ?? 'ssh');
+
   /// A new folder, of its own, in the app's folder of temporary files, for
   /// what is handed to the share sheet; only the person can open it (the
   /// system makes it so). [removeAfterShare] deletes it once the sheet has
@@ -378,8 +388,7 @@ class ConnectionShareService {
     if (port < 1 || port > 65535) {
       throw FormatException('Invalid port in imported connection: $port');
     }
-    const validProtocols = {'ssh', 'sftp', 'telnet', 'mosh', 'et'};
-    if (!validProtocols.contains(protocol)) {
+    if (!shareableProtocols.contains(protocol)) {
       throw FormatException('Invalid protocol in imported connection: $protocol');
     }
     if (username != null && !_plain(username, 255, mayBeEmpty: true)) {

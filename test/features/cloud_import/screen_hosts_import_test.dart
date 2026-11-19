@@ -309,6 +309,44 @@ void main() {
     });
     tearDown(() => db.close());
 
+    test("a screen host from every importer sends this device's clipboard only on a paste, as one made in the "
+        'editor does (an imported one sent it whenever the picture took the keyboard)', () async {
+      for (final gateway in [false, true]) {
+        final rows = [
+          ...readCsvHosts('name,host,port,protocol\nDesk,a.example.test,,vnc\nPC,b.example.test,,rdp\n', rdp: true).rows,
+          ...readMobaXtermHosts(_moba, rdp: true).rows,
+          ...readMRemoteNgHosts(_mrng, rdp: true).rows,
+          ...readRemminaHosts(_remmina('VNC', 'c.example.test:5901'), rdp: true).rows,
+          ...readRemminaHosts(_remmina('RDP', 'd.example.test'), rdp: true).rows,
+          ...readRdpFileHosts(_rdpFile, rdp: true, fileName: 'Front desk.rdp').rows,
+          ...readRdpFileHosts('full address:s:e.example.test\n', rdp: true, fileName: 'Plain.rdp').rows,
+        ];
+        var n = 0;
+        final out = await applyCsvImport(
+          CsvImportTarget(db: db, userKeyLabel: (u) => '$u (imported)', rdpGateway: gateway),
+          rows,
+          now: () => DateTime.utc(2026, 11, 18, 12),
+          newId: () => '$gateway-${++n}',
+        );
+        expect(out.failures, isEmpty);
+        final screens = [
+          for (final c in await db.connectionsDao.getAll())
+            if (c.id.startsWith('$gateway-') && (c.protocol == 'vnc' || c.protocol == 'rdp')) c
+        ];
+        expect(screens.map((c) => c.protocol).toSet(), {'vnc', 'rdp'});
+        expect(screens.length, greaterThanOrEqualTo(10));
+        for (final c in screens) {
+          final options = ScreenOptions.decode(c.screenOptions);
+          expect(options.clipboardOnPaste, isTrue, reason: '${c.label} (${c.protocol}), gateway offered: $gateway');
+          expect(jsonDecode(c.screenOptions!)['clipboard_send'], 'paste', reason: c.label);
+        }
+        // What a file asked for is still kept: its clipboard off, and the displays it picked.
+        final office = screens.singleWhere((c) => c.label == 'Front desk');
+        expect(ScreenOptions.decode(office.screenOptions).clipboard, isFalse);
+        expect(ScreenOptions.decode(office.screenOptions).displayCount, 2);
+      }
+    });
+
     test('a remote screen gets the options a new one has in the editor; every other host has none', () async {
       var n = 0;
       final file = readMRemoteNgHosts(_mrng, rdp: true);
@@ -322,8 +360,8 @@ void main() {
       final hosts = {for (final c in await db.connectionsDao.getAll()) c.label: c};
       expect(hosts['Reception']!.protocol, 'vnc');
       expect(hosts['Reception']!.port, 5901);
-      expect(ScreenOptions.decode(hosts['Reception']!.screenOptions), ScreenOptions.defaults);
-      expect(hosts['Reception']!.screenOptions, ScreenOptions.encodeDefaults());
+      expect(ScreenOptions.decode(hosts['Reception']!.screenOptions), ScreenOptions.forNewHost);
+      expect(hosts['Reception']!.screenOptions, ScreenOptions.forNewHost.encode());
       expect(hosts['Desk 2']!.protocol, 'rdp');
       expect(hosts['Desk 2']!.screenOptions, isNotNull);
       expect(hosts['build']!.screenOptions, isNull);
@@ -346,7 +384,7 @@ void main() {
       expect(host.protocol, 'rdp');
       expect((host.host, host.port), ('pc.example.test', 3390));
       final options = ScreenOptions.decode(host.screenOptions);
-      expect(options, ScreenOptions.defaults.copyWith(clipboard: false, displays: 2));
+      expect(options, ScreenOptions.forNewHost.copyWith(clipboard: false, displays: 2));
       expect(options.clipboard, isFalse);
       expect(options.displayCount, 2);
       // NLA stays on, whatever the file said.
@@ -354,7 +392,7 @@ void main() {
       // Nothing of the file's password is anywhere in what was written.
       expect(host.toString(), isNot(contains('D08C9DDF')));
       expect(importedScreenOptions(const CsvHostRow(line: 1, name: 'a', host: 'a.example.test', protocol: 'vnc')),
-          ScreenOptions.encodeDefaults());
+          ScreenOptions.forNewHost.encode());
     });
   });
 }

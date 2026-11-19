@@ -95,7 +95,7 @@ void main() {
 
     await openEditor(tester);
     // Nothing changed: the editor closes with no question.
-    await tester.tap(find.byTooltip(en.cancel));
+    await tester.tap(find.byTooltip(en.close));
     await settle(tester);
     expect(shell, findsNothing);
     expect(closed, 1);
@@ -105,7 +105,7 @@ void main() {
     expect(name, findsOneWidget);
     await tester.enterText(name, 'web-renamed');
     await settle(tester);
-    await tester.tap(find.byTooltip(en.cancel));
+    await tester.tap(find.byTooltip(en.close));
     await settle(tester);
     expect(shell, findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
@@ -121,7 +121,7 @@ void main() {
     expect(await label(), 'web-01');
 
     // Discard: closed, nothing saved.
-    await tester.tap(find.byTooltip(en.cancel));
+    await tester.tap(find.byTooltip(en.close));
     await settle(tester);
     await tester.tap(inShell(en.zestDiscardDiscard));
     await settle(tester);
@@ -132,7 +132,7 @@ void main() {
     await openEditor(tester);
     await tester.enterText(find.widgetWithText(TextField, 'web-01'), 'web-renamed');
     await settle(tester);
-    await tester.tap(find.byTooltip(en.cancel));
+    await tester.tap(find.byTooltip(en.close));
     await settle(tester);
     await tester.tap(inShell(en.zestDiscardSave));
     await settle(tester);

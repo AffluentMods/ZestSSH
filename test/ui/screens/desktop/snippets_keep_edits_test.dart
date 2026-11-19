@@ -228,7 +228,7 @@ void main() {
       expect(kept?.command, 'du -sh * | sort -h');
       expect(scaffold(tester).isDirty, isTrue);
 
-      scaffold(tester).onCancel!();
+      scaffold(tester).onClose!();
       await settle(tester);
       await tester.tap(find.text(en.zestDiscardDiscard).last);
       await settle(tester);

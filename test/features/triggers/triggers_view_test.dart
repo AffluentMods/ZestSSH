@@ -318,7 +318,8 @@ void main() {
     });
 
     // The panel's right edge was cut off. Delete at the
-    // left, Cancel and Save at the right, at every window the two panes stand in.
+    // left, Save at the right (the header's close leaves it; no Cancel), at
+    // every window the two panes stand in.
     group('the panel stays within the window', () {
       for (final width in [1000.0, 1100.0, 1240.0, 1440.0, 1920.0]) {
         for (final locale in ['en', 'de']) {
@@ -337,11 +338,10 @@ void main() {
             final close = tester.getRect(find.descendant(of: find.byType(ZestDetailScaffold), matching: find.byIcon(LucideIcons.x)));
             expect(close.right, lessThanOrEqualTo(pane.right));
             final delete = tester.getRect(find.text(l10n.delete).last);
-            final cancel = tester.getRect(find.descendant(of: find.byType(ZestPaneFooter), matching: find.text(l10n.zestCommonCancel)));
+            expect(find.descendant(of: find.byType(ZestPaneFooter), matching: find.text('Cancel')), findsNothing);
             final save = tester.getRect(find.text(l10n.alertsSaveAlert));
-            expect(delete.right, lessThan(cancel.left), reason: 'Delete at the left');
-            expect(cancel.right, lessThan(save.left), reason: 'Cancel then Save, on one line');
-            expect(cancel.top, save.top);
+            expect(delete.right, lessThan(save.left), reason: 'Delete at the left, Save at the right');
+            expect(delete.center.dy, moreOrLessEquals(save.center.dy, epsilon: 1), reason: 'on one line');
             expect(save.right, lessThanOrEqualTo(pane.right));
           });
         }

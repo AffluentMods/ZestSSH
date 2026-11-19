@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 import 'package:zestssh/ui/widgets/zest_scroll_fade.dart';
 import 'package:zestssh/ui/widgets/zest_dialog.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/theme/zest_tokens.dart';
+import 'package:zestssh/ui/widgets/zest_close_button.dart';
 import 'package:zestssh/ui/widgets/zest_pane_footer.dart';
 
 /// ZestSSH 1.7 detail-pane scaffold: the standard chrome for the right-hand
@@ -17,7 +17,9 @@ import 'package:zestssh/ui/widgets/zest_pane_footer.dart';
 ///     navigation is the list on the left.
 ///  2. a scrollable BODY.
 ///  3. a STICKY FOOTER pinned to the pane bottom (never floating in flow):
-///     [footerLeading] on the left, then Cancel + Save on the right.
+///     [footerLeading] on the left, then Save on the right. There is no
+///     Cancel: the header's close "X" leaves the pane, through [onClose]
+///     (which asks about unsaved edits where the pane has any).
 ///
 /// The commit signal is baked in: **Save is disabled until [isDirty]**, so an
 /// enabled Save is the single, always-visible indicator of uncommitted edits
@@ -38,9 +40,7 @@ class ZestDetailScaffold extends StatelessWidget {
     required this.body,
     this.isDirty = false,
     this.onSave,
-    this.onCancel,
     this.saveLabel,
-    this.cancelLabel,
     this.onClose,
     this.footerLeading,
     this.headerAction,
@@ -98,21 +98,14 @@ class ZestDetailScaffold extends StatelessWidget {
   /// otherwise).
   final VoidCallback? onSave;
 
-  /// Footer Cancel callback (dismisses / discards). A form-reset ("Clear")
-  /// belongs next to the New control, never in the footer.
-  final VoidCallback? onCancel;
-
   /// Override for the primary footer label (default "Save").
   final String? saveLabel;
 
-  /// Override for the secondary footer label (default "Cancel").
-  final String? cancelLabel;
-
-  /// Header close ("X") callback.
+  /// Header close ("X") callback: the one way out of the pane.
   final VoidCallback? onClose;
 
   /// A leading footer slot (e.g. a Run or Delete button) shown at the far left
-  /// of the footer, opposite Cancel/Save.
+  /// of the footer, opposite Save.
   final Widget? footerLeading;
 
   /// An optional header action shown in the header just LEFT of the close "X"
@@ -120,7 +113,7 @@ class ZestDetailScaffold extends StatelessWidget {
   /// null the header looks exactly as before.
   final Widget? headerAction;
 
-  /// Replaces the standard Cancel + Save footer for a pane whose actions are
+  /// Replaces the standard Save footer for a pane whose actions are
   /// not a save (a read-only reader with Copy / Save as snippet). Build it
   /// with [ZestPaneFooter] so it keeps the same sticky chrome. Null keeps the
   /// standard footer.
@@ -234,13 +227,7 @@ class ZestDetailScaffold extends StatelessWidget {
             headerAction!,
             const SizedBox(width: ZestSizing.buttonGap),
           ],
-          IconButton(
-            icon: const Icon(LucideIcons.x, size: 18),
-            color: ZestTokens.textSecondary,
-            splashRadius: 18,
-            tooltip: l10n?.zestCommonCancel ?? 'Cancel',
-            onPressed: onClose,
-          ),
+          ZestCloseButton(onPressed: onClose),
         ],
       ),
     );
@@ -248,13 +235,11 @@ class ZestDetailScaffold extends StatelessWidget {
 
   Widget _footer(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // Delegates to the shared sticky footer so every detail pane's Cancel + Save
-    // row is one implementation. The visible uncommitted-edits signal (Save is
+    // Delegates to the shared sticky footer so every detail pane's Save row is
+    // one implementation. The visible uncommitted-edits signal (Save is
     // DISABLED until [isDirty]) is preserved via [saveEnabled].
     return ZestPaneFooter(
       leading: footerLeading,
-      onCancel: onCancel,
-      cancelLabel: cancelLabel ?? l10n?.zestCommonCancel,
       onSave: onSave,
       saveEnabled: isDirty,
       saveLabel: saveLabel ?? l10n?.zestCommonSave,

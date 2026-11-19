@@ -6,6 +6,7 @@ import 'package:zestssh/database/daos/connection_groups_dao.dart';
 import 'package:zestssh/database/daos/connection_tags_dao.dart';
 import 'package:zestssh/database/daos/connections_dao.dart';
 import 'package:zestssh/database/daos/port_forward_rules_dao.dart';
+import 'package:zestssh/features/screens/model/screen_options.dart';
 import 'package:zestssh/features/orchards/sync/crate_placement.dart';
 import 'package:zestssh/providers/core_providers.dart';
 
@@ -116,6 +117,10 @@ class ConnectionCrudNotifier {
   }) async {
     final id = const Uuid().v4();
     final now = DateTime.now();
+    // A remote screen made now sends this device's clipboard only on a
+    // paste, whatever made it (the editor, an import): what the options do
+    // not say already is said here.
+    if (protocol == 'vnc' || protocol == 'rdp') screenOptions = ScreenOptions.withNewHostDefaults(screenOptions);
 
     await _dao.insertConnection(ConnectionsCompanion(
       id: Value(id),

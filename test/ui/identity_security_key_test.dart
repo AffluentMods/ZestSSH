@@ -101,7 +101,11 @@ void main() {
           .read(notificationCenterProvider)
           .history
           // (A notice keeps its last two words together with a space that does not break.)
-          .any((n) => plain(n.title) == message || plain(n.body ?? '') == message);
+          // (A long one is cut into a title and the rest below it.)
+          .any((n) =>
+              plain(n.title) == message ||
+              plain(n.body ?? '') == message ||
+              plain('${n.title} ${n.body ?? ''}') == message);
 
   tearDown(() {
     debugSpeaksToSecurityKeys = null;
@@ -139,6 +143,30 @@ void main() {
     expect(said(tester, l10n.identitySshKeyLoaded(OpenSSHSkKeyPair.ed25519Type)), isTrue);
     expect(option, findsNothing, reason: 'the key is set: its options are gone');
     expect(find.text(l10n.identityManageKey), findsOneWidget);
+    await finish(tester);
+  });
+
+  testWidgets('PIN every time on a security key without credProtect: the key is made, and the person is told the rule is the app\'s',
+      (tester) async {
+    debugSpeaksToSecurityKeys = true;
+    final soft = SoftKey(pin: '1234', supportsCredProtect: false);
+    final signer = fidoSigner = FidoSigner(
+      platform: TestPhone(waysNow: const FidoWays(nfc: true, nfcOn: true, usb: false))..cards.add(SoftNfcCard(soft)),
+    );
+    signer.prompt.addListener(() {
+      if (signer.prompt.value?.step == FidoStep.pin) Future.microtask(() => signer.submitPin('1234'));
+    });
+    await open(tester);
+    await tester.ensureVisible(option);
+    await tester.tap(option);
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('fido-make-ask-pin')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('fido-make-go')));
+    await settle(tester);
+    expect(soft.commands.where((c) => c == 0x01), hasLength(1));
+    expect(said(tester, l10n.fidoMadePinAppOnly), isTrue);
+    expect(find.text(l10n.identityManageKey), findsOneWidget, reason: 'the key is set all the same');
     await finish(tester);
   });
 

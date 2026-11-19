@@ -17,6 +17,9 @@ import 'package:zestssh/services/update_check_service.dart';
 const _kEnabledKey = 'update_check_enabled';
 const _kDismissedVersionKey = 'update_dismissed_version';
 const _kLastCheckMsKey = 'update_last_check_ms';
+const _kAutoInstallKey = 'update_auto_install';
+const _kHiddenOnKey = 'update_pill_hidden_on';
+const _kAutoFailedKey = 'update_auto_failed';
 
 /// Don't hit the network more than once every few hours, even across several
 /// launches - the manifest changes at most a few times a month. An app left
@@ -61,6 +64,94 @@ class UpdateCheckEnabledNotifier extends Notifier<bool> {
       ref.read(availableUpdateProvider.notifier).set(null);
     }
   }
+}
+
+/// Whether an update is installed by itself when the app starts (off by
+/// default; Settings and the update's dialog have the switch). On, the title
+/// bar's "Update available" and the banner under it are not shown for a
+/// release this copy can install; the status bar's version still says that
+/// one is out ([updateNoticeHiddenProvider]).
+final autoUpdateProvider = NotifierProvider<AutoUpdateNotifier, bool>(AutoUpdateNotifier.new);
+
+class AutoUpdateNotifier extends Notifier<bool> {
+  @override
+  bool build() => ref.read(sharedPreferencesProvider).getBool(_kAutoInstallKey) ?? false;
+
+  Future<void> set(bool value) async {
+    await ref.read(sharedPreferencesProvider).setBool(_kAutoInstallKey, value);
+    state = value;
+  }
+}
+
+/// A release as "version+build" ("4.0.0+300"), or the version alone where its
+/// build is not known.
+String releaseKey(String version, int? build) => build == null ? version : '$version+$build';
+
+/// The release this copy runs ([releaseKey]), or null while it is read.
+final runningReleaseProvider = Provider<String?>((ref) {
+  final version = ref.watch(appVersionProvider);
+  final build = ref.watch(appBuildNumberProvider);
+  if (!version.hasValue || build.isLoading) return null;
+  return releaseKey(version.requireValue, build.valueOrNull);
+});
+
+/// The release this copy ran when the person chose "Ignore update" in the
+/// update's dialog, or null: the title bar's "Update available" and the
+/// banner stay hidden until this copy is updated. The status bar's version
+/// still offers the update.
+final updatePillHiddenOnProvider = NotifierProvider<UpdatePillHiddenOnNotifier, String?>(UpdatePillHiddenOnNotifier.new);
+
+class UpdatePillHiddenOnNotifier extends Notifier<String?> {
+  @override
+  String? build() => ref.read(sharedPreferencesProvider).getString(_kHiddenOnKey);
+
+  /// Hides the notices until this copy runs another release.
+  Future<void> hideUntilUpdated() async {
+    final version = await ref.read(appVersionProvider.future);
+    final build = await ref.read(appBuildNumberProvider.future);
+    final running = releaseKey(version, build);
+    await ref.read(sharedPreferencesProvider).setString(_kHiddenOnKey, running);
+    state = running;
+  }
+}
+
+/// Whether [info] is installed by itself at the next start: updates are
+/// installed automatically, the check is on, this copy can install it, and
+/// an update to it has not failed here before (that one is offered, not
+/// tried again at every start).
+bool installsItself(Ref ref, UpdateInfo info) {
+  if (!ref.read(autoUpdateProvider) || !ref.read(updateCheckEnabledProvider)) return false;
+  if (ref.read(sharedPreferencesProvider).getString(_kAutoFailedKey) == releaseKey(info.version, info.build)) return false;
+  return ref.read(appUpdaterProvider).check(info) is CanInstall;
+}
+
+/// Whether the title bar's "Update available", and the banner under it, stay
+/// out of sight for the release known now: it is installed by itself at the
+/// next start ([installsItself]), or the person chose "Ignore update" on the
+/// release this copy runs (an important release is shown all the same). The
+/// status bar's version says a release is out either way.
+final updateNoticeHiddenProvider = Provider<bool>((ref) {
+  final info = ref.watch(availableUpdateProvider);
+  if (info == null) return false;
+  ref.watch(autoUpdateProvider);
+  ref.watch(updateCheckEnabledProvider);
+  if (installsItself(ref, info)) return true;
+  if (info.critical) return false;
+  final hiddenOn = ref.watch(updatePillHiddenOnProvider);
+  if (hiddenOn == null) return false;
+  final running = ref.watch(runningReleaseProvider);
+  return running == null || running == hiddenOn;
+});
+
+/// A release to install now, without being asked, as the app starts: set by
+/// the first check of a start where [installsItself]. The desktop shell opens
+/// the update's dialog with it, already under way, and sets it back to null.
+final autoUpdateStartProvider = NotifierProvider<AutoUpdateStartNotifier, UpdateInfo?>(AutoUpdateStartNotifier.new);
+
+class AutoUpdateStartNotifier extends Notifier<UpdateInfo?> {
+  @override
+  UpdateInfo? build() => null;
+  void set(UpdateInfo? info) => state = info;
 }
 
 /// The latest known available update, INDEPENDENT of the banner's dismissal.
@@ -131,29 +222,32 @@ class UpdateBannerNotifier extends Notifier<UpdateInfo?> {
   Future<void> _maybeCheck() async {
     if (_kicked) return;
     _kicked = true;
-    await _check();
+    await _check(atStart: true);
   }
 
   /// The automatic check, then the next one set for when it is due: an app
   /// left open hears of a release out after the one it found (3.3.1; it
   /// checked once per start before).
-  Future<void> _check() async {
+  Future<void> _check({bool atStart = false}) async {
     try {
-      await _checkOnce();
+      await _checkOnce(atStart: atStart);
     } finally {
       _scheduleNext();
     }
   }
 
-  Future<void> _checkOnce() async {
+  Future<void> _checkOnce({bool atStart = false}) async {
     final prefs = ref.read(sharedPreferencesProvider);
     if (!(prefs.getBool(_kEnabledKey) ?? true)) return;
 
-    // Throttle across launches.
+    // Throttle across launches. Where updates are installed by themselves,
+    // the first check of a start is made whatever the throttle says: that is
+    // when one is installed.
     final now = ref.read(updateClockProvider);
     final lastMs = prefs.getInt(_kLastCheckMsKey) ?? 0;
     final nowMs = now().millisecondsSinceEpoch;
-    if (nowMs - lastMs < _kMinCheckInterval.inMilliseconds) return;
+    final installNow = atStart && ref.read(autoUpdateProvider);
+    if (!installNow && nowMs - lastMs < _kMinCheckInterval.inMilliseconds) return;
 
     final info = await ref.read(updateCheckServiceProvider).check();
     if (_gone) return;
@@ -164,6 +258,13 @@ class UpdateBannerNotifier extends Notifier<UpdateInfo?> {
     // banner dismissal, so it is set BEFORE the dismissal check below. A
     // newer release takes the place of the one found before.
     ref.read(availableUpdateProvider.notifier).set(info);
+
+    // Installed now, as the app starts; not while an update started before
+    // this start waits to be looked at (its result is said first).
+    if (installNow && prefs.getString(kUpdatePendingKey) == null && installsItself(ref, info)) {
+      ref.read(autoUpdateStartProvider.notifier).set(info);
+      return;
+    }
 
     // Respect a per-version dismissal: once the user waves off "1.5.42",
     // don't nag again until an even newer version ships.
@@ -330,6 +431,8 @@ Future<LastUpdate?> takeLastUpdate(SharedPreferences prefs, String running, {int
     final version = m['version'] as String;
     final build = m['build'] is int ? m['build'] as int : null;
     if (compareReleases(running, runningBuild, version, build) >= 0) return LastUpdateInstalled(version);
+    // Not installed by itself again at every start: it is offered instead.
+    await prefs.setString(_kAutoFailedKey, releaseKey(version, build));
     String? log;
     final path = m['log'];
     if (path is String) {

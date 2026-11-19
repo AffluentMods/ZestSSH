@@ -12,7 +12,9 @@ import 'package:zestssh/ui/screens/desktop/widgets/shell_questions.dart';
 import 'package:zestssh/ui/widgets/copy_details_button.dart';
 import 'package:zestssh/ui/widgets/top_snackbar.dart';
 import 'package:zestssh/ui/widgets/update_check_now.dart' show openUpdateDownload;
+import 'package:zestssh/ui/widgets/zest_button.dart';
 import 'package:zestssh/ui/widgets/zest_dialog.dart';
+import 'package:zestssh/ui/widgets/zest_switch.dart';
 import 'package:zestssh/utils/error_report.dart';
 import 'package:zestssh/utils/number_text.dart';
 
@@ -28,7 +30,14 @@ import 'package:zestssh/utils/number_text.dart';
 /// it, gets it ready, and the app quits, installs it and opens again
 /// (lib/services/app_updater.dart). A copy that cannot replace itself
 /// offers the download page instead, saying why.
-Future<void> showUpdateDialog(BuildContext context, UpdateInfo info) {
+///
+/// Under the offer are the switch of automatic updates and "Ignore update",
+/// which hides the title bar's "Update available" until this copy is
+/// updated (the status bar's version still offers it). With [autoStart] (the
+/// app starting, where updates are installed by themselves) the update is
+/// under way as it opens, as though "Update and restart" had been chosen:
+/// it can be stopped.
+Future<void> showUpdateDialog(BuildContext context, UpdateInfo info, {bool autoStart = false}) {
   final dialog = GlobalKey<_UpdateDialogState>();
   return showZestModal<void>(
     context: context,
@@ -40,7 +49,7 @@ Future<void> showUpdateDialog(BuildContext context, UpdateInfo info) {
       dialog.currentState?._dismiss();
       return false;
     },
-    child: UpdateDialog(key: dialog, info: info),
+    child: UpdateDialog(key: dialog, info: info, autoStart: autoStart),
   );
 }
 
@@ -48,9 +57,12 @@ Future<void> showUpdateDialog(BuildContext context, UpdateInfo info) {
 enum UpdateStage { offer, blocked, checking, downloading, verifying, preparing, restarting, waitingForWindows, failed }
 
 class UpdateDialog extends ConsumerStatefulWidget {
-  const UpdateDialog({super.key, required this.info});
+  const UpdateDialog({super.key, required this.info, this.autoStart = false});
 
   final UpdateInfo info;
+
+  /// The update starts as the dialog opens ([showUpdateDialog]).
+  final bool autoStart;
 
   @override
   ConsumerState<UpdateDialog> createState() => _UpdateDialogState();
@@ -79,6 +91,10 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     if (check is CannotInstall) {
       _stage = UpdateStage.blocked;
       _blocked = check;
+    } else if (widget.autoStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _stage == UpdateStage.offer) _start(reopen: true);
+      });
     }
   }
 
@@ -199,6 +215,17 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
 
   void _close() => Navigator.of(context).pop();
 
+  /// "Ignore update": the title bar's "Update available", and the banner,
+  /// hidden until this copy is updated; the status bar's version still
+  /// offers it, and says so.
+  Future<void> _ignore() async {
+    await ref.read(updatePillHiddenOnProvider.notifier).hideUntilUpdated();
+    await ref.read(updateBannerProvider.notifier).dismiss();
+    if (!mounted) return;
+    showTopSnackBar(context, AppLocalizations.of(context)!.appUpdateIgnored, isInfo: true);
+    _close();
+  }
+
   /// The X, and Escape: a download stops; with nothing under way it closes.
   void _dismiss() {
     final busy = _stage == UpdateStage.checking ||
@@ -294,9 +321,13 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     }
     switch (_stage) {
       case UpdateStage.offer:
-        children.add(Text('${l10n.appUpdateHowItGoes} ${l10n.appUpdateHowClose}', style: muted));
+        children
+          ..add(Text('${l10n.appUpdateHowItGoes} ${l10n.appUpdateHowClose}', style: muted))
+          ..add(_choices(l10n, muted, automatic: true));
       case UpdateStage.blocked:
-        children.add(_blockedNote(l10n));
+        children
+          ..add(_blockedNote(l10n))
+          ..add(_choices(l10n, muted, automatic: false));
       case UpdateStage.downloading:
         String mb(int b) => formatDecimal(b / 1000000, l10n: l10n);
         children
@@ -359,6 +390,69 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
           ));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: children);
+  }
+
+  /// Under the offer: the switch of automatic updates ([automatic], where
+  /// this copy can install one) and "Ignore update" (not for an important
+  /// release, which shows all the same, nor where the title bar shows
+  /// nothing for it already).
+  Widget _choices(AppLocalizations l10n, TextStyle muted, {required bool automatic}) {
+    final canIgnore = !_info.critical && !ref.watch(updateNoticeHiddenProvider);
+    if (!automatic && !canIgnore) return const SizedBox.shrink();
+    final strong = TextStyle(fontFamily: 'GeistSans', fontSize: 13.5, color: AppColors.v3TextPrimary);
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Divider(height: 1, thickness: 1, color: AppColors.v3BorderSubtle),
+          if (automatic) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l10n.updateAutoInstall, style: strong),
+                      const SizedBox(height: 2),
+                      Text(l10n.updateAutoInstallDesc, style: muted),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ZestSwitch(
+                  key: const ValueKey('update-dialog-automatic'),
+                  value: ref.watch(autoUpdateProvider),
+                  semanticLabel: l10n.updateAutoInstall,
+                  onChanged: (v) async {
+                    await ref.read(autoUpdateProvider.notifier).set(v);
+                    // Installed by itself only where the check is on: on
+                    // here, the check is on too.
+                    if (v && !ref.read(updateCheckEnabledProvider)) {
+                      await ref.read(updateCheckEnabledProvider.notifier).set(true);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ],
+          if (canIgnore) ...[
+            const SizedBox(height: 10),
+            ZestButton(
+              key: const ValueKey('update-dialog-ignore'),
+              label: l10n.appUpdateIgnore,
+              icon: LucideIcons.eyeOff,
+              variant: ZestButtonVariant.ghost,
+              size: ZestButtonSize.medium,
+              onPressed: _ignore,
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _blockedNote(AppLocalizations l10n) {

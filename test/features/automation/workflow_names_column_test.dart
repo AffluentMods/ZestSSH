@@ -70,7 +70,6 @@ void main() {
             controller: controller,
             runController: run,
             hasSelection: true,
-            onNew: () {},
             onSave: () async => true,
             onClose: () {},
             onDelete: () {},

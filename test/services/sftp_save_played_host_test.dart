@@ -104,17 +104,22 @@ void main() {
   });
 
   test('on a host that cannot put a file in the place of another in one step, the file is closed before the one '
-      'it replaces is removed', () async {
+      'it replaces is moved aside, and that one is removed only when the new file is under the name', () async {
     final host = hostWithConf(oneStepRename: false);
     final sftp = await fileServiceOn(host);
 
     await sftp.uploadFile('/srv/conf', bytes('new words'));
 
-    expect(host.askedFrom('close '), [
+    final asked = host.askedFrom('close ');
+    // Moved aside under this upload's own name: nothing already there is removed first.
+    final aside = asked[2].split(' ').last;
+    expect(aside, matches(RegExp(r'^/srv/conf\.zestold-[0-9a-f]{8}$')));
+    expect(asked, [
       'close /srv/conf.zestpart',
       'rename /srv/conf.zestpart /srv/conf',
-      'remove /srv/conf',
+      'rename /srv/conf $aside',
       'rename /srv/conf.zestpart /srv/conf',
+      'remove $aside',
     ]);
     expect(host.files.keys, ['/srv/conf']);
     expect(held(host, '/srv/conf'), 'new words');

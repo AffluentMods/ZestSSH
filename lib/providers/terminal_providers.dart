@@ -546,18 +546,30 @@ Future<String> passwordAfterKeyIn(
   return result.password;
 }
 
+/// The RD Gateway an RDP host goes through, where its options name one this version reads.
+ScreenGateway? screenGatewayOf(Connection connection) {
+  if (connection.protocol != ConnectionProtocol.rdp.name) return null;
+  final gateway = ScreenOptions.decode(connection.screenOptions).gateway;
+  return gateway != null && gateway.readable ? gateway : null;
+}
+
 /// The SSH host a remote screen is reached through, as the password rules
 /// see it (4.0): its id, whose Crate's switches count as the screen's own
 /// ([requirePasswordHostIn]), and its route ([screenViaScope]: its address
 /// and port), part of where the password goes ([confirmPasswordDestination]).
-typedef ScreenCarrierRoute = ({String id, String? via});
+typedef ScreenCarrierRoute = ({String? id, String? via});
 
 /// [connection]'s carrier where it is a remote screen reached through one,
 /// else null. A carrier that is not there any more still names its id (its
 /// switches are none), with no route.
 Future<ScreenCarrierRoute?> screenCarrierRouteIn(AppDatabase db, Connection connection) async {
   final id = connection.connectViaId;
-  if (!ConnectionProtocol.storedIsScreen(connection.protocol) || id == null) return null;
+  if (!ConnectionProtocol.storedIsScreen(connection.protocol)) return null;
+  // An RDP host through an RD Gateway: no carrier's switches, but the gateway's address is part
+  // of where the password goes (a host pointed at another gateway asks again).
+  final gateway = id == null ? screenGatewayOf(connection) : null;
+  if (gateway != null) return (id: null, via: screenViaScope(carrierHost: gateway.host, carrierPort: gateway.port));
+  if (id == null) return null;
   final carrier = await db.connectionsDao.getById(id);
   return (id: id, via: carrier == null ? null : screenViaScope(carrierHost: carrier.host, carrierPort: carrier.port));
 }
@@ -729,6 +741,13 @@ String? noTerminalReason(Connection host, AppLocalizations l10n) => host.protoco
         : ConnectionProtocol.storedIsScreen(host.protocol)
             ? l10n.hostScreenNoTerminal
             : null;
+
+/// Whether a session for [host] would be a Telnet connection, which nothing
+/// encrypts and which carries no SFTP and no port forward. Where a feature
+/// needs one of those (SFTP, the Files host pickers, a saved forward), such a
+/// host is refused before anything connects, rather than opened unasked over
+/// Telnet only to be told then that the feature cannot run.
+bool isTelnetHost(Connection host) => host.protocol == ConnectionProtocol.telnet.name;
 
 /// Whether a task (a workflow's step, a scheduled or a linked command) can run
 /// a command on a host of [protocol]: it does so over SSH, whatever the host
@@ -2337,6 +2356,12 @@ class ActiveSessionsNotifier extends StateNotifier<Map<String, SessionState>> {
     final noTerminal = noTerminalReason(conn, t);
     if (noTerminal != null) {
       _notify().warning(t.pfStartFailedTitle(name), body: noTerminal);
+      return;
+    }
+    // Nor does a Telnet host: no unencrypted session is opened for a forward
+    // that cannot run on it.
+    if (isTelnetHost(conn)) {
+      _notify().warning(t.pfStartFailedTitle(name), body: t.pfNoForwarding);
       return;
     }
 
@@ -5145,12 +5170,18 @@ class ActiveSessionsNotifier extends StateNotifier<Map<String, SessionState>> {
 
     final known = _spaces.knownHosts(connection.id);
     if (known == null) throw ConnectionCancelledException();
-    final via = carrier == null ? null : screenViaScope(carrierHost: carrier.host, carrierPort: carrier.port);
+    // The PC's certificate is kept for its route: through its SSH host, or through its RD Gateway
+    // (the same name behind two gateways, or reached directly too, is two PCs).
+    final via = carrier != null
+        ? screenViaScope(carrierHost: carrier.host, carrierPort: carrier.port)
+        : gateway != null
+            ? screenViaScope(carrierHost: gateway.host, carrierPort: gateway.port)
+            : null;
     final routeTrust = ScreenRouteTrust(
       KnownHostsScreenTrust(
         known,
         _askAboutScreenCertificate(connection.id, ended,
-            via: carrier == null ? null : nameOf(carrier),
+            via: carrier != null ? nameOf(carrier) : gateway?.host,
             // (A screen opened from a typed address has no name of its own.)
             name: connection.label.isNotEmpty && connection.label != connection.host ? connection.label : null),
         viaScope: via,
@@ -5232,6 +5263,14 @@ class ActiveSessionsNotifier extends StateNotifier<Map<String, SessionState>> {
     );
   }
 
+  /// The options of a screen that keeps none of its own (an X program's, a
+  /// Proxmox guest's console): a new host's ([ScreenOptions.forNewHost]),
+  /// so on a computer this device's clipboard goes to the remote only when
+  /// its person pastes into the picture, as for a host made now; locked off
+  /// under the team's rule that shares nothing, as any screen's.
+  static ScreenOptions _sessionScreenOptions(ScreenTeamRules rules) =>
+      rules.lockRedirections ? ScreenOptions.forNewHost.copyWith(clipboardLocked: true) : ScreenOptions.forNewHost;
+
   /// An X program's screen (4.0): [connection], an SSH host, signed in
   /// to as a remote screen's carrier is (its network, host key, Compatibility
   /// mode, jump hosts gated as always, its Crate's offline limit and keys; no
@@ -5261,8 +5300,7 @@ class ActiveSessionsNotifier extends StateNotifier<Map<String, SessionState>> {
       trust: const XProgramScreenTrust(),
       carrier: shell as SshService,
       carrierLabel: name,
-      options:
-          teamRules.lockRedirections ? ScreenOptions.defaults.copyWith(clipboardLocked: true) : ScreenOptions.defaults,
+      options: _sessionScreenOptions(teamRules),
       inTeam: db.isOrchard,
       connectionId: connection.id,
       native: debugScreenNative,
@@ -5308,8 +5346,7 @@ class ActiveSessionsNotifier extends StateNotifier<Map<String, SessionState>> {
       openConsole: open != null
           ? () => open(base: base, token: token, guest: guest, pin: pin)
           : () => openProxmoxConsole(base: base, token: token, guest: guest, client: proxmoxClient(base, pinned: pin)),
-      options:
-          teamRules.lockRedirections ? ScreenOptions.defaults.copyWith(clipboardLocked: true) : ScreenOptions.defaults,
+      options: _sessionScreenOptions(teamRules),
       inTeam: db.isOrchard,
       connectionId: connection.id,
       native: debugScreenNative,
@@ -6198,8 +6235,10 @@ class ActiveSessionsNotifier extends StateNotifier<Map<String, SessionState>> {
         }
       }
 
+      // A run with nobody there tells no one: a key that came by sync or from
+      // a backup stays to be pointed out at the person's own first session.
       final outcome = await knownHostsService.verify(host, port, hostKey,
-          viaScope: viaScope);
+          viaScope: viaScope, tellsPerson: !unattended);
       final result = outcome.result;
 
       // SECURITY: when an override reroutes the target to a NEW address, its

@@ -123,9 +123,14 @@ class SessionHeaderBar extends ConsumerWidget {
     // A remote screen (4.0): VNC where a terminal says nothing more, and none
     // of a terminal's tools (tmux, SFTP, the Inspector's snippets and look).
     final screen = ref.read(activeSessionsProvider.notifier).isScreen(sessionId);
-    // Speech to text (4.0) for a terminal, where something listens (not on
-    // Linux): the phone's mic key, here.
-    final dictation = !filesOnly && !screen && ref.watch(voiceInputSupportedProvider);
+    // Speech to text (4.0, not on Linux) is started from the Inspector's
+    // Tools tab, its key or the command palette: the header of the session it
+    // types into has its microphone only while it listens, the sign that it
+    // is on there and the way to stop it.
+    final dictation = !filesOnly &&
+        !screen &&
+        ref.watch(voiceInputSupportedProvider) &&
+        ref.watch(dictationProvider.select((s) => s.listening && s.sessionId == sessionId));
 
     return Container(
       // A finger's room for its tools where the controls are touch sized
@@ -293,10 +298,11 @@ class SessionHeaderBar extends ConsumerWidget {
   }
 }
 
-/// Speech to text (4.0) for [sessionId]'s terminal, as the phone's mic key:
-/// what is said is typed at the prompt, and nothing runs until Enter is
-/// pressed. An icon alone, raised and in the accent while it listens; a click
-/// or its key (Ctrl+Shift+Space unless changed) starts and stops it.
+/// Speech to text (4.0) for [sessionId]'s terminal while it listens: an icon
+/// alone, raised and in the accent, the sign that the microphone is on while
+/// the Inspector is closed; a click (or its key, Ctrl+Shift+Space unless
+/// changed) stops it. It is started from the Inspector's Tools tab, which has
+/// the rest (what it hears, the language), its key or the command palette.
 class DictationButton extends ConsumerWidget {
   const DictationButton({super.key, required this.sessionId});
 

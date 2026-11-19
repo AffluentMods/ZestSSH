@@ -5554,6 +5554,36 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
+ironrdp-dvc
+
+ZestSSH's copy of ironrdp-dvc (this folder) is a fork of the crate as published.
+
+  ironrdp-dvc 0.10.0, https://github.com/Devolutions/IronRDP (crates/ironrdp-dvc)
+  Copyright (c) Devolutions Inc. and the IronRDP contributors
+  Licensed under the MIT license or the Apache License 2.0, at your option: LICENSE-MIT and
+  LICENSE-APACHE beside this file are the crate's own.
+
+Forked on 19 November 2026 by Affluent Labs LLC for ZestSSH (4.0, RDP), and used in place of the
+crates.io package through [patch.crates-io] in zest_native's Cargo.toml. What came from the crate
+stays under its licence; our change follows this folder's licence too (MIT or Apache-2.0).
+
+What changed against 0.10.0, and nothing else:
+
+  - src/client.rs: a dynamic channel the client declines (NO_LISTENER) is remembered as one it
+    closed, on the transport its Create Request came on, so data the server sent for it before
+    it saw the decline is dropped instead of ending the session ("access to non existing DVC
+    channel"). GNOME Remote Desktop sends on AUDIO_PLAYBACK_DVC right after asking to open it,
+    and a session ended about a second after connecting. A channel remembered again on the same
+    transport moves to the newest end of the history instead of taking another place, and a
+    Soft-Sync request remembers the closed channels it lists only after it checked them all.
+    Upstream IronRDP's own fix, a7ab89bd84 (#2341), line for line.
+  - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
+    not used by a build from a path.
+  - Long dashes in src\client.rs are plain hyphens: this repository keeps
+    none. No code changed by it.
+
+When IronRDP releases the fix, this folder goes and the crate comes from crates.io again.
+--------------------------------------------------------------------------------
 ironrdp-graphics
 
 ZestSSH's copy of ironrdp-graphics (this folder) is a fork of the crate as published.
@@ -5576,6 +5606,11 @@ What changed against 0.11.0, and nothing else:
     wants less than 256 MiB taken on a server's word cannot say so: a few hundred bytes from a
     server made the app allocate 256 MiB (found by ZestSSH's fuzzing, 8 November 2026, and by
     a review before 4.0), which a phone may not have.
+  - src/clearcodec/mod.rs (19 November 2026): a V-bar cache hit on an entry this decoder never
+    stored reads as an empty bar (a column of zero pixels, or no pixel rows for a short bar)
+    instead of failing the whole update, as FreeRDP does: Windows servers refer to such entries
+    after a cache reset, and text regions stayed unpainted. Upstream IronRDP's own fix,
+    9265fde83f (#2433), line for line; it goes with the next release made from upstream.
   - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
     not used by a build from a path.
   - Six long dashes in comments (src/dwt_extrapolate.rs, src/progressive.rs,
@@ -5584,6 +5619,33 @@ What changed against 0.11.0, and nothing else:
 Upstream was not yet asked to make the two ceilings parameters; when it has them, this folder
 goes and the app sets them. Until then, a new IronRDP release means this folder is made again
 from that release with the same change.
+--------------------------------------------------------------------------------
+ironrdp-rdpsnd
+
+ZestSSH's copy of ironrdp-rdpsnd (this folder) is a fork of the crate as published.
+
+  ironrdp-rdpsnd 0.11.0, https://github.com/Devolutions/IronRDP (crates/ironrdp-rdpsnd)
+  Copyright (c) Devolutions Inc. and the IronRDP contributors
+  Licensed under the MIT license or the Apache License 2.0, at your option: LICENSE-MIT and
+  LICENSE-APACHE beside this file are the crate's own.
+
+Forked on 19 November 2026 by Affluent Labs LLC for ZestSSH (4.0, RDP sound), and used in place of
+the crates.io package through [patch.crates-io] in zest_native's Cargo.toml. What came from the
+crate stays under its licence; our change follows this folder's licence too (MIT or Apache-2.0).
+
+What changed against 0.11.0, and nothing else:
+
+  - src/client.rs, src/pdu/mod.rs: the client's Training Confirm echoes the Training PDU's
+    wPackSize, the size of the whole PDU ([MS-RDPEA] 2.2.3.2), where it sent the length of the
+    data after the fields, 8 bytes short (TrainingPdu::pack_size, used by the PDU's encoder and
+    the confirm). GNOME Remote Desktop rejects any other value and then plays no sound. Upstream
+    IronRDP's own fix, f86e3c49f3 (#2294), line for line.
+  - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
+    not used by a build from a path.
+  - Long dashes in src/client.rs, src/pdu/mod.rs, src/server.rs are plain hyphens: this repository keeps
+    none. No code changed by it.
+
+When IronRDP releases the fix, this folder goes and the crate comes from crates.io again.
 --------------------------------------------------------------------------------
 ironrdp-session
 
@@ -5605,8 +5667,15 @@ make it panic. The app's library ends the whole app on a panic, so each is fixed
 source, the day it is found, and listed below to be sent upstream. The same for what a server can
 make it keep in memory without limit, where the place to say no is inside this crate.
 
-What changed against 0.13.0, and nothing else (each line marked "ZestSSH" in the source):
+What changed against 0.13.0, and nothing else (each line marked "ZestSSH" in the source, but
+for the one change taken from upstream as it is):
 
+  - src/rfx.rs (19 November 2026): RemoteFX tile and clip rectangles no longer wrap u16 on what
+    a server sends (a large tile index, a zero width or height): tile positions are checked in
+    u16 and clip rectangles computed in u32 with exclusive bounds held to the channel; a tile
+    starting past the u16 range is skipped, one crossing its end is cut there. A release build
+    wrapped (a tile drawn in the wrong place), a debug build panicked. Upstream IronRDP's own
+    fix, 56d691e3ff (#2096), line for line.
   - src/fast_path.rs, process_surface_commands: a Set Surface Bits or Stream Surface Bits command
     whose destination rectangle is empty or inverted (right <= left or bottom <= top) is an
     error. Its right and bottom edges had 1 taken off unchecked: with right 0 that wrapped to

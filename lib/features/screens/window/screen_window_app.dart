@@ -10,6 +10,7 @@
 // the session's details and ending the session stay with the tab in the
 // main window.
 import 'dart:async';
+import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart' show WindowController;
 import 'package:flutter/foundation.dart';
@@ -17,6 +18,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:zest_native/screen.dart';
+import 'package:zestssh/features/shortcuts/shortcut_key.dart';
+import 'package:zestssh/features/shortcuts/default_bindings.dart';
+import 'package:zestssh/features/screens/displays/screen_display_keys.dart';
+import 'package:zestssh/features/screens/view/screen_full_screen.dart';
 import 'package:zestssh/core/theme/zest_colors.dart';
 import 'package:zestssh/features/screens/hints/screen_held_line.dart';
 import 'package:zestssh/features/screens/menu/screen_session_panel.dart';
@@ -142,9 +147,12 @@ class ScreenWindowHome extends StatefulWidget {
   State<ScreenWindowHome> createState() => _ScreenWindowHomeState();
 }
 
-class _ScreenWindowHomeState extends State<ScreenWindowHome> {
+class _ScreenWindowHomeState extends State<ScreenWindowHome> with WidgetsBindingObserver {
   late final ScreenSession _session;
   late final ScreenController _c;
+
+  /// The keys that show displays 1 to 4, as the main window has them.
+  List<ShortcutKey?> _displayKeys = const [];
   late final ScreenMenuKey _menuKey;
   StreamSubscription<ScreenEvent>? _events;
   bool _backAsked = false;
@@ -156,7 +164,8 @@ class _ScreenWindowHomeState extends State<ScreenWindowHome> {
 
   void _onFocus() {
     final has = _focus.hasFocus;
-    if (has && !_hadFocus && !_c.viewOnly && !_session.isClosed) {
+    // (A host whose clipboard goes only on a paste says nothing here.)
+    if (has && !_hadFocus && !_c.viewOnly && !_session.isClosed && !widget.payload.clipboardOnPaste) {
       unawaited(widget.backend
           .invoke(kMainWindowId, kScreenWindowFocusMethod, widget.payload.sessionId)
           .catchError((Object _) => null));
@@ -184,7 +193,35 @@ class _ScreenWindowHomeState extends State<ScreenWindowHome> {
   bool? _saidFront;
 
   void _tellFront(AppLifecycleState? state) {
-    final front = state == AppLifecycleState.resumed;
+    // A view of the main window's engine (view_windows.dart): the engine's
+    // lifecycle is the whole app's, so in front is this view having the
+    // focus (didChangeViewFocus), not the app being resumed.
+    if (_ownView && _saidFront != null) return;
+    _sayFront(state == AppLifecycleState.resumed);
+  }
+
+  /// Whether this window is a view of the main window's engine, beside its
+  /// own: not the engine's one view, as a window with an engine of its own is.
+  bool get _ownView {
+    final mine = _viewId;
+    return mine != null && mine != WidgetsBinding.instance.platformDispatcher.implicitView?.viewId;
+  }
+
+  int? _viewId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _viewId = View.maybeOf(context)?.viewId;
+  }
+
+  @override
+  void didChangeViewFocus(ViewFocusEvent event) {
+    if (!_ownView || event.viewId != _viewId) return;
+    _sayFront(event.state == ViewFocusState.focused);
+  }
+
+  void _sayFront(bool front) {
     if (front == _saidFront) return;
     _saidFront = front;
     unawaited(widget.backend.invoke(kMainWindowId, kScreenWindowFrontMethod, front).catchError((Object _) => null));
@@ -219,6 +256,8 @@ class _ScreenWindowHomeState extends State<ScreenWindowHome> {
         if (mounted) setState(() => _fullScreenHint = false);
       });
     }
+    // The keys that leave full screen are this window's while it is in it.
+    _c.keyboard.onLeaveFullScreen = on ? () => unawaited(_setFullScreen(false)) : null;
     if (_menuOpen) _menu.value = _menuState();
   }
 
@@ -320,12 +359,29 @@ class _ScreenWindowHomeState extends State<ScreenWindowHome> {
       ..followViewSize = p.followViewSize
       ..viewOnly = p.viewOnly;
     _c.keyboard.commandAsControl = p.commandAsControl;
+    // Alt and a digit (unless changed in the main window): that display.
+    _displayKeys = p.displayKeys.isEmpty
+        ? [for (final a in screenDisplayActions) defaultShortcutBindings[a]]
+        : p.displayKeys;
+    _c.keyboard.onAppKey = (e) => showDisplayForKey(_displayKeys, _c, e);
+    // The main window holds the clipboard: it is asked, and the key waits.
+    if (p.clipboardOnPaste) {
+      _c.keyboard.onPaste = () async {
+        if (_c.viewOnly || _session.isClosed) return;
+        try {
+          await widget.backend.invoke(kMainWindowId, kScreenWindowPasteMethod, p.sessionId);
+        } catch (_) {
+          // The main window did not answer: the key goes with what the remote holds.
+        }
+      };
+    }
     _c.addListener(_onController);
     // (Said before the picture can take the keyboard, so the two arrive in order.)
     widget.locked.addListener(_onLock);
     if (widget.locked.value) _c.pause();
     _tellFront(WidgetsBinding.instance.lifecycleState);
     _life = AppLifecycleListener(onStateChange: _tellFront);
+    WidgetsBinding.instance.addObserver(this);
     _focus.addListener(_onFocus);
     // The session ended (the main window said why, or it is simply gone):
     // nothing to show here, the tab in the main window says how it ended.
@@ -343,6 +399,7 @@ class _ScreenWindowHomeState extends State<ScreenWindowHome> {
     _hintTimer?.cancel();
     widget.locked.removeListener(_onLock);
     _life?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     _focus.removeListener(_onFocus);
     _focus.dispose();
     _c.removeListener(_onController);
@@ -393,15 +450,22 @@ class _ScreenWindowHomeState extends State<ScreenWindowHome> {
               ctrlAltDelLabel: l10n.screenSendCtrlAltDel,
             ),
             Expanded(
-              child: Stack(
+              // The keyboard's way in full screen: the frame's handle and bar
+              // before the picture, which keeps Tab for the remote.
+              child: FocusTraversalGroup(
+                policy: OrderedTraversalPolicy(),
+                child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ScreenView(
-                    key: const ValueKey('screen-window-view'),
-                    controller: _c,
-                    focusNode: _focus,
-                    onMenuKey: () => unawaited(_openMenu()),
-                    menuKey: _menuKey.logical,
+                  FocusTraversalOrder(
+                    order: const NumericFocusOrder(1),
+                    child: ScreenView(
+                      key: const ValueKey('screen-window-view'),
+                      controller: _c,
+                      focusNode: _focus,
+                      onMenuKey: () => unawaited(_openMenu()),
+                      menuKey: _menuKey.logical,
+                    ),
                   ),
                   if (_fullScreenHint)
                     ScreenHeldLine(
@@ -409,7 +473,29 @@ class _ScreenWindowHomeState extends State<ScreenWindowHome> {
                       text: l10n.screenWindowFullScreenHint(_menuKey.label),
                       keyLabel: _menuKey.label,
                     ),
+                  // Full screen: the bar at the top edge, as a tab's screen
+                  // has it (no host's name: this window is never told it).
+                  if (_fullScreen)
+                    FocusTraversalOrder(
+                      order: const NumericFocusOrder(0),
+                      child: ScreenFullScreenFrame(
+                        hint: '',
+                        hintStays: Duration.zero,
+                        picture: _c,
+                        displayKeyLabels: [for (final k in _displayKeys) k?.displayLabel],
+                        actions: ScreenFullScreenBarActions(
+                          onExit: () => unawaited(_setFullScreen(false)),
+                          exitLabel: l10n.screenExitFullScreen,
+                          onMenu: () => unawaited(_openMenu()),
+                          menuLabel: l10n.screenMenuTooltipKey(_menuKey.label),
+                          onBack: _back,
+                          backLabel: l10n.screenBringBack,
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
                 ],
+                ),
               ),
             ),
           ],

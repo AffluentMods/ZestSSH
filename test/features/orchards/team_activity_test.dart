@@ -257,6 +257,11 @@ void main() {
     addTearDown(tree.close);
     await noteActivityIn(alice.service, tree, ActivityKind.connect, itemKind: 'host', itemKey: 'mine');
     expect(jsonDecode((await queued(alice, id))!) as List, hasLength(5));
+
+    // A key that has left the team is in no vault to look up: the vault it was in is given.
+    await noteActivityIn(alice.service, db, ActivityKind.export, itemKind: 'key', itemKey: 'gone', name: 'gone', crateId: crate);
+    final last = (jsonDecode((await queued(alice, id))!) as List).last as Map;
+    expect((last['kind'], last['item'], last['crate']), ('export', 'gone', crate));
   });
 }
 
