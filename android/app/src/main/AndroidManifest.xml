@@ -19,6 +19,15 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!-- Implied by what the app declares, and none of it is needed to install or use it: Wi-Fi by
+         the network plugin's ACCESS_WIFI_STATE (the Wi-Fi name for network rules), an upright
+         screen by the profile picture's cropper, a microphone by RECORD_AUDIO (voice input).
+         Left as required, Google Play kept the app from devices without them (tablets and
+         computers with a wired network or a screen that only lies flat) and would not take the
+         release for review. -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:label="ZestSSH"
         android:name="${applicationName}"
