@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:zestssh/features/assistant/assistant_region.dart';
 import 'package:zestssh/config/official_identity.dart';
 import 'package:zestssh/features/changelog/whats_new_dialog.dart';
 import 'package:zestssh/features/feedback/feedback_report.dart';
@@ -259,7 +260,7 @@ class _GetInTouchCard extends ConsumerWidget {
         ),
         // Ask Astryx (4.0, a named preview): every account sees it; its screen
         // says who it is for, and carries the Preview label.
-        if (zestHasCloud)
+        if (zestHasCloud && ref.watch(assistantOfferedHereProvider).valueOrNull != false)
         _HelpRow(
           key: const ValueKey('help-ask-astryx'),
           icon: LucideIcons.sparkles,

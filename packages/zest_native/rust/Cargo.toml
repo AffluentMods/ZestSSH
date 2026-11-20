@@ -180,8 +180,11 @@ windows = { version = "=0.62.2", optional = true, default-features = false, feat
 # "rdp"): the ZGFX decompressor's ceilings, which upstream fixes inside the crate, lowered to
 # what the app's largest picture needs (vendor/ironrdp-graphics/NOTICE-ZESTSSH). ironrdp-session
 # (feature "rdp"): fixes for inputs from a server that made it panic, each listed in
-# vendor/ironrdp-session/NOTICE-ZESTSSH.
+# vendor/ironrdp-session/NOTICE-ZESTSSH. ironrdp-connector, ironrdp-dvc and ironrdp-rdpsnd (feature
+# "rdp"): upstream fixes carried before IronRDP releases them (RDS licensing on Windows Server 2022,
+# GNOME Remote Desktop's channels and sound), each in its folder's NOTICE-ZESTSSH.
 [patch.crates-io]
+ironrdp-connector = { path = "vendor/ironrdp-connector" }
 ironrdp-dvc = { path = "vendor/ironrdp-dvc" }
 ironrdp-graphics = { path = "vendor/ironrdp-graphics" }
 ironrdp-rdpsnd = { path = "vendor/ironrdp-rdpsnd" }

@@ -11,8 +11,15 @@ import 'package:zestssh/utils/type_name.dart';
 
 /// How long a screen's server has, once its connection is open, to finish
 /// connecting: one that takes the connection and then says nothing is closed
-/// then (ZS-1828), not waited on for ever.
-const kScreenHandshakeTimeout = Duration(seconds: 60);
+/// then (ZS-1828), not waited on for ever. An RDP server answers at once or
+/// not at all: a minute. A VNC server may be waiting for a person at the
+/// remote to allow the connection (GNOME's and KDE's sharing ask so, as does
+/// a Mac's Screen Sharing for a request to control): three minutes.
+const kRdpHandshakeTimeout = Duration(seconds: 60);
+const kVncHandshakeTimeout = Duration(minutes: 3);
+
+/// [kRdpHandshakeTimeout] or [kVncHandshakeTimeout].
+Duration screenHandshakeTimeout({required bool rdp}) => rdp ? kRdpHandshakeTimeout : kVncHandshakeTimeout;
 
 enum ScreenFailureKind {
   /// Nothing listens at the screen's address on the carrier (ZS-1801).
@@ -349,7 +356,7 @@ String screenFailureText(AppLocalizations l10n, ScreenFailure e) {
         _ => l10n.screenGatewayRefused,
       },
     ScreenFailureKind.handshakeTimeout =>
-      l10n.screenHandshakeTimeout(kScreenHandshakeTimeout.inSeconds),
+      l10n.screenHandshakeTimeout(screenHandshakeTimeout(rdp: e.rdp).inSeconds),
     ScreenFailureKind.stopped => l10n.screenStopped(e.detail),
   };
   final code = e.code;

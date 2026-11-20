@@ -125,8 +125,34 @@ class ScreenMouse {
   double _panZoomStartZoom = 1;
   Offset _panZoomAnchor = Offset.zero;
 
-  /// Hover, move, down or up: the remote pointer goes where it is.
+  /// The mouse is over the view but off the picture (the bars beside or above
+  /// a picture smaller than the view): the system's own pointer shows there
+  /// and nothing goes to the remote, whose pointer stays where it was. It was
+  /// sent to the nearest edge and drawn there with the system's hidden, so the
+  /// pointer looked held at the picture's sides and the full screen handle in
+  /// the bar beside it could not be reached by sight.
+  bool get outside => _outside;
+  bool _outside = false;
+
+  /// A button went down on the picture and is not up yet: a drag that leaves
+  /// the picture still goes to its edge, as on the remote's own screen.
+  bool _dragging = false;
+
+  /// Hover, move, down or up: the remote pointer goes where it is, while it
+  /// is on the picture or drags from it.
   void event(PointerEvent e) {
+    final on = viewport.pictureRect.contains(e.localPosition);
+    if (e is PointerDownEvent) _dragging = on;
+    if (!on && !_dragging) {
+      // Off the picture: a click on a bar clicks nothing there.
+      if (!_outside) {
+        _outside = true;
+        changed();
+      }
+      return;
+    }
+    if (e is PointerUpEvent) _dragging = false;
+    _outside = false;
     final (x, y) = viewport.toRemote(e.localPosition);
     pointer.send(x, y, ScreenButtons.fromFlutter(e.buttons));
     if (e is PointerMoveEvent || e is PointerHoverEvent) _edgePan(e.localPosition, e.delta);

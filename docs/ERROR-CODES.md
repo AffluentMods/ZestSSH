@@ -1207,11 +1207,11 @@ the names of hosts, people and folders, addresses, keys and passwords taken out.
 
 ## ZS-1828: The remote screen did not finish connecting
 
-**What it means.** The screen's server (or the RD Gateway in front of it) took the connection and then said nothing more for a minute, or stopped half way, so ZestSSH stopped waiting and closed the connection. Nothing was changed on the server, and your other sessions are not affected.
+**What it means.** The screen's server (or the RD Gateway in front of it) took the connection and then said nothing more, or stopped half way, for a minute (RDP) or three minutes (VNC, where a person at the remote computer may have to allow the connection first), so ZestSSH stopped waiting and closed the connection. Nothing was changed on the server, and your other sessions are not affected.
 
 **What to do.**
 
-1. Try again in a moment: a server that is starting, or very busy, can be slow to answer.
+1. Try again in a moment: a server that is starting, or very busy, can be slow to answer. A VNC server that asks the person at the remote computer to allow each connection waits for them: ask them to accept it.
 2. Check the port in the host's settings: something other than a VNC or RDP server listening there takes the connection and never answers as one.
 3. Where the screen is reached through an SSH host or a VPN, check that it is still connected.
 

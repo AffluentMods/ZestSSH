@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
+import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/models/enums.dart';
 import 'package:zestssh/ui/screens/terminal/widgets/soft_key_catalog.dart';
 import 'package:zestssh/providers/core_providers.dart';
@@ -241,10 +242,10 @@ final securityLockEnabledProvider = StateProvider<bool>((ref) {
   return ref.read(settingsServiceProvider).securityLockEnabled;
 });
 
-/// "Show open sessions on the lock screen" (4.0): a count of the sessions still
-/// connected under the lock screen's title, never their names. Off by default.
-final lockShowSessionsProvider = StateProvider<bool>((ref) {
-  return ref.read(settingsServiceProvider).lockShowSessions;
+/// What ZestSSH's lock screen says of the sessions still connected behind it
+/// (4.0.1): nothing by default, how many, or how many and their names.
+final lockSessionsShownProvider = StateProvider<LockSessionsShown>((ref) {
+  return ref.read(settingsServiceProvider).lockSessionsShown;
 });
 
 // ── Auto Backup ─────────────────────────────────────────────────
@@ -656,10 +657,11 @@ class SettingsUpdater {
     _ref.read(securityLockEnabledProvider.notifier).state = enabled;
   }
 
-  /// The lock screen's count of open sessions. The computer's own: never synced.
-  Future<void> setLockShowSessions(bool show) async {
-    await _ref.read(settingsServiceProvider).setLockShowSessions(show);
-    _ref.read(lockShowSessionsProvider.notifier).state = show;
+  /// What the lock screen says of the open sessions. The computer's own:
+  /// never synced.
+  Future<void> setLockSessionsShown(LockSessionsShown shown) async {
+    await _ref.read(settingsServiceProvider).setLockSessionsShown(shown);
+    _ref.read(lockSessionsShownProvider.notifier).state = shown;
   }
 
   Future<void> setAutoBackupInterval(String interval) async {
@@ -1002,3 +1004,10 @@ final hostTerminalThemeProvider = Provider.family<TerminalTheme, String?>((ref, 
 /// Set to true when data changes (connection/identity/snippet CRUD).
 /// Cleared after a backup runs. Used to trigger backup-on-close.
 final backupDirtyProvider = StateProvider<bool>((ref) => false);
+
+/// What each choice of [LockSessionsShown] is called.
+String lockSessionsShownName(AppLocalizations l10n, LockSessionsShown s) => switch (s) {
+      LockSessionsShown.off => l10n.lockSessionsShownOff,
+      LockSessionsShown.count => l10n.lockSessionsShownCount,
+      LockSessionsShown.names => l10n.lockSessionsShownNames,
+    };

@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:zestssh/features/assistant/assistant_region.dart';
 import 'package:zestssh/config/official_identity.dart';
 import 'package:zestssh/features/monitoring/monitor_host_alerts.dart';
 import 'package:zestssh/features/broadcast/broadcast_to_hosts.dart';
@@ -49,6 +50,8 @@ import 'package:zestssh/features/workspaces/widgets/workspace_open_dialog.dart';
 import 'package:zestssh/providers/purchase_providers.dart';
 import 'package:zestssh/router/link_pages.dart' show openShellSection;
 import 'package:zestssh/ui/screens/desktop/maximized_panes.dart';
+import 'package:zestssh/ui/screens/editor/editor_workspace.dart';
+import 'package:zestssh/ui/screens/editor/text_editor_screen.dart';
 import 'package:zestssh/ui/screens/desktop/widgets/tab_merge_undo.dart';
 import 'package:zestssh/router/routes.dart';
 import 'package:zestssh/services/session_persistence_service.dart';
@@ -234,6 +237,10 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   /// every click on the gear after that changed nothing.
   bool _settingsPopupShowing = false;
 
+  /// The file editor's tabs, shown in this shell's workspace area (4.0.1):
+  /// kept to tell them, as this shell goes, that no shell shows them.
+  EditorWorkspace? _editorWorkspace;
+
   @override
   void initState() {
     super.initState();
@@ -318,6 +325,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
 
   @override
   void dispose() {
+    _editorWorkspace?.hostedInShell = false;
     if (_onTouch) {
       touchDesktopShells--;
       ShortcutService.pendingConnection.removeListener(_appIconShortcutSoon);
@@ -1708,6 +1716,19 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     // Map NavSection enum to IndexedStack index
     final activeNavIndex = NavSection.values.indexOf(activeNav);
 
+    // The file editor (4.0.1): shown in the workspace area, with the
+    // sidebar and the session tabs beside it, not as a page over the whole
+    // window. Its tab in the strip is the one in front while it shows; a
+    // session tab or a page chosen (or a new session's tab) puts it behind.
+    final editorWorkspace = ref.read(editorWorkspaceProvider)..hostedInShell = true;
+    _editorWorkspace = editorWorkspace;
+    final (editorFront, editorFiles, editorUnsaved) =
+        ref.watch(editorWorkspaceProvider.select((w) => (w.front, w.length, w.unsaved.length)));
+    ref.listen(workTabsProvider.select((s) => s.activeTabId), (before, now) {
+      if (now != null && now != before) editorWorkspace.front = false;
+    });
+    ref.listen(activeSidebarNavProvider, (_, __) => editorWorkspace.front = false);
+
     // On a phone's or a tablet's large screen (4.0): an app bar
     // with the page's name in place of a computer's title bar; held upright,
     // the session tabs in a strip of their own under it, while sessions are
@@ -1727,15 +1748,23 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
             // bar has the Hosts pill there, as a computer's.
             pageTitle: _onTouch && !terminalInFront && activeNav == NavSection.hosts ? l10n.narrowSidebarHosts : null,
             activeNav: activeNav,
-            activeSessionId: activeWorkTabId,
+            activeSessionId: editorFront ? null : activeWorkTabId,
             terminalShown: activeSessionId != null && terminalShown,
             sessions: tabEntries,
+            editorTab: editorFiles == 0 ? null : (files: editorFiles, unsaved: editorUnsaved, front: editorFront),
+            onEditorTab: () => editorWorkspace.front = true,
+            onEditorClose: () {
+              // Its own close, which asks about unsaved changes: in front first.
+              editorWorkspace.front = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) => editorWorkspace.closeAsked?.call());
+            },
             tabGroupSizes: tabGroupSizes,
             tabIdentityColors: tabIdentityColors,
             pinnedTabIds: pinnedTabIds,
             onNavChanged: (section) {
               if (section == NavSection.settings) return _openSettingsSection();
               _closeSupportHub();
+              editorWorkspace.front = false;
               ref.read(activeSidebarNavProvider.notifier).state = section;
               // Deselect the active tab so the sidebar page is visible.
               // The tab strip stays - clicking a tab swaps back to its terminal.
@@ -1983,13 +2012,14 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                     // While Settings is open its gear is the item that is lit.
                     activeSection: ref.watch(settingsPopupOpenProvider)
                         ? NavSection.settings
-                        : (activeSessionId != null && terminalShown)
+                        : (editorFront || (activeSessionId != null && terminalShown))
                             ? null
                             : activeNav,
                     onSectionChanged: (section) {
                       if (section == NavSection.settings) {
                         return _openSettingsSection();
                       }
+                      editorWorkspace.front = false;
                       ref.read(activeSidebarNavProvider.notifier).state =
                           section;
                       // Deselect the active tab so the sidebar page is visible.
@@ -2051,7 +2081,16 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                       }
                     }
                   },
-                  child: activeSessionId != null && terminalShown
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // What the area held stays as it was behind the editor (still: no
+                      // tickers), for when the editor goes behind.
+                      Offstage(
+                        offstage: editorFront,
+                        child: TickerMode(
+                          enabled: !editorFront,
+                          child: activeSessionId != null && terminalShown
                       // Session tab selected → terminal area
                       ? DesktopTerminalArea(
                           onConnectTo: _connectTo,
@@ -2099,6 +2138,12 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                             const TeamView(),
                           ],
                         ),
+                        ),
+                      ),
+                      if (editorFront)
+                        const TextEditorScreen.tabs(key: ValueKey('editor-in-shell'), hosted: true),
+                    ],
+                  ),
                   ),
                 ),
                   ),
@@ -3174,8 +3219,10 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         () => _openHelp(HelpPage.contactSupport), desc: l10n.paletteDescWriteSupport);
     add(l10n.desktopMenuHelp, l10n.ticketsTitle, LucideIcons.inbox,
         () => _openHelp(HelpPage.tickets), desc: l10n.paletteDescTickets);
-    add(l10n.desktopMenuHelp, l10n.astryxTitle, LucideIcons.sparkles,
-        () => _openHelp(HelpPage.askAstryx), desc: l10n.astryxPaletteDesc);
+    if (ref.read(assistantOfferedHereProvider).valueOrNull != false) {
+      add(l10n.desktopMenuHelp, l10n.astryxTitle, LucideIcons.sparkles,
+          () => _openHelp(HelpPage.askAstryx), desc: l10n.astryxPaletteDesc);
+    }
     }
     add(
         l10n.desktopMenuHelp,
@@ -4095,6 +4142,8 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   /// Shows the tab [tabId], as a click on its pill does.
   void _selectTab(String tabId) {
     _closeSupportHub();
+    // The file editor goes behind; its tab in the strip brings it back.
+    ref.read(editorWorkspaceProvider).front = false;
     // Switch the active WorkTab - paneTreeProvider is automatically
     // swapped to that tab's tree by WorkTabsNotifier, which points the
     // terminal area at the tab's first session as well.

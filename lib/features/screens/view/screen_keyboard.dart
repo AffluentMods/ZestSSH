@@ -101,6 +101,9 @@ class ScreenKeyboard {
   /// clipboard is not shared, or goes as the picture takes the keyboard).
   Future<void> Function()? onPaste;
 
+  /// The longest a paste holds the keys back for [onPaste].
+  Duration pasteWait = const Duration(seconds: 2);
+
   /// A Mac's Command key goes to the remote as Ctrl (4.0), so
   /// Cmd+C is the remote's Ctrl+C. Off: it goes as the Super (Windows)
   /// key, as it always did. A key held while this changes is let go as
@@ -165,7 +168,10 @@ class ScreenKeyboard {
     } catch (_) {
       sent = Future<void>.value();
     }
-    sent.then((_) => go(), onError: (Object _) => go());
+    // A clipboard that does not answer (another program holding it) holds
+    // the keys back no longer than [pasteWait]: they go then, with what the
+    // remote holds.
+    sent.timeout(pasteWait, onTimeout: () {}).then((_) => go(), onError: (Object _) => go());
   }
 
   /// The keys held now, as sent.

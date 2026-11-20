@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:zestssh/features/assistant/assistant_region.dart';
 import 'package:zestssh/config/official_identity.dart';
 import 'package:zestssh/ui/widgets/zest_switch.dart';
 import 'package:zestssh/ui/widgets/zest_section_header.dart';
@@ -322,7 +323,7 @@ class _HelpHome extends ConsumerWidget {
           ),
         // Ask Astryx (4.0, a named preview): its own group at the top. Every
         // account sees it; the level says who it is for.
-        if (zestHasCloud) ...[
+        if (zestHasCloud && ref.watch(assistantOfferedHereProvider).valueOrNull != false) ...[
           _SectionLabel(l10n.astryxTitle),
           _HelpRow(
             key: const ValueKey('help-ask-astryx'),

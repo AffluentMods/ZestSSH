@@ -34,8 +34,11 @@ void main() {
 
   Future<void> pump(
     WidgetTester tester, {
-    String active = 't1',
+    String? active = 't1',
     Map<String, ({String id, String name})> workspaces = const {},
+    ({int files, int unsaved, bool front})? editorTab,
+    VoidCallback? onEditorTab,
+    VoidCallback? onEditorClose,
   }) async {
     tester.view.physicalSize = const Size(1800, 400);
     tester.view.devicePixelRatio = 1;
@@ -65,6 +68,9 @@ void main() {
                 MapEntry('t5', _state('api-01')),
               ],
               tabGroupSizes: const {'t3': 2},
+              editorTab: editorTab,
+              onEditorTab: onEditorTab,
+              onEditorClose: onEditorClose,
               onNavChanged: (_) {},
               onSessionSelected: (_) {},
               onSessionClosed: (_) {},
@@ -157,6 +163,42 @@ void main() {
     await tester.pump();
     expect(tab('t4'), findsNothing);
     expect(tab('t5'), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets("the file editor's tab after the session tabs: how many files, a dot while one is unsaved, in front "
+      "while it shows, its close the editor's", (tester) async {
+    final semantics = tester.ensureSemantics();
+    var shown = 0, closed = 0;
+    await pump(tester,
+        active: null,
+        editorTab: (files: 3, unsaved: 1, front: true),
+        onEditorTab: () => shown++,
+        onEditorClose: () => closed++);
+    final editor = find.byKey(const ValueKey('tab-editor'));
+    expect(editor, findsOneWidget);
+    expect(find.descendant(of: editor, matching: find.text(l10n.editorMinimizedFiles(3))), findsOneWidget);
+    expect(find.byKey(const ValueKey('tab-editor-unsaved')), findsOneWidget);
+    // After the session tabs (the last ones go to the overflow menu where the strip is full).
+    for (final id in const ['t1', 't2', 't3']) {
+      expect(tester.getRect(editor).left, greaterThan(tester.getRect(tab(id)).right), reason: 'after $id');
+    }
+    final said = '${l10n.editorMinimizedFiles(3)}, ${l10n.editorMinimizedUnsaved(1)}';
+    expect(tester.getSemantics(find.bySemanticsLabel(said)), matchesSemantics(
+      label: said,
+      isButton: true,
+      isSelected: true,
+      hasSelectedState: true,
+      hasTapAction: true,
+    ));
+    await tester.tap(editor);
+    expect(shown, 1);
+    await tester.tap(find.byKey(const ValueKey('tab-editor-close')));
+    expect(closed, 1);
+    expect(shown, 1, reason: 'the close is not a tap on the tab');
+    // No editor files: no tab.
+    await pump(tester);
+    expect(find.byKey(const ValueKey('tab-editor')), findsNothing);
     semantics.dispose();
   });
 

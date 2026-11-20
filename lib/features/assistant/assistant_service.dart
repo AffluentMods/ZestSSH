@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:zestssh/config/official_identity.dart';
 import 'package:zestssh/core/errors/error_codes.dart';
+import 'package:zestssh/features/assistant/assistant_region.dart';
 import 'package:zestssh/services/account/device_sessions.dart';
 import 'package:zestssh/services/account_bearer.dart';
 import 'package:zestssh/services/cloud/cloud_failure.dart';
@@ -43,6 +44,10 @@ enum AssistantBlock {
 
   /// Today's questions are used.
   dailyLimit,
+
+  /// Not offered where this device's App Store account is (mainland China, 4.0.1:
+  /// assistant_region.dart). Nothing is asked of ZestSSH Cloud.
+  region,
 }
 
 AssistantBlock? _blockOf(String? reason) => switch (reason) {
@@ -225,6 +230,8 @@ class AssistantFailure implements Exception, HasTypeName {
             AssistantBlock.planUnknown => ErrorCodes.assistantPlanUnknown,
             AssistantBlock.capReached => ErrorCodes.assistantCapReached,
             AssistantBlock.dailyLimit => ErrorCodes.assistantDailyLimit,
+            // Nothing to put right: no code.
+            AssistantBlock.region => null,
             null => ErrorCodes.assistantOff,
           },
       };
@@ -250,10 +257,15 @@ class AssistantTurn {
 
 /// GET /v1/assistant/status and POST /v1/assistant/ask with this device's sign-in.
 class AssistantService {
-  AssistantService({http.Client? client, String? baseUrl, Future<String?> Function()? bearer})
-      : _client = client ?? PinnedHttpClient.client,
+  AssistantService({
+    http.Client? client,
+    String? baseUrl,
+    Future<String?> Function()? bearer,
+    Future<String?> Function()? storeCountry,
+  })  : _client = client ?? PinnedHttpClient.client,
         base = baseUrl ?? defaultBase,
-        _bearer = bearer ?? accountBearer;
+        _bearer = bearer ?? accountBearer,
+        _storeCountry = storeCountry ?? appStoreCountry;
 
   static String get defaultBase => kZestApiBase;
 
@@ -270,6 +282,10 @@ class AssistantService {
   final http.Client _client;
   final String base;
   final Future<String?> Function() _bearer;
+
+  /// This device's App Store country ([appStoreCountry]): where Ask Astryx is not offered
+  /// ([assistantOfferedIn]), nothing is asked of ZestSSH Cloud.
+  final Future<String?> Function() _storeCountry;
 
   /// The request for [question], exactly as it is sent: the words after ReportScrub,
   /// the last [historyMax] turns, and [images] as base64. The preview shows this.
@@ -314,6 +330,9 @@ class AssistantService {
 
   /// Whether this account can ask now. Throws [AssistantFailure].
   Future<AssistantStatus> status() async {
+    if (!assistantOfferedIn(await _storeCountry())) {
+      return const AssistantStatus(available: false, block: AssistantBlock.region, dailyLimit: 0, leftToday: 0);
+    }
     final headers = await _headers();
     final http.Response r;
     try {
@@ -332,6 +351,9 @@ class AssistantService {
     List<AssistantTurn> history = const [],
     List<Uint8List> images = const [],
   }) async {
+    if (!assistantOfferedIn(await _storeCountry())) {
+      throw const AssistantFailure(AssistantFailureKind.blocked, block: AssistantBlock.region);
+    }
     final headers = await _headers();
     final payload = request(question: question, history: history, images: images);
     final http.Response r;

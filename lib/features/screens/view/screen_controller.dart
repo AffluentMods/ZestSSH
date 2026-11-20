@@ -831,7 +831,10 @@ class ScreenController extends ChangeNotifier {
     if (pointerMode && _relativeMouse) return (ScreenCursorDraw.none, x, y);
     final c = _cursor;
     if (c != null) {
-      if (c.hidden || (!pointer.placed && !pointerMode)) return (ScreenCursorDraw.none, x, y);
+      // Off the picture the system's pointer shows; the remote's is not drawn at the edge.
+      if (c.hidden || (!pointer.placed && !pointerMode) || (!pointerMode && mouse.outside)) {
+        return (ScreenCursorDraw.none, x, y);
+      }
       return (ScreenCursorDraw.remote, x, y);
     }
     return pointerMode ? (ScreenCursorDraw.arrow, x, y) : (ScreenCursorDraw.none, x, y);
@@ -840,8 +843,9 @@ class ScreenController extends ChangeNotifier {
   /// The system's pointer over the picture: hidden while the server's shape
   /// is drawn in its place (or the server hides it) and while it is held
   /// for relative mouse (a computer's own part hides it too; on Linux this
-  /// is what keeps it hidden), the usual arrow else.
-  MouseCursor get mouseCursor => hold.held || !(_viewOnly || _cursor == null)
+  /// is what keeps it hidden), the usual arrow else, and over the bars beside
+  /// the picture ([ScreenMouse.outside]).
+  MouseCursor get mouseCursor => hold.held || !(_viewOnly || _cursor == null || mouse.outside)
       ? SystemMouseCursors.none
       : SystemMouseCursors.basic;
 

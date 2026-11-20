@@ -56,7 +56,7 @@ void main() {
     await server.close();
   });
 
-  ScreenShellService shell(FakeScreenNative engine, {Duration deadline = kScreenHandshakeTimeout}) => ScreenShellService(
+  ScreenShellService shell(FakeScreenNative engine, {Duration? deadline}) => ScreenShellService(
         target: DirectTlsTarget('127.0.0.1', server.port),
         trust: _Trust(),
         protocol: ScreenProtocol.rdp,
@@ -91,6 +91,22 @@ void main() {
     await ended.single.future.timeout(const Duration(seconds: 5));
     final l10n = lookupAppLocalizations(const Locale('en'));
     expect(screenFailureText(l10n, failed! as ScreenFailure), allOf(contains('ZS-1828'), contains('60 seconds')));
+  });
+
+  test('the deadline is a minute for RDP and three for VNC, where a person at the remote may have to allow it, '
+      'and the message says which', () {
+    final vnc = ScreenShellService(
+      target: DirectTlsTarget('127.0.0.1', server.port),
+      trust: _Trust(),
+      protocol: ScreenProtocol.vnc,
+      native: FakeScreenNative(),
+    );
+    expect(shell(FakeScreenNative()).handshakeTimeout, const Duration(seconds: 60));
+    expect(vnc.handshakeTimeout, const Duration(minutes: 3));
+    final l10n = lookupAppLocalizations(const Locale('en'));
+    final closed = ScreenClosed(ScreenCloseReason.network, 'no answer', detail: ScreenSession.handshakeTimedOut);
+    expect(screenFailureText(l10n, ScreenFailure.ofClosed(closed, rdp: true)), contains('60 seconds'));
+    expect(screenFailureText(l10n, ScreenFailure.ofClosed(closed)), contains('180 seconds'));
   });
 
   test('Disconnect while it is still connecting closes it at once, engine and socket, long before the deadline',

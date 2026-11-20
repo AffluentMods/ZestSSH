@@ -69,7 +69,7 @@ class SettingsService {
     'haptic_feedback', 'health_check_interval',
     'host_card_settings', 'hosts_folded_sections', 'hosts_list_columns', 'hosts_view_list', 'hosts_view_mode',
     'keep_screen_awake', 'keepalive_interval', 'keyboard_incognito',
-    'keys_row_auto_hide', 'keys_row_hardware', 'lock_show_sessions',
+    'keys_row_auto_hide', 'keys_row_hardware', 'lock_show_sessions', 'lock_sessions_shown',
     'manual_network_override_id', 'monitor_alerts_enabled',
     // A Mac's or Linux computer's choice of the mosh program installed there over the built-in client (4.0).
     'mosh_system_client', 'monitor_chart_series_v1', 'monitor_column_widths_v1',
@@ -196,6 +196,7 @@ class SettingsService {
   static const Set<String> deviceKeys = {
     // The app lock, and what its lock screen shows.
     'encrypting_lock_enabled', 'security_lock_enabled', 'lock2_app_lock', 'lock2_encrypting', 'lock_show_sessions',
+    'lock_sessions_shown',
     // The home screen widget told that the app lock is on (WidgetService), as the lock itself.
     'widget_locked',
     // Recording mode.
@@ -538,12 +539,21 @@ class SettingsService {
   Future<void> setEncryptingLockEnabled(bool enabled) =>
       _prefs.setBool('encrypting_lock_enabled', enabled);
 
-  /// "Show open sessions on the lock screen" (4.0): the lock screen says how many
-  /// sessions are still connected behind it, a count and never a name. Off by
-  /// default, the safer choice on a screen others see. The computer's, not a
-  /// person's: the lock screen reads it before any profile is open.
-  bool get lockShowSessions => _prefs.getBool('lock_show_sessions') ?? false;
-  Future<void> setLockShowSessions(bool show) => _prefs.setBool('lock_show_sessions', show);
+  /// What ZestSSH's lock screen says of the sessions still connected behind
+  /// it (4.0.1): nothing (the default, the safer choice on a screen others
+  /// see), how many, or how many and their names. The computer's, not a
+  /// person's: the lock screen reads it before any profile is open. A device
+  /// that had 4.0's switch on ('lock_show_sessions') shows how many.
+  LockSessionsShown get lockSessionsShown => switch (_prefs.getString('lock_sessions_shown')) {
+        'count' => LockSessionsShown.count,
+        'names' => LockSessionsShown.names,
+        'off' => LockSessionsShown.off,
+        _ => _prefs.getBool('lock_show_sessions') == true ? LockSessionsShown.count : LockSessionsShown.off,
+      };
+  Future<void> setLockSessionsShown(LockSessionsShown shown) async {
+    await _prefs.setString('lock_sessions_shown', shown.name);
+    await _prefs.remove('lock_show_sessions');
+  }
 
   // ── Snippet execution ───────────────────────────────────────────
 
@@ -1477,3 +1487,6 @@ const int kScrollbackMostLines = 1000000;
 /// this was given it (found in a code audit).
 int terminalScrollbackLines(int setting) =>
     setting <= 0 || setting > kScrollbackMostLines ? kScrollbackMostLines : setting;
+
+/// What ZestSSH's lock screen says of the sessions still connected behind it.
+enum LockSessionsShown { off, count, names }

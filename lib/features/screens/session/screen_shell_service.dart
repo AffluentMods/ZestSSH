@@ -143,8 +143,9 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
     this.gateway,
     this.gatewayTrust,
     this.connectTimeout = const Duration(seconds: 15),
-    this.handshakeTimeout = kScreenHandshakeTimeout,
-  }) : assert(carrier != null || target is DirectTlsTarget || (target is ProxmoxConsoleTarget && openConsole != null),
+    Duration? handshakeTimeout,
+  })  : handshakeTimeout = handshakeTimeout ?? screenHandshakeTimeout(rdp: protocol == ScreenProtocol.rdp),
+        assert(carrier != null || target is DirectTlsTarget || (target is ProxmoxConsoleTarget && openConsole != null),
             'a screen through a carrier needs its connection, a console its opening');
 
   /// How many times a password the VNC server refused is asked for again in
@@ -152,7 +153,8 @@ class ScreenShellService implements ShellService, ShellEndReason, ShellExit {
   static const maxPasswordAsks = 3;
 
   /// How long the server has, once the connection is open, to finish
-  /// connecting (ZS-1828).
+  /// connecting (ZS-1828): a minute for RDP, three for VNC
+  /// ([screenHandshakeTimeout]) unless given.
   final Duration handshakeTimeout;
 
   final ScreenTarget target;

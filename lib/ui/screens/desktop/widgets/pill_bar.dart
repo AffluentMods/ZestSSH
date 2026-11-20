@@ -183,7 +183,20 @@ class PillBar extends ConsumerWidget {
     this.tabsInBar = true,
     this.stripOnly = false,
     this.pageTitle,
+    this.editorTab,
+    this.onEditorTab,
+    this.onEditorClose,
   });
+
+  /// The file editor's tab after the session tabs (4.0.1), while it has
+  /// files: how many, how many unsaved, and whether it is the one in front.
+  final ({int files, int unsaved, bool front})? editorTab;
+
+  /// Its tab chosen: the editor in front.
+  final VoidCallback? onEditorTab;
+
+  /// Its close button: the editor's own close (which asks about changes).
+  final VoidCallback? onEditorClose;
 
   /// The workspace each open tab was opened from, by tab, with its colour.
   Map<String, _TabWorkspace> _tabWorkspaces(WidgetRef ref) => {
@@ -209,8 +222,29 @@ class PillBar extends ConsumerWidget {
   static String? _shownOf(List<String> ids, Map<String, SessionState> open) =>
       ids.where((id) => open[id] != null && !open[id]!.isHidden).firstOrNull ?? ids.firstOrNull;
 
-  /// The session tabs, in the bar or in a strip of their own.
-  Widget _tabStrip(WidgetRef ref, AppLocalizations l10n) => _SessionTabStrip(
+  /// The session tabs, in the bar or in a strip of their own, and the file
+  /// editor's after them while it is open.
+  Widget _tabStrip(WidgetRef ref, AppLocalizations l10n) {
+    final editor = editorTab;
+    final tabs = _sessionTabs(ref, l10n);
+    if (editor == null) return tabs;
+    return Row(
+      children: [
+        Flexible(child: tabs),
+        _EditorTab(
+          key: const ValueKey('tab-editor'),
+          files: editor.files,
+          unsaved: editor.unsaved,
+          active: editor.front,
+          touch: touch,
+          onTap: onEditorTab,
+          onClose: onEditorClose,
+        ),
+      ],
+    );
+  }
+
+  Widget _sessionTabs(WidgetRef ref, AppLocalizations l10n) => _SessionTabStrip(
         sessions: sessions,
         activeSessionId: activeSessionId,
         onSessionSelected: onSessionSelected,
@@ -2482,6 +2516,129 @@ class _WorkspaceChip extends StatelessWidget {
 
 /// What a session tab holds ([_SessionTab.kind]).
 enum _TabKind { terminal, local, files, screen, split }
+
+/// The file editor's tab (4.0.1): after the session tabs while the editor
+/// has files, its name saying how many; in front while the editor shows in
+/// the workspace area. Its close button is the editor's own close.
+class _EditorTab extends StatefulWidget {
+  const _EditorTab({
+    super.key,
+    required this.files,
+    required this.unsaved,
+    required this.active,
+    required this.touch,
+    this.onTap,
+    this.onClose,
+  });
+
+  final int files;
+  final int unsaved;
+  final bool active;
+  final bool touch;
+  final VoidCallback? onTap;
+  final VoidCallback? onClose;
+
+  @override
+  State<_EditorTab> createState() => _EditorTabState();
+}
+
+class _EditorTabState extends State<_EditorTab> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final label = l10n.editorMinimizedFiles(widget.files);
+    final said = widget.unsaved > 0 ? '$label, ${l10n.editorMinimizedUnsaved(widget.unsaved)}' : label;
+    return Tooltip(
+      message: widget.unsaved > 0 ? '${l10n.editorShowEditor}\n${l10n.editorMinimizedUnsaved(widget.unsaved)}' : l10n.editorShowEditor,
+      excludeFromSemantics: true,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: Semantics(
+          // A node of its own: read as a tab, not merged into the bar's.
+          container: true,
+          button: true,
+          selected: widget.active,
+          label: said,
+          onTap: widget.onTap,
+          child: GestureDetector(
+            onTap: widget.onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 120, maxWidth: 234),
+              height: widget.touch ? 44 : _kTabHeight,
+              margin: const EdgeInsets.only(right: _kTabGap),
+              decoration: BoxDecoration(
+                color: widget.active
+                    ? AppColors.v3Elevated
+                    : _hovering
+                        ? AppColors.v3Hover
+                        : AppColors.v3Surface,
+                borderRadius: BorderRadius.circular(_kTabRadius),
+                border: Border.all(
+                  color: widget.active ? AppColors.v3AccentPrimary.withValues(alpha: 0.45) : AppColors.v3BorderSubtle,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(width: 10),
+                  Icon(LucideIcons.fileCode, size: 14, color: AppColors.v3AccentInk),
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: widget.active ? AppColors.v3TextPrimary : AppColors.v3TextSecondary,
+                        fontWeight: widget.active ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (widget.unsaved > 0) ...[
+                    const SizedBox(width: 6),
+                    // Unsaved changes: a dot, as an editor's own tab marks them.
+                    Container(
+                      key: const ValueKey('tab-editor-unsaved'),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(color: AppColors.v3AccentPrimary, shape: BoxShape.circle),
+                    ),
+                  ],
+                  Tooltip(
+                    message: l10n.close,
+                    excludeFromSemantics: true,
+                    child: Semantics(
+                      container: true,
+                      button: true,
+                      label: l10n.close,
+                      excludeSemantics: true,
+                      onTap: widget.onClose,
+                      child: GestureDetector(
+                        key: const ValueKey('tab-editor-close'),
+                        onTap: widget.onClose,
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: widget.touch ? 13 : 6),
+                          child: Icon(LucideIcons.x, size: 14, color: AppColors.v3TextSecondary),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// A tab's surface, a remote screen's a cooler blue (4.0).
 extension on _SessionTabState {

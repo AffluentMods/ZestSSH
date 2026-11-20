@@ -90,7 +90,7 @@ for the platform's target on every Flutter build and test run, and the Dart side
 | `screen/` | a remote screen's session for both protocols: the frame buffer, RDP's graphics, clipboard, layout and sound (`rdp_sound.rs`, played through cpal), and RD Gateway (`rdp_gateway.rs`) |
 | `mosh/` | a Mosh client, so a Mosh host opens without a mosh program on the device |
 
-Two IronRDP crates are vendored with changes under `rust/vendor/`. The fuzz targets are in `rust/fuzz/`.
+Five IronRDP crates are vendored with changes under `rust/vendor/` (ironrdp-connector, ironrdp-dvc, ironrdp-graphics, ironrdp-rdpsnd and ironrdp-session), each with a `NOTICE-ZESTSSH` that says exactly what changed and from which upstream commit. The fuzz targets are in `rust/fuzz/`.
 
 ## The database
 

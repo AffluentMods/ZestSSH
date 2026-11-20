@@ -490,6 +490,33 @@ void main() {
       await takeDown(tester);
     });
 
+    testWidgets('how many and their names: the count, and the first three names with how many more, masked in '
+        'recording mode', (tester) async {
+      final many = {
+        ...sessions,
+        'e': const SessionState(status: SessionStatus.connected, connectionLabel: 'grafana-box'),
+        'f': const SessionState(status: SessionStatus.connected, connectionLabel: 'nas-01'),
+        'g': const SessionState(status: SessionStatus.connected, connectionLabel: 'router'),
+      };
+      await pump(tester, _Lock(), sessions: many, prefs: {'lock_sessions_shown': 'names'});
+      expect(find.text(l10n.lockSessionsConnected(5)), findsOneWidget);
+      final line = tester.widget<Text>(find.byKey(const ValueKey('lock-session-names'))).data!;
+      expect(line, l10n.lockSessionsNamesMore('web-01, db-primary, grafana-box', 2));
+      expect(line, isNot(contains('staging-api')), reason: 'not connected');
+      await takeDown(tester);
+
+      await pump(tester, _Lock(), sessions: sessions, prefs: {'lock_sessions_shown': 'names'});
+      expect(tester.widget<Text>(find.byKey(const ValueKey('lock-session-names'))).data, 'web-01, db-primary');
+      await takeDown(tester);
+    });
+
+    testWidgets('how many only: no names', (tester) async {
+      await pump(tester, _Lock(), sessions: sessions, prefs: {'lock_sessions_shown': 'count'});
+      expect(find.text(l10n.lockSessionsConnected(2)), findsOneWidget);
+      expect(find.byKey(const ValueKey('lock-session-names')), findsNothing);
+      await takeDown(tester);
+    });
+
     testWidgets('on, with none connected: no line', (tester) async {
       await pump(tester, _Lock(), sessions: {}, prefs: {'lock_show_sessions': true});
       expect(find.byKey(const ValueKey('lock-sessions')), findsNothing);

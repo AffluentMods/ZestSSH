@@ -8,6 +8,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart' show BiometricType;
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:zestssh/models/redactable.dart';
+import 'package:zestssh/ui/widgets/redacted_text.dart' show RedactableDisplay;
+import 'package:zestssh/services/settings_service.dart' show LockSessionsShown;
 import 'package:zestssh/features/shortcuts/shortcut_key.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/models/enums.dart';
@@ -658,10 +661,17 @@ class _SecurityLockScreenState extends ConsumerState<SecurityLockScreen> with Ti
     ref.watch(lockMethodProvider);
     ref.watch(isAppLockedProvider);
     final lock = _lockHere();
-    final showSessions = ref.watch(lockShowSessionsProvider);
-    final sessions = showSessions
-        ? ref.watch(activeSessionsProvider.select((all) => all.values.where((s) => s.status == SessionStatus.connected).length))
-        : 0;
+    final shown = ref.watch(lockSessionsShownProvider);
+    // The connected sessions' names, in order; only their count where the
+    // setting says how many, nothing where it says nothing.
+    final names = shown == LockSessionsShown.off
+        ? const <String>[]
+        : ref.watch(activeSessionsProvider.select((all) => [
+              for (final s in all.values)
+                if (s.status == SessionStatus.connected) s.connectionLabel,
+            ]));
+    final sessions = names.length;
+    _sessionNames = shown == LockSessionsShown.names ? names : const [];
 
     final body = _touch
         ? _PhoneLayout(screen: this, l10n: l10n, lock: lock, sessions: sessions)
@@ -859,9 +869,40 @@ class _SecurityLockScreenState extends ConsumerState<SecurityLockScreen> with Ti
         ),
       );
 
-  /// "2 sessions still connected": a count, never names (the setting's own).
-  Widget _sessionsLine(AppLocalizations l10n, int count) => Row(
-        key: const ValueKey('lock-sessions'),
+  /// The connected sessions' names, where the setting says to show them.
+  List<String> _sessionNames = const [];
+
+  /// The first three names, and how many more: "web-01, db-primary and 2
+  /// more". Each masked as recording mode masks a host's name.
+  String _namesLine(AppLocalizations l10n) {
+    final named = [for (final n in _sessionNames.take(3)) Redactable.host(n).displayIn(ref)].join(', ');
+    final more = _sessionNames.length - 3;
+    return more > 0 ? l10n.lockSessionsNamesMore(named, more) : named;
+  }
+
+  /// "2 sessions still connected", and under it their names where the
+  /// setting says to show them.
+  Widget _sessionsLine(AppLocalizations l10n, int count) => _sessionNames.isEmpty
+      ? _countLine(l10n, count)
+      : Column(
+          key: const ValueKey('lock-sessions'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _countLine(l10n, count, keyed: false),
+            const SizedBox(height: 4),
+            Text(
+              _namesLine(l10n),
+              key: const ValueKey('lock-session-names'),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12.5, height: 1.4, color: ZestTokens.textTertiary),
+            ),
+          ],
+        );
+
+  Widget _countLine(AppLocalizations l10n, int count, {bool keyed = true}) => Row(
+        key: keyed ? const ValueKey('lock-sessions') : null,
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(

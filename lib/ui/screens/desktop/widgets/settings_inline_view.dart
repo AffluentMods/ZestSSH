@@ -1,4 +1,5 @@
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:zestssh/services/settings_service.dart' show LockSessionsShown;
 import 'package:zestssh/config/official_identity.dart';
 import 'package:zestssh/features/orchards/tab_sources.dart';
 import 'package:zestssh/features/screens/model/screen_options.dart' show ScreenScaling;
@@ -2934,16 +2935,19 @@ class _ContentArea extends ConsumerWidget {
             },
           ),
         ),
-      // The lock screen says how many sessions are still connected behind it,
-      // never their names; off by default (4.0).
+      // What the lock screen says of the sessions still connected behind it:
+      // nothing by default, how many, or how many and their names (4.0.1).
       if (lockEnabled)
         _SettingRow(
           key: const ValueKey('settings-lock-sessions'),
           label: l10n.secSetLockShowSessions,
           subtitle: l10n.secSetLockShowSessionsDesc,
-          child: _Toggle(
-            value: ref.watch(lockShowSessionsProvider),
-            onChanged: (v) => updater.setLockShowSessions(v),
+          child: _Dropdown<LockSessionsShown>(
+            value: ref.watch(lockSessionsShownProvider),
+            items: [
+              for (final s in LockSessionsShown.values) ZestSelectItem(s, lockSessionsShownName(l10n, s)),
+            ],
+            onChanged: (v) => updater.setLockSessionsShown(v),
           ),
         ),
       const _SettingDivider(),

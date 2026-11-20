@@ -32,6 +32,26 @@ class EditorWorkspace extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// On a computer (4.0.1) the editor is shown in the workspace area of the
+  /// main window, where a terminal shows, with the sidebar and the session
+  /// tabs beside it; the desktop shell says so while it is up.
+  bool hostedInShell = false;
+
+  /// Where [hostedInShell]: the editor is the one in front (its tab in the
+  /// strip is). Choosing a session tab or a page puts it behind, its tabs,
+  /// their unsaved text, caret and scrolling all kept.
+  bool _front = false;
+  bool get front => _front && _docs.isNotEmpty;
+  set front(bool on) {
+    if (on == _front) return;
+    _front = on;
+    notifyListeners();
+  }
+
+  /// The hosted editor's own close (it asks about unsaved changes): what the
+  /// close button of its tab in the strip runs.
+  Future<void> Function()? closeAsked;
+
   List<EditorDocument> get docs => List.unmodifiable(_docs);
   int get length => _docs.length;
   bool get isEmpty => _docs.isEmpty;
@@ -104,7 +124,10 @@ class EditorWorkspace extends ChangeNotifier {
     _docs.removeAt(i);
     doc.removeListener(notifyListeners);
     if (_active > i || _active >= _docs.length) _active = (_active - 1).clamp(0, _docs.length);
-    if (_docs.isEmpty) _minimized = false;
+    if (_docs.isEmpty) {
+      _minimized = false;
+      _front = false;
+    }
     notifyListeners();
     doc.dispose();
   }
@@ -119,6 +142,7 @@ class EditorWorkspace extends ChangeNotifier {
     _docs.clear();
     _active = 0;
     _minimized = false;
+    _front = false;
     if (!quietly) notifyListeners();
   }
 

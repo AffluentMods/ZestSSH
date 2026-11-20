@@ -146,4 +146,20 @@ void main() {
     await h.put();
     expect(h.files, {'conf': 'new', 'conf.zestold': 'old'});
   });
+
+  test("the name a replaced file is set aside under: its own name and a tag of this upload's; a name too long for "
+      "that is set aside as a hidden file of the upload's own in its folder", () {
+    final a = SftpService.asideName('/etc/conf');
+    final b = SftpService.asideName('/etc/conf');
+    expect(a, matches(RegExp(r'^/etc/conf\.zestold-[0-9a-f]{8}$')));
+    expect(a, isNot(b), reason: 'each upload its own');
+    final long = '/srv/${'x' * 240}';
+    final aside = SftpService.asideName(long);
+    expect(aside, matches(RegExp(r'^/srv/\.zestold-[0-9a-f]{8}$')));
+    // Counted in bytes: 80 three-byte characters are 240 bytes.
+    expect(SftpService.asideName('/srv/${'中' * 80}'), matches(RegExp(r'^/srv/\.zestold-[0-9a-f]{8}$')));
+    final fits = '/srv/${'x' * 238}';
+    expect(SftpService.asideName(fits), startsWith('$fits.zestold-'), reason: '238 + 17 = 255 bytes still fits');
+    expect(SftpService.asideName('relative-name'), matches(RegExp(r'^relative-name\.zestold-[0-9a-f]{8}$')));
+  });
 }

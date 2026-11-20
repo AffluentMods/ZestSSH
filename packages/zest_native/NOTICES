@@ -5554,6 +5554,34 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
+ironrdp-connector
+
+ZestSSH's copy of ironrdp-connector (this folder) is a fork of the crate as published.
+
+  ironrdp-connector 0.12.0, https://github.com/Devolutions/IronRDP (crates/ironrdp-connector)
+  Copyright (c) Devolutions Inc. and the IronRDP contributors
+  Licensed under the MIT license or the Apache License 2.0, at your option: LICENSE-MIT and
+  LICENSE-APACHE beside this file are the crate's own.
+
+Forked on 20 November 2026 by Affluent Labs LLC for ZestSSH (4.0.1, RDP), and used in place of the
+crates.io package through [patch.crates-io] in zest_native's Cargo.toml. What came from the crate
+stays under its licence; our change follows this folder's licence too (MIT or Apache-2.0).
+
+What changed against 0.12.0, and nothing else:
+
+  - src/connection.rs: an Auto-Detect Request that comes after the connect-time phase is answered,
+    and anything else on the message channel is passed over, in every phase that waits on the
+    I/O channel. A Windows Server 2022 RD Session Host with RDS licensing sends one in the middle
+    of the licensing exchange and again before the Demand Active; each later phase handed it to
+    its own decoder, and the licensing header's "invalid security header flags" ended the
+    connection before the session opened (IronRDP issue #1629). Upstream IronRDP's own fix,
+    905c28b3a4 (#2128), line for line.
+  - The package's Cargo.toml.orig, Cargo.lock and .cargo_vcs_info.json are left out: they are
+    not used by a build from a path.
+  - Long dashes in src/lib.rs are plain hyphens: this repository keeps none. No code changed by it.
+
+When IronRDP releases the fix, this folder goes and the crate comes from crates.io again.
+--------------------------------------------------------------------------------
 ironrdp-dvc
 
 ZestSSH's copy of ironrdp-dvc (this folder) is a fork of the crate as published.

@@ -6,9 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:zestssh/database/daos/connections_dao.dart';
 import 'package:zestssh/database/database.dart' show AppDatabase, ConnectionGroup, Identity;
+import 'package:zestssh/features/hosts/state/host_multi_select.dart' show hostMultiSelectProvider;
 import 'package:zestssh/features/orchards/guardrails.dart';
+import 'package:zestssh/features/orchards/move/item_transfer.dart' show TransferKinds, TransferMode;
+import 'package:zestssh/features/orchards/move/move_copy_dialog.dart' show showMoveCopyDialog, transferOffer;
 import 'package:zestssh/features/orchards/team/team_providers.dart' show teamWatchedCratesProvider;
-import 'package:zestssh/features/orchards/widgets/orchard_ui.dart' show crateDisplayName;
+import 'package:zestssh/features/orchards/widgets/orchard_ui.dart' show crateDisplayName, orchardDisplayName;
 import 'package:zestssh/l10n/generated/app_localizations.dart';
 import 'package:zestssh/models/enums.dart' show ConnectionProtocol;
 import 'package:zestssh/models/redactable.dart';
@@ -614,6 +617,7 @@ class HostBulkEditPanelState extends ConsumerState<HostBulkEditPanel> {
     final color = _color;
     return [
       ZestSectionHeader(label: l10n.bulkSectionOrganize),
+      ?_place(l10n, hosts),
       _FieldRow(
         key: _anchors[BulkField.group],
         phone: widget.phone,
@@ -655,6 +659,87 @@ class HostBulkEditPanelState extends ConsumerState<HostBulkEditPanel> {
         ],
       ),
     ];
+  }
+
+  // ── Where they are ───────────────────────────────────────────────
+
+  /// Where the hosts are (Personal, or their team's vaults), with Move to...
+  /// and Copy to...: the same place picker, linked items question and team
+  /// rules as the selection bar's (showMoveCopyDialog checks every host).
+  /// Only where there is somewhere for them to go ([transferOffer]). A move
+  /// is not one of the fields Apply writes: with changes not applied its
+  /// buttons wait, and once any host went the editor and the selection close
+  /// (the hosts are not in this place any more).
+  Widget? _place(AppLocalizations l10n, List<ConnectionWithDetails> hosts) {
+    final ids = [for (final h in hosts) h.connection.id];
+    final offer = transferOffer(ref, TransferKinds.host, ids);
+    if (!offer.move && !offer.copy) return null;
+    final rules = ItemRules.of(ref, 'host');
+    final team = rules.orchard;
+    final places = [
+      for (final id in ids)
+        if (team == null)
+          l10n.treeSelectorPersonal
+        else
+          () {
+            final crateId = rules.crates[id] ?? team.defaultCrateId;
+            final crate = team.crates.where((c) => c.id == crateId).firstOrNull;
+            final vault = crate == null ? l10n.crateUnnamed : crateDisplayName(crate, l10n);
+            return Redactable.freeText('${orchardDisplayName(team.name, l10n)} / $vault').displayIn(ref);
+          }(),
+    ];
+    final waiting = edit.changeCount > 0;
+    final on = !waiting && !_busy && !rules.loading;
+    return _FieldRow(
+      phone: widget.phone,
+      label: l10n.bulkFieldPlace,
+      note: waiting ? l10n.bulkPlaceApplyFirst : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 8),
+            child: Text(
+              _summary(l10n, places),
+              key: const ValueKey('bulk-field-place'),
+              style: TextStyle(fontSize: 13, color: ZestTokens.textSecondary),
+            ),
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (offer.move)
+                ZestButton(
+                  key: const ValueKey('bulk-place-move'),
+                  label: l10n.transferMoveTo,
+                  icon: LucideIcons.folderInput,
+                  size: ZestButtonSize.medium,
+                  variant: ZestButtonVariant.secondary,
+                  onPressed: on ? () => _transfer(ids, TransferMode.move) : null,
+                ),
+              if (offer.copy)
+                ZestButton(
+                  key: const ValueKey('bulk-place-copy'),
+                  label: l10n.transferCopyTo,
+                  icon: LucideIcons.copyPlus,
+                  size: ZestButtonSize.medium,
+                  variant: ZestButtonVariant.secondary,
+                  onPressed: on ? () => _transfer(ids, TransferMode.copy) : null,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _transfer(List<String> ids, TransferMode mode) async {
+    final selection = ref.read(hostMultiSelectProvider.notifier);
+    final result = await showMoveCopyDialog(context, ref, kind: TransferKinds.host, keys: ids, mode: mode);
+    if (result == null || result.done == 0 || !mounted) return;
+    widget.onClose();
+    selection.exit();
   }
 
   // ── Apply ────────────────────────────────────────────────────────

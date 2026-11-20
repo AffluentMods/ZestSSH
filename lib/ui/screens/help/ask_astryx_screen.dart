@@ -722,6 +722,7 @@ class _AskAstryxScreenState extends ConsumerState<AskAstryxScreen> {
             AssistantBlock.dailyLimit => l10n.astryxLimitTitle,
             AssistantBlock.capReached => l10n.astryxCapTitle,
             AssistantBlock.planUnknown => l10n.astryxPlanUnknownTitle,
+            AssistantBlock.region => l10n.astryxRegionTitle,
             AssistantBlock.off || null => l10n.astryxOffTitle,
           },
       };
@@ -835,6 +836,12 @@ class _AskAstryxScreenState extends ConsumerState<AskAstryxScreen> {
               _Tone.warn,
               ErrorCodes.withCode(l10n.astryxPlanUnknownBody, ErrorCodes.assistantPlanUnknown),
               [retryButtonFor(l10n), details()],
+            ),
+          AssistantBlock.region => (
+              LucideIcons.globe,
+              _Tone.neutral,
+              l10n.astryxRegionBody,
+              [if (guides != null) guidesButton(), if (support != null) supportButton()],
             ),
           AssistantBlock.off || null => (
               LucideIcons.power,

@@ -1670,11 +1670,19 @@ class SftpService {
   }
 
   /// Where one upload moves the file it replaces aside ([_putInPlace]): beside
-  /// it, under a name of this upload's own.
+  /// it, under a name of this upload's own. A name so long that the 17
+  /// characters added would pass the 255 bytes a file name may have on most
+  /// servers is set aside as a hidden file of the upload's own in the same
+  /// folder instead.
   @visibleForTesting
   static String asideName(String destination, [Random? random]) {
     final r = random ?? Random.secure();
     final tag = [for (var i = 0; i < 4; i++) r.nextInt(256).toRadixString(16).padLeft(2, '0')].join();
+    final cut = destination.lastIndexOf('/');
+    final name = destination.substring(cut + 1);
+    if (utf8.encode(name).length + '.zestold-'.length + tag.length > 255) {
+      return '${destination.substring(0, cut + 1)}.zestold-$tag';
+    }
     return '$destination.zestold-$tag';
   }
 

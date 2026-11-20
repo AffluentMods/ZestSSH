@@ -1,4 +1,5 @@
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:zestssh/services/settings_service.dart' show LockSessionsShown;
 import 'package:zestssh/ui/screens/settings/widgets/settings_section.dart';
 import 'dart:io';
 
@@ -103,15 +104,27 @@ class _SecuritySettingsScreenState
               // in front (3.0).
               if (lockOn) _autoLockTile(l10n),
               if (lockOn) _idleLockTile(l10n),
-              // The lock screen says how many sessions are still connected
-              // behind it, never their names; off by default (4.0).
+              // What the lock screen says of the sessions still connected
+              // behind it: nothing by default, how many, or how many and
+              // their names (4.0.1). What it is set to in sight.
               if (lockOn)
-                SwitchListTile(
+                ListTile(
                   key: const ValueKey('security-lock-sessions'),
+                  leading: const PhoneIconTile(LucideIcons.terminalSquare),
                   title: FoldedHelpTitle(setting: l10n.secSetLockShowSessions, help: l10n.secSetLockShowSessionsDesc),
-                  secondary: const PhoneIconTile(LucideIcons.terminalSquare),
-                  value: ref.watch(lockShowSessionsProvider),
-                  onChanged: (v) => ref.read(settingsUpdaterProvider).setLockShowSessions(v),
+                  subtitle: Text(lockSessionsShownName(l10n, ref.watch(lockSessionsShownProvider))),
+                  trailing: const Icon(LucideIcons.chevronRight),
+                  onTap: () async {
+                    final picked = await showSettingsChoice<LockSessionsShown>(
+                      context,
+                      title: l10n.secSetLockShowSessions,
+                      icon: LucideIcons.terminalSquare,
+                      current: ref.read(lockSessionsShownProvider),
+                      choices: [for (final s in LockSessionsShown.values) (s, lockSessionsShownName(l10n, s))],
+                    );
+                    if (picked == null) return;
+                    await ref.read(settingsUpdaterProvider).setLockSessionsShown(picked.$1);
+                  },
                 ),
               ],
             ),

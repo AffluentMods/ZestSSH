@@ -102,6 +102,12 @@ class TextEditorScreen extends ConsumerStatefulWidget {
   /// the main window's own where null (on a computer).
   final EditorWindowLink? link;
 
+  /// Shown by the desktop shell in its workspace area, not as a page over
+  /// the whole window (4.0.1, [EditorWorkspace.hostedInShell]): it goes
+  /// behind and comes back with its tab in the strip, and closing it closes
+  /// its files in place of leaving a page.
+  final bool hosted;
+
   const TextEditorScreen({
     super.key,
     required this.fileName,
@@ -120,7 +126,8 @@ class TextEditorScreen extends ConsumerStatefulWidget {
     this.onMinimapChanged,
     this.encoding,
     this.link,
-  }) : tabs = false;
+  })  : tabs = false,
+        hosted = false;
 
   /// The app's tabs ([editorWorkspaceProvider]): the main window's, or, with
   /// [link], a window of its own's (which is handed its settings).
@@ -133,6 +140,7 @@ class TextEditorScreen extends ConsumerStatefulWidget {
     this.onNanoKeysChanged,
     this.initialMinimap,
     this.onMinimapChanged,
+    this.hosted = false,
   })  : tabs = true,
         fileName = '',
         initialContent = '',
@@ -262,6 +270,11 @@ Future<bool> makeRoomFor(BuildContext context, EditorWorkspace ws, String fileNa
 void showEditorTabs(BuildContext context) {
   final ws = ProviderScope.containerOf(context).read(editorWorkspaceProvider);
   ws.minimized = false;
+  // On a computer the shell shows it in its workspace area, in front.
+  if (ws.hostedInShell) {
+    ws.front = true;
+    return;
+  }
   if (ws.shown || ws.isEmpty) return;
   unawaited(Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TextEditorScreen.tabs())));
 }
@@ -333,6 +346,7 @@ class _TextEditorScreenState extends ConsumerState<TextEditorScreen> {
     if (widget.tabs) {
       _ws = ref.read(editorWorkspaceProvider);
       _ws.shownBy = this;
+      if (widget.hosted) _ws.closeAsked = _closeAll;
     } else {
       _ws = EditorWorkspace();
       _ws.add(_handedDoc());
@@ -400,6 +414,19 @@ class _TextEditorScreenState extends ConsumerState<TextEditorScreen> {
     }
   }
 
+  /// A hosted editor put behind (a session tab or a page chosen): where each
+  /// file was scrolled to is kept for when it comes back. (Here, before its
+  /// code is taken down with the scrolling it reads.)
+  @override
+  void deactivate() {
+    if (widget.hosted) {
+      for (final d in _ws.docs) {
+        _noteScroll(d);
+      }
+    }
+    super.deactivate();
+  }
+
   @override
   void dispose() {
     stopKeepingTopToastsBelow(_phoneTopBar);
@@ -422,8 +449,11 @@ class _TextEditorScreenState extends ConsumerState<TextEditorScreen> {
       // the one showing them any more.
       if (identical(_ws.shownBy, this)) {
         _ws.shownBy = null;
-        _ws.clear(quietly: true);
+        // A hosted editor put behind keeps its tabs; one that closed has
+        // cleared them already (_leave).
+        if (!widget.hosted) _ws.clear(quietly: true);
       }
+      if (identical(_ws.closeAsked, _closeAll)) _ws.closeAsked = null;
     } else {
       _ws.clear(quietly: true);
       _ws.dispose();
@@ -971,12 +1001,19 @@ class _TextEditorScreenState extends ConsumerState<TextEditorScreen> {
       widget.link!.lastClosed();
       return;
     }
+    if (widget.hosted) {
+      // Its files close, and the workspace area shows what was in front
+      // before (the shell puts it behind as it empties).
+      _ws.shownBy = null;
+      _ws.clear();
+      return;
+    }
     final navigator = Navigator.of(context);
     if (navigator.canPop()) navigator.pop();
   }
 
   /// Whether the editor can be minimized: the main window's, on a computer.
-  bool get _canMinimize => widget.tabs && _inMainWindow && isDesktopPlatform && !_phone;
+  bool get _canMinimize => widget.tabs && _inMainWindow && isDesktopPlatform && !_phone && !widget.hosted;
 
   /// Puts the editor away to the status bar (3.4.1): every tab stays, with
   /// its unsaved text, caret and scrolling; the status bar's chip, or a file

@@ -178,6 +178,21 @@ void main() {
       expect(r.keyboard.held, isEmpty);
     });
 
+    test('a clipboard that never answers holds the keys back no longer than the paste wait; its late answer sends '
+        'nothing twice', () async {
+      final r = _Rig()..sendOnPaste();
+      r.keyboard.pasteWait = const Duration(milliseconds: 40);
+      r.ctrl();
+      r.v();
+      r.vUp();
+      r.down(PhysicalKeyboardKey.keyA, LogicalKeyboardKey.keyA, 'a');
+      expect(r.log, ['down $_ctrl']);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(r.log, ['down $_ctrl', 'down $_v', 'up $_v', 'down 61'], reason: 'the keys went after the wait');
+      await r.done();
+      expect(r.log, ['down $_ctrl', 'down $_v', 'up $_v', 'down 61', 'clipboard'], reason: 'no key sent again');
+    });
+
     test('Shift+Insert pastes too; Ctrl+Shift+V as a terminal has it', () async {
       final r = _Rig()..sendOnPaste();
       r.down(PhysicalKeyboardKey.shiftLeft, LogicalKeyboardKey.shiftLeft);

@@ -399,6 +399,63 @@ void main() {
     });
   });
 
+  group('off the picture', () {
+    testWidgets('over the bars beside a fitted picture the system pointer shows, the remote one stays put, and a '
+        'click there clicks nothing; a drag from the picture still goes to its edge', (tester) async {
+      // 64 x 40 at one to one in 400 x 250: the picture from (168, 105) to (232, 145), bars all round.
+      final rig = await ScreenRig.connect(tester, width: 64, height: 40);
+      await pumpView(tester, rig.controller);
+      rig.frame([tile(0, 0, 64, 40, blue)]);
+      final shape = BytesBuilder()
+        ..add([4, 0, 4, 0, 1, 0, 1, 0])
+        ..add(solid(green, 16));
+      rig.engine.emit(ScreenEventKind.cursor, data: shape.toBytes());
+      await settleFrames(tester);
+      final c = rig.controller;
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: const Offset(178.5, 115.5));
+      await mouse.moveTo(const Offset(178.5, 115.5));
+      await tester.pump();
+      expect(rig.takePointers().last, (10, 10, 0));
+      expect(c.mouseCursor, SystemMouseCursors.none, reason: "the remote's shape is drawn on the picture");
+      expect(c.cursorDraw, (ScreenCursorDraw.remote, 10, 10));
+
+      // Into the bar on the right (where full screen's handle is) and the one on the left.
+      for (final bar in const [Offset(320, 120), Offset(40, 120)]) {
+        await mouse.moveTo(bar);
+        await tester.pump();
+        expect(rig.takePointers(), isEmpty, reason: 'nothing goes to the remote from $bar');
+        expect(c.mouseCursor, SystemMouseCursors.basic, reason: 'the system pointer shows at $bar');
+        expect(c.cursorDraw.$1, ScreenCursorDraw.none, reason: "the remote's is not drawn at the edge");
+      }
+      // A click on a bar clicks nothing on the remote.
+      await mouse.down(const Offset(40, 120));
+      await mouse.up();
+      expect(rig.takePointers(), isEmpty);
+
+      // Back on the picture: it goes there again, the remote's shape in place of the system's.
+      await mouse.moveTo(const Offset(200.5, 120.5));
+      await tester.pump();
+      expect(rig.takePointers().last, (32, 15, 0));
+      expect(c.mouseCursor, SystemMouseCursors.none);
+
+      // A drag from the picture into the bar: to the picture's edge, and let go there.
+      await mouse.down(const Offset(200.5, 120.5));
+      expect(rig.takePointers().last, (32, 15, ScreenButtons.left));
+      await mouse.moveTo(const Offset(320, 120.5));
+      expect(rig.takePointers().last, (63, 15, ScreenButtons.left));
+      await mouse.up();
+      expect(rig.takePointers().last, (63, 15, 0));
+      // Let go: the bar is the bar again.
+      await mouse.moveTo(const Offset(330, 120.5));
+      await tester.pump();
+      expect(rig.takePointers(), isEmpty);
+      expect(c.mouseCursor, SystemMouseCursors.basic);
+    });
+  });
+
   group('fingers', () {
     Future<ScreenRig> touchRig(WidgetTester tester, {Size view = const Size(400, 250), int w = 800, int h = 500}) async {
       final rig = await ScreenRig.connect(tester, width: w, height: h);

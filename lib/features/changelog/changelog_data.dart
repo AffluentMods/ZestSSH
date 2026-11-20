@@ -41,6 +41,26 @@ class ChangelogEntry {
 /// Every release, newest first. The first entry is the current version.
 const List<ChangelogEntry> kChangelog = [
   ChangelogEntry(
+    version: "4.0.1",
+    date: "November 2026",
+    tag: "Room to Work",
+    sections: [
+      ChangelogSection(ChangelogCategory.improvements, [
+        ChangelogNote("The file editor on a computer no longer covers the whole window: it opens where your terminals are, with the sidebar and the session tabs beside it, and has a tab of its own after the session tabs. Go to a terminal and back without losing a file, its unsaved text or where you were"),
+        ChangelogNote("Edit for several hosts has a Where field: where the hosts are, with Move to and Copy to, to Personal or any team vault you can add to, with the same team rules as moving one host"),
+        ChangelogNote("The lock screen can show nothing, how many sessions are still connected, or how many and their names (Settings > Security and privacy)"),
+        ChangelogNote("A VNC server has three minutes to finish connecting, enough for a person at that computer to allow the connection; an RDP server still has one"),
+        ChangelogNote("Ask Astryx is no longer offered on an iPhone or iPad whose App Store account is in mainland China, so ZestSSH can be offered on the App Store there again. The guides and support tickets work as always"),
+      ]),
+      ChangelogSection(ChangelogCategory.fixes, [
+        ChangelogNote("Remote screens: the mouse moves freely over the bars beside a picture smaller than its view, so in full screen the handle that opens the session panel can be reached; the pointer showed as held at the picture's sides, and a click on a bar clicked the remote's edge"),
+        ChangelogNote("RDP to a Windows Server 2022 Remote Desktop Session Host with RDS licensing connects instead of ending with invalid security header flags"),
+        ChangelogNote("Remote screens: a paste waits no longer than 2 seconds for this device's clipboard before its keys go"),
+        ChangelogNote("SFTP: replacing a file with a very long name on a server without the one-step rename no longer fails"),
+      ]),
+    ],
+  ),
+  ChangelogEntry(
     version: "4.0.0",
     date: "November 20, 2026",
     tag: "The Everything Update",
