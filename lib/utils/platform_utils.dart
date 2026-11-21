@@ -32,10 +32,42 @@ const double kLargeScreenWidth = 840;
 bool isLargeScreen(Size size) =>
     size.shortestSide >= kLargeScreenShortestSide && size.width >= kLargeScreenWidth;
 
+/// Whether a screen of [size] is a large screen held one way or the other
+/// (a tablet upright is not a large screen, and is one once turned): the
+/// devices whose Settings offer [LargeScreenLayout].
+bool canBeLargeScreen(Size size) =>
+    size.shortestSide >= kLargeScreenShortestSide && size.longestSide >= kLargeScreenWidth;
+
+/// What a tablet's large screen shows (4.1.1): the computer's shell, as
+/// since 4.0, or the phone's tabs however the tablet is held. A tablet with
+/// a keyboard is kept on its side, so turning it upright for the tabs was no
+/// way to get them (a report of 4.0.0).
+enum LargeScreenLayout {
+  computer,
+  tabs;
+
+  /// The choice kept under [kLargeScreenLayoutKey]; anything else is the
+  /// computer's shell.
+  static LargeScreenLayout of(String? kept) => kept == 'tabs' ? tabs : computer;
+}
+
+/// Where this device's choice of [LargeScreenLayout] is kept.
+const String kLargeScreenLayoutKey = 'large_screen_layout';
+
+/// This device's choice, for what has no provider to ask: set at start
+/// (main.dart) and by largeScreenLayoutProvider, which the app's Home
+/// watches.
+LargeScreenLayout largeScreenLayout = LargeScreenLayout.computer;
+
+/// Whether a phone's or a tablet's screen of [size] has the computer's
+/// shell: a large screen ([isLargeScreen]), unless this device keeps the
+/// phone's tabs ([largeScreenLayout]).
+bool hasLargeScreenShell(Size size) => largeScreenLayout == LargeScreenLayout.computer && isLargeScreen(size);
+
 /// Whether Home is the computer's shell here: on a computer always; on a
-/// phone or a tablet while its screen is a large screen ([isLargeScreen]).
+/// phone or a tablet while its screen has it ([hasLargeScreenShell]).
 /// Turning the device can change it.
-bool usesDesktopShell(BuildContext context) => !isTouchLayout || isLargeScreen(MediaQuery.sizeOf(context));
+bool usesDesktopShell(BuildContext context) => !isTouchLayout || hasLargeScreenShell(MediaQuery.sizeOf(context));
 
 /// How many of the computer's shells stand on a phone's or a tablet's screen
 /// (0 or 1): DesktopShell counts itself there while it is up.

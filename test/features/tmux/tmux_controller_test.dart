@@ -298,6 +298,30 @@ void main() {
       expect(_paneText(c, '@1'), isNot(contains('stale')));
     });
 
+    // A new session starts 80 by 24 and is sized to the app's panes in the
+    // middle of its first sync, so tmux writes the pane's reply and the
+    // layout change back to back.
+    test("a layout change in the same read as the pane's reply: the newer size is kept, and asked for again",
+        () async {
+      c.onData(utf8.encode(_onePane));
+      expect(countSent('display-message -p -t %0'), 1);
+      c.onData(utf8.encode(block(1, [paneInfo('%0', '@1')]) +
+          '%layout-change @1 bc62,100x19,0,0,0 bc62,100x19,0,0,0 *\n'));
+      await pumpEventQueue();
+      final p = c.windows.single.panes['%0']!;
+      expect(countSent('capture-pane'), 0, reason: "nothing captured at a size that is no longer the pane's");
+      expect(countSent('display-message -p -t %0'), 2, reason: 'the pane is asked again');
+      c.onData(utf8.encode(block(2, [paneInfo('%0', '@1', w: 100, h: 19)])));
+      await pumpEventQueue();
+      expect(countSent('capture-pane'), 1);
+      c.onData(utf8.encode(block(3, [r'$ prompt', for (var i = 0; i < 18; i++) ''])));
+      await pumpEventQueue();
+      expect(p.awaitingCapture, isFalse);
+      expect(p.terminal.viewWidth, 100);
+      expect(p.terminal.viewHeight, 19, reason: 'not the 24 rows the session started with');
+      expect(_paneText(c, '@1'), contains(r'$ prompt'));
+    });
+
     test('forceExit sends the empty line that detaches a control client', () {
       c.forceExit();
       expect(sent.last, '\n');

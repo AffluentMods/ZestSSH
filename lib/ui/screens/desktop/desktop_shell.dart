@@ -150,6 +150,7 @@ import 'package:zestssh/ui/screens/desktop/app_closing.dart';
 import 'package:zestssh/providers/security_providers.dart' show isAppLockedProvider;
 import 'package:zestssh/services/shortcut_service.dart';
 import 'package:zestssh/ui/screens/home/app_icon_shortcuts.dart';
+import 'package:zestssh/ui/screens/terminal/hardware_keyboard_use.dart' show hardwareKeyboardUseProvider;
 import 'package:zestssh/utils/platform_utils.dart' show isTouchLayout, touchDesktopShells;
 import 'package:zestssh/features/orchards/setup/setup_command_host.dart' show restoresSavedTabsAtStart;
 import 'package:zestssh/utils/after_next_frame.dart';
@@ -371,6 +372,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   /// Returns true if the shortcut was handled (prevents propagation).
   bool _hardwareKeyHandler(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
+    if (isTouchLayout && _terminalHasFocus()) {
+      ref.read(hardwareKeyboardUseProvider.notifier).key(event);
+    }
     // Lock ZestSSH works from anywhere, to step away at once (4.0): Settings, a
     // dialog, the Support Hub or a terminal in front. The lock is drawn over the
     // app's navigator, so it covers whatever is open. Its default

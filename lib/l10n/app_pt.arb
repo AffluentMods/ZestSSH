@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "A tecla Windows, Alt+Tab, Alt+Esc, Ctrl+Esc, Alt+Espaço, Alt+F4, Print Screen e a tecla de menu vão para o computador remoto enquanto um ecrã em ecrã inteiro tem o teclado, como na própria app Área de Trabalho Remota do Windows. Ctrl+Alt+Pause sai do ecrã inteiro; Ctrl+Alt+Del e Windows+L continuam a ser deste PC.",
   "screenAllMonitors": "Ecrã inteiro em todos os monitores",
   "screenAllMonitorsFailed": "A janela não conseguiu cobrir todos os monitores. O ecrã fica como estava.",
-  "screenHelpAllMonitors": "O computador remoto recebe um ecrã por cada monitor deste PC, com o seu tamanho e escala, e a janela cobre-os a todos. Ctrl+Alt+Pause sai."
+  "screenHelpAllMonitors": "O computador remoto recebe um ecrã por cada monitor deste PC, com o seu tamanho e escala, e a janela cobre-os a todos. Ctrl+Alt+Pause sai.",
+  "largeLayoutLabel": "Layout em ecrã grande",
+  "largeLayoutDesc": "Um tablet suficientemente largo mostra o layout de computador: barra lateral, separadores e painéis divididos. Escolha Separadores para manter os separadores do telefone, seja como for que segure o tablet.",
+  "largeLayoutComputer": "Layout de computador",
+  "largeLayoutTabs": "Separadores"
 }

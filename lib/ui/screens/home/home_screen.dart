@@ -49,7 +49,7 @@ import 'package:zestssh/theme/app_colors.dart';
 import 'package:zestssh/theme/zest_tokens.dart';
 import 'package:zestssh/ui/widgets/phone_list.dart';
 import 'package:zestssh/ui/screens/home/app_icon_shortcuts.dart';
-import 'package:zestssh/utils/platform_utils.dart' show isLargeScreen;
+import 'package:zestssh/utils/platform_utils.dart' show hasLargeScreenShell;
 import 'package:zestssh/ui/screens/home/widgets/quick_connect_bar.dart';
 import 'package:zestssh/ui/screens/home/widgets/more_tab.dart';
 import 'package:zestssh/ui/screens/monitoring/server_monitor_screen.dart';
@@ -93,7 +93,7 @@ import 'package:zestssh/l10n/time_text.dart';
 /// the phone's tabs exactly, a small tablet held
 /// upright included; a large screen has the computer's shell). The 3.0
 /// tablet tabs (Hosts, Snippets, Sessions, Monitor, More) are gone.
-bool usesPhoneTabs(BuildContext context) => !isLargeScreen(MediaQuery.sizeOf(context));
+bool usesPhoneTabs(BuildContext context) => !hasLargeScreenShell(MediaQuery.sizeOf(context));
 
 /// The two parts of a phone's Manage tab.
 enum ManageSection { keys, portForwards }

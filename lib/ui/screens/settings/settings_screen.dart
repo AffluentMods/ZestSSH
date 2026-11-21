@@ -350,6 +350,31 @@ class _SettingsBodyState extends ConsumerState<SettingsBody> {
               subtitleMaxLines: null,
               onTap: () => showLanguagePickerDialog(context, ref),
             ),
+            // A tablet (4.1.1): what its large screen shows, the computer
+            // layout or these tabs however it is held.
+            if (canBeLargeScreen(MediaQuery.sizeOf(context)))
+              PhoneListRow(
+                key: const ValueKey('settings-large-layout'),
+                icon: LucideIcons.layoutDashboard,
+                title: name(l10n.largeLayoutLabel),
+                subtitle: ref.watch(largeScreenLayoutProvider) == LargeScreenLayout.tabs
+                    ? l10n.largeLayoutTabs
+                    : l10n.largeLayoutComputer,
+                subtitleMaxLines: null,
+                onTap: () async {
+                  final picked = await showZestChoice<LargeScreenLayout>(
+                    context,
+                    title: l10n.largeLayoutLabel,
+                    subtitle: l10n.largeLayoutDesc,
+                    selected: ref.read(largeScreenLayoutProvider),
+                    choices: [
+                      ZestChoice(value: LargeScreenLayout.computer, label: l10n.largeLayoutComputer),
+                      ZestChoice(value: LargeScreenLayout.tabs, label: l10n.largeLayoutTabs),
+                    ],
+                  );
+                  if (picked != null) ref.read(largeScreenLayoutProvider.notifier).set(picked);
+                },
+              ),
             PhoneListRow(
               key: const ValueKey('settings-appearance'),
               icon: LucideIcons.palette,

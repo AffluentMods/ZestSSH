@@ -485,6 +485,9 @@ void _runMainWindow() {
       }
     }
 
+    // A tablet's choice for its large screen (4.1.1), before the first screen asks.
+    largeScreenLayout = LargeScreenLayout.of(prefs.getString(kLargeScreenLayoutKey));
+
     // Initialise desktop services (window manager + system tray)
     if (isDesktopPlatform) {
       await WindowService.init(prefs);

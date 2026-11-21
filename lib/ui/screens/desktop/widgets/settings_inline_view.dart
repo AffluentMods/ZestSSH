@@ -20,7 +20,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zestssh/theme/ui_density.dart' show UiDensity, setUiDensity, uiDensityProvider;
-import 'package:zestssh/utils/platform_utils.dart' show isDesktopPlatform, isTouchLayout;
+import 'package:zestssh/utils/platform_utils.dart' show LargeScreenLayout, isDesktopPlatform, isTouchLayout;
 import 'package:zestssh/features/mcp/mcp_service.dart';
 import 'package:zestssh/features/screens/this_pc/this_pc_remote_access_dialog.dart' show showThisPcRemoteAccess;
 import 'package:zestssh/features/mcp/widgets/mcp_settings_parts.dart';
@@ -1105,6 +1105,17 @@ class _SettingSearchSpec {
   const _SettingSearchSpec(this.section, this.title, [this.subtitle])
       : macOnly = false,
         windowsOnly = false,
+        touchOnly = false,
+        byName = false,
+        plans = false,
+        computerOnly = false;
+
+  /// A row a tablet's Settings has alone (the large screen's layout, 4.1.1):
+  /// found on a phone or a tablet only.
+  const _SettingSearchSpec.touchOnly(this.section, this.title, [this.subtitle])
+      : macOnly = false,
+        windowsOnly = false,
+        touchOnly = true,
         byName = false,
         plans = false,
         computerOnly = false;
@@ -1114,6 +1125,7 @@ class _SettingSearchSpec {
   const _SettingSearchSpec.windowsOnly(this.section, this.title, [this.subtitle])
       : macOnly = false,
         windowsOnly = true,
+        touchOnly = false,
         byName = false,
         plans = false,
         computerOnly = false;
@@ -1122,6 +1134,7 @@ class _SettingSearchSpec {
   const _SettingSearchSpec.macOnly(this.section, this.title, [this.subtitle])
       : macOnly = true,
         windowsOnly = false,
+        touchOnly = false,
         byName = false,
         plans = false,
         computerOnly = false;
@@ -1132,6 +1145,7 @@ class _SettingSearchSpec {
   const _SettingSearchSpec.computerOnly(this.section, this.title, [this.subtitle])
       : macOnly = false,
         windowsOnly = false,
+        touchOnly = false,
         byName = false,
         plans = false,
         computerOnly = true;
@@ -1141,6 +1155,7 @@ class _SettingSearchSpec {
   const _SettingSearchSpec.plans(this.section, this.title, [this.subtitle])
       : macOnly = false,
         windowsOnly = false,
+        touchOnly = false,
         byName = false,
         plans = true,
         computerOnly = false;
@@ -1152,6 +1167,7 @@ class _SettingSearchSpec {
   const _SettingSearchSpec.page(this.section, this.title, [this.subtitle])
       : macOnly = false,
         windowsOnly = false,
+        touchOnly = false,
         byName = true,
         plans = false,
         computerOnly = false;
@@ -1161,6 +1177,7 @@ class _SettingSearchSpec {
   final String Function(AppLocalizations l)? subtitle;
   final bool macOnly;
   final bool windowsOnly;
+  final bool touchOnly;
   final bool byName;
   final bool plans;
   final bool computerOnly;
@@ -1215,6 +1232,7 @@ final List<_SettingSearchSpec> _kSettingsSearchIndex = [
   _SettingSearchSpec.page(_SettingsSection.plan, (l) => l.settingsMobRedeemCode, (l) => l.settingsMobRedeemCodeDesc),
   // General
   _SettingSearchSpec(_SettingsSection.general, (l) => l.settingsLanguage, (l) => l.settingsLanguageSubtitle),
+  _SettingSearchSpec.touchOnly(_SettingsSection.general, (l) => l.largeLayoutLabel, (l) => l.largeLayoutDesc),
   _SettingSearchSpec.computerOnly(_SettingsSection.general, (l) => l.settingsInlineCloseToTray, (l) => l.settingsInlineCloseToTrayDesc),
   _SettingSearchSpec.computerOnly(_SettingsSection.general, (l) => l.settingsConfirmCloseWindow, (l) => l.settingsConfirmCloseWindowDesc),
   _SettingSearchSpec.computerOnly(_SettingsSection.general, (l) => l.settingsInlineAutoRestore, (l) => l.settingsInlineAutoRestoreDesc),
@@ -1687,6 +1705,7 @@ class _ContentArea extends ConsumerWidget {
     for (final spec in _kSettingsSearchIndex) {
       if (spec.macOnly && defaultTargetPlatform != TargetPlatform.macOS) continue;
       if (spec.windowsOnly && defaultTargetPlatform != TargetPlatform.windows) continue;
+      if (spec.touchOnly && !isTouchLayout) continue;
       if (spec.computerOnly && isTouchLayout) continue;
       if (!_sectionShown(spec.section)) continue;
       if (identical(spec, _kMoshSearchSpec) && !moshSystemClientOffered) continue;
@@ -2098,6 +2117,25 @@ class _ContentArea extends ConsumerWidget {
           onTap: () => showLanguagePickerDialog(context, ref),
         ),
       ),
+      // A tablet's large screen (4.1.1): this layout, or the phone's tabs
+      // however it is held. Choosing the tabs closes Settings first: Home
+      // becomes the phone's, whose Settings is a page of its own.
+      if (isTouchLayout)
+        _SettingRow(
+          label: l10n.largeLayoutLabel,
+          subtitle: l10n.largeLayoutDesc,
+          child: _Dropdown<LargeScreenLayout>(
+            value: ref.watch(largeScreenLayoutProvider),
+            items: [
+              ZestSelectItem(LargeScreenLayout.computer, l10n.largeLayoutComputer),
+              ZestSelectItem(LargeScreenLayout.tabs, l10n.largeLayoutTabs),
+            ],
+            onChanged: (v) {
+              if (v == LargeScreenLayout.tabs) Navigator.of(context, rootNavigator: true).maybePop();
+              ref.read(largeScreenLayoutProvider.notifier).set(v);
+            },
+          ),
+        ),
       // A computer's window (its close, the tray, its sessions restored at
       // start): a tablet's app has none of its own (4.0), and these did
       // nothing there.

@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "全画面の画面がキーボードを受け取っている間、Windows キー、Alt+Tab、Alt+Esc、Ctrl+Esc、Alt+Space、Alt+F4、Print Screen、メニュー キーをリモートに送ります。Windows 自身のリモート デスクトップ アプリと同じです。Ctrl+Alt+Break で全画面を終了します。Ctrl+Alt+Del と Windows+L はこの PC のままです。",
   "screenAllMonitors": "すべてのモニターで全画面",
   "screenAllMonitorsFailed": "ウィンドウですべてのモニターを覆えませんでした。画面は元のままです。",
-  "screenHelpAllMonitors": "リモートには、この PC のモニターごとに、そのサイズと拡大率のディスプレイが 1 つずつ用意され、ウィンドウがすべてを覆います。Ctrl+Alt+Break で終了します。"
+  "screenHelpAllMonitors": "リモートには、この PC のモニターごとに、そのサイズと拡大率のディスプレイが 1 つずつ用意され、ウィンドウがすべてを覆います。Ctrl+Alt+Break で終了します。",
+  "largeLayoutLabel": "大きな画面でのレイアウト",
+  "largeLayoutDesc": "十分に幅のあるタブレットでは、サイドバー、タブ、分割ペインのあるコンピューター用レイアウトが表示されます。タブレットの向きにかかわらずスマートフォンのタブを使うには「タブ」を選んでください。",
+  "largeLayoutComputer": "コンピューター用レイアウト",
+  "largeLayoutTabs": "タブ"
 }

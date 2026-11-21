@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "Il tasto Windows, Alt+Tab, Alt+Esc, Ctrl+Esc, Alt+Spazio, Alt+F4, Stamp e il tasto menu vanno al computer remoto mentre uno schermo a schermo intero ha la tastiera, come nell'app Desktop remoto di Windows. Ctrl+Alt+Pausa esce dallo schermo intero; Ctrl+Alt+Canc e Windows+L restano di questo PC.",
   "screenAllMonitors": "Schermo intero su tutti i monitor",
   "screenAllMonitorsFailed": "La finestra non ha potuto coprire tutti i monitor. Lo schermo resta com'era.",
-  "screenHelpAllMonitors": "Il computer remoto riceve uno schermo per ogni monitor di questo PC, con le sue dimensioni e il suo ridimensionamento, e la finestra li copre tutti. Ctrl+Alt+Pausa esce."
+  "screenHelpAllMonitors": "Il computer remoto riceve uno schermo per ogni monitor di questo PC, con le sue dimensioni e il suo ridimensionamento, e la finestra li copre tutti. Ctrl+Alt+Pausa esce.",
+  "largeLayoutLabel": "Layout su schermo grande",
+  "largeLayoutDesc": "Un tablet abbastanza largo mostra il layout da computer: barra laterale, schede e riquadri divisi. Scegli Schede per mantenere le schede del telefono comunque sia tenuto il tablet.",
+  "largeLayoutComputer": "Layout da computer",
+  "largeLayoutTabs": "Schede"
 }

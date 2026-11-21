@@ -26038,5 +26038,13 @@
   "screenAllMonitorsFailed": "The window could not cover all the monitors. The screen stays as it was.",
   "@screenAllMonitorsFailed": {"description": "Snackbar when spanning failed."},
   "screenHelpAllMonitors": "The remote gets one display for each of this PC's monitors, at that monitor's size and scaling, and the window covers them all. Ctrl+Alt+Break leaves.",
-  "@screenHelpAllMonitors": {"description": "Help line of the screen menu toggle screenAllMonitors (4.1)."}
+  "@screenHelpAllMonitors": {"description": "Help line of the screen menu toggle screenAllMonitors (4.1)."},
+  "largeLayoutLabel": "Layout on a large screen",
+  "@largeLayoutLabel": {"description": "Setting on a tablet (4.1.1): what a large screen shows, the computer layout or the phone's tabs."},
+  "largeLayoutDesc": "A tablet wide enough shows the computer layout: a sidebar, tabs and split panes. Choose Tabs to keep the phone's tabs however the tablet is held.",
+  "@largeLayoutDesc": {"description": "Under largeLayoutLabel."},
+  "largeLayoutComputer": "Computer layout",
+  "@largeLayoutComputer": {"description": "Choice of largeLayoutLabel: the sidebar, tabs and panes a computer has."},
+  "largeLayoutTabs": "Tabs",
+  "@largeLayoutTabs": {"description": "Choice of largeLayoutLabel: the tabs along the bottom, as on a phone."}
 }

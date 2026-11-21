@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "La touche Windows, Alt+Tab, Alt+Échap, Ctrl+Échap, Alt+Espace, Alt+F4, Impr. écran et la touche menu vont à l'ordinateur distant tant qu'un écran en plein écran a le clavier, comme dans l'app Bureau à distance de Windows. Ctrl+Alt+Pause quitte le plein écran ; Ctrl+Alt+Suppr et Windows+L restent à ce PC.",
   "screenAllMonitors": "Plein écran sur tous les moniteurs",
   "screenAllMonitorsFailed": "La fenêtre n'a pas pu couvrir tous les moniteurs. L'écran reste tel qu'il était.",
-  "screenHelpAllMonitors": "L'ordinateur distant reçoit un écran pour chaque moniteur de ce PC, à sa taille et à sa mise à l'échelle, et la fenêtre les couvre tous. Ctrl+Alt+Pause quitte."
+  "screenHelpAllMonitors": "L'ordinateur distant reçoit un écran pour chaque moniteur de ce PC, à sa taille et à sa mise à l'échelle, et la fenêtre les couvre tous. Ctrl+Alt+Pause quitte.",
+  "largeLayoutLabel": "Disposition sur grand écran",
+  "largeLayoutDesc": "Une tablette assez large affiche la disposition d'ordinateur : barre latérale, onglets et volets partagés. Choisissez Onglets pour garder les onglets du téléphone, quelle que soit la façon de tenir la tablette.",
+  "largeLayoutComputer": "Disposition d'ordinateur",
+  "largeLayoutTabs": "Onglets"
 }

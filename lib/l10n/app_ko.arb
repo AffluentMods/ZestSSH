@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "전체 화면인 화면이 키보드를 받고 있는 동안 Windows 키, Alt+Tab, Alt+Esc, Ctrl+Esc, Alt+Space, Alt+F4, Print Screen, 메뉴 키를 원격으로 보냅니다. Windows 자체의 원격 데스크톱 앱과 같습니다. Ctrl+Alt+Break로 전체 화면을 나갑니다. Ctrl+Alt+Del과 Windows+L은 이 PC에 남습니다.",
   "screenAllMonitors": "모든 모니터에서 전체 화면",
   "screenAllMonitorsFailed": "창이 모든 모니터를 덮지 못했습니다. 화면은 그대로입니다.",
-  "screenHelpAllMonitors": "원격에 이 PC의 모니터마다 그 크기와 배율의 디스플레이가 하나씩 생기고, 창이 모두를 덮습니다. Ctrl+Alt+Break로 나갑니다."
+  "screenHelpAllMonitors": "원격에 이 PC의 모니터마다 그 크기와 배율의 디스플레이가 하나씩 생기고, 창이 모두를 덮습니다. Ctrl+Alt+Break로 나갑니다.",
+  "largeLayoutLabel": "큰 화면의 레이아웃",
+  "largeLayoutDesc": "충분히 넓은 태블릿은 사이드바, 탭, 분할 창이 있는 컴퓨터 레이아웃을 표시합니다. 태블릿을 어떻게 들든 휴대폰의 탭을 유지하려면 탭을 선택하세요.",
+  "largeLayoutComputer": "컴퓨터 레이아웃",
+  "largeLayoutTabs": "탭"
 }

@@ -65,7 +65,7 @@ class SettingsService {
     'desktop_confirm_close_sessions', 'desktop_host_panel_collapsed_groups', 'desktop_host_panel_visible',
     'desktop_host_panel_width', 'desktop_middle_click_paste', 'desktop_minimize_to_tray',
     'desktop_restore_sessions', 'desktop_right_click_paste', 'desktop_sidebar_collapsed', 'desktop_sidebar_width',
-    'desktop_system_notifications',
+    'desktop_system_notifications', 'large_screen_layout',
     'editor_minimap', 'editor_nano_keys', 'editor_terminal_look', 'editor_text_size', 'extra_keyboard_position',
     'follow_system_theme',
     'haptic_feedback', 'health_check_interval',
@@ -213,7 +213,7 @@ class SettingsService {
     'sftp_dock_follow_terminal', 'settings_last_section', 'workflow_run_panel_fraction',
     // Whether this computer shows the app's notices as its own notifications too (4.0): a phone's
     // always do, and macOS asks each computer.
-    'desktop_system_notifications',
+    'desktop_system_notifications', 'large_screen_layout',
     // A keyboard is the device's.
     'compact_keyboard', 'extra_keyboard_position', 'keyboard_incognito', 'keys_row_auto_hide', 'keys_row_hardware',
     'option_as_meta', 'show_extra_keyboard', 'soft_keyboard_disabled_keys', 'soft_keyboard_key_size',

@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "Die Windows-Taste, Alt+Tab, Alt+Esc, Strg+Esc, Alt+Leertaste, Alt+F4, Druck und die Menütaste gehen an das entfernte Gerät, solange ein Bildschirm im Vollbild die Tastatur hat, wie in der Remotedesktop-App von Windows selbst. Strg+Alt+Pause verlässt das Vollbild; Strg+Alt+Entf und Windows+L bleiben bei diesem PC.",
   "screenAllMonitors": "Vollbild auf allen Monitoren",
   "screenAllMonitorsFailed": "Das Fenster konnte nicht alle Monitore abdecken. Der Bildschirm bleibt, wie er war.",
-  "screenHelpAllMonitors": "Das entfernte Gerät erhält für jeden Monitor dieses PCs eine Anzeige in dessen Größe und Skalierung, und das Fenster deckt alle ab. Strg+Alt+Pause verlässt den Modus."
+  "screenHelpAllMonitors": "Das entfernte Gerät erhält für jeden Monitor dieses PCs eine Anzeige in dessen Größe und Skalierung, und das Fenster deckt alle ab. Strg+Alt+Pause verlässt den Modus.",
+  "largeLayoutLabel": "Layout auf großem Bildschirm",
+  "largeLayoutDesc": "Ein ausreichend breites Tablet zeigt das Computer-Layout: Seitenleiste, Tabs und geteilte Bereiche. Wählen Sie Tabs, um die Tabs des Telefons zu behalten, egal wie das Tablet gehalten wird.",
+  "largeLayoutComputer": "Computer-Layout",
+  "largeLayoutTabs": "Tabs"
 }

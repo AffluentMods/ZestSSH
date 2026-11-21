@@ -11,7 +11,7 @@
 ; Without signing, Windows SmartScreen will warn users on download/launch.
 
 #define MyAppName "ZestSSH"
-#define MyAppVersion "4.1.0"
+#define MyAppVersion "4.1.1"
 #define MyAppPublisher "Affluent Labs"
 #define MyAppURL "https://zestssh.com"
 #define MyAppExeName "zestssh.exe"

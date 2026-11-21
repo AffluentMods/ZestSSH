@@ -19,7 +19,7 @@ import 'package:zestssh/theme/zest_tokens.dart';
 import 'package:zestssh/ui/screens/profile/account_sign_in.dart';
 import 'package:zestssh/ui/widgets/window_bar.dart';
 import 'package:zestssh/ui/widgets/top_snackbar.dart';
-import 'package:zestssh/utils/platform_utils.dart' show isLargeScreen, isMobilePlatform;
+import 'package:zestssh/utils/platform_utils.dart' show hasLargeScreenShell, isMobilePlatform;
 import 'package:zestssh/ui/widgets/button_box.dart';
 import 'package:zestssh/utils/help_links.dart';
 
@@ -576,7 +576,7 @@ class _WelcomeActions extends StatelessWidget {
               ? l10n.welcomeStaysHere
               : !phone
                   ? l10n.welcomeGuestComputer
-                  : isLargeScreen(MediaQuery.sizeOf(context))
+                  : hasLargeScreenShell(MediaQuery.sizeOf(context))
                       ? l10n.welcomeGuestTabletShell
                       : l10n.welcomeGuestPhone,
           key: const ValueKey('welcome-start-note'),

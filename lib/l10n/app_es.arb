@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "La tecla Windows, Alt+Tab, Alt+Esc, Ctrl+Esc, Alt+Espacio, Alt+F4, Impr Pant y la tecla de menú van al equipo remoto mientras una pantalla en pantalla completa tiene el teclado, como en la propia app Escritorio remoto de Windows. Ctrl+Alt+Pausa sale de la pantalla completa; Ctrl+Alt+Supr y Windows+L siguen siendo de este PC.",
   "screenAllMonitors": "Pantalla completa en todos los monitores",
   "screenAllMonitorsFailed": "La ventana no pudo cubrir todos los monitores. La pantalla se queda como estaba.",
-  "screenHelpAllMonitors": "El equipo remoto recibe una pantalla por cada monitor de este PC, con su tamaño y escala, y la ventana los cubre todos. Ctrl+Alt+Pausa sale."
+  "screenHelpAllMonitors": "El equipo remoto recibe una pantalla por cada monitor de este PC, con su tamaño y escala, y la ventana los cubre todos. Ctrl+Alt+Pausa sale.",
+  "largeLayoutLabel": "Diseño en pantalla grande",
+  "largeLayoutDesc": "Una tableta lo bastante ancha muestra el diseño de ordenador: barra lateral, pestañas y paneles divididos. Elige Pestañas para mantener las pestañas del teléfono, se sostenga como se sostenga la tableta.",
+  "largeLayoutComputer": "Diseño de ordenador",
+  "largeLayoutTabs": "Pestañas"
 }

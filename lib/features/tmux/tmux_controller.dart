@@ -1033,6 +1033,25 @@ class TmuxController extends ChangeNotifier {
   /// Resize each pane's terminal to what the layout says. The zoomed pane's
   /// real size is in the visible layout; the full layout keeps the geometry
   /// it will return to.
+  /// The size the window's layout gives [p] now (its zoomed layout where the
+  /// window is zoomed), as a pane's terminal takes it; null while the layout
+  /// does not know the pane.
+  (int, int)? _layoutSizeOf(TmuxPane p) {
+    final w = _windows[p.windowId];
+    if (w == null) return null;
+    TmuxPaneNode? leaf;
+    for (final l in w.layout?.leaves ?? const <TmuxPaneNode>[]) {
+      if (l.paneId == p.id) leaf = l;
+    }
+    if (w.zoomed) {
+      for (final l in w.visibleLayout?.leaves ?? const <TmuxPaneNode>[]) {
+        if (l.paneId == p.id) leaf = l;
+      }
+    }
+    if (leaf == null || leaf.width <= 0 || leaf.height <= 0) return null;
+    return (clampCols(leaf.width), clampRows(leaf.height));
+  }
+
   void _applyPaneSizes(TmuxWindow w) {
     final sizes = <String, (int, int)>{};
     for (final leaf in w.layout?.leaves ?? const <TmuxPaneNode>[]) {
@@ -1271,6 +1290,24 @@ class TmuxController extends ChangeNotifier {
       final t = p.terminal;
       final cols = clampCols(info.width);
       final rows = clampRows(info.height);
+      // The layout already says another size than [info] does: a layout
+      // change came in the same read as the reply that carried [info]
+      // (a reply's continuation runs after everything in its read), so the
+      // snapshot is the older of the two. A new session starts at 80 by 24
+      // and is sized to the app's panes in the middle of this first sync, so
+      // that was its usual order: the old size was written back over the
+      // new one, the check below saw no change, and the pane was restored
+      // 80 by 24 in a smaller view, its prompt above what the view showed
+      // (a new session's pane stayed blank; 21 November 2026). Asked again.
+      final laidOut = _layoutSizeOf(p);
+      if (laidOut != null && (laidOut.$1 != cols || laidOut.$2 != rows) && p._sizeRetries < 2) {
+        p._sizeRetries++;
+        p._generation++; // the finally below must not touch the flag
+        p._captureInFlight = false;
+        p._resetPending();
+        unawaited(_syncPane(p));
+        return;
+      }
       p.width = cols;
       p.height = rows;
       if (t.viewWidth != cols || t.viewHeight != rows) {
@@ -1321,6 +1358,11 @@ class TmuxController extends ChangeNotifier {
       final pending = p._pendingOutput.takeBytes();
       p._resetPending();
       p.awaitingCapture = false;
+      // The size the layout has now, where a change was passed over while
+      // the capture ran ([_applyPaneSizes] leaves a pane that awaits its
+      // capture alone).
+      final laidOutNow = _windows[p.windowId];
+      if (laidOutNow != null) _applyPaneSizes(laidOutNow);
       if (overflow) {
         // Too much arrived in between to replay faithfully: start over.
         unawaited(_resyncPane(p));

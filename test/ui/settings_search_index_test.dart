@@ -53,7 +53,7 @@ void main() {
 
   /// The search's list: (section, the key of the name).
   List<(String, String)> listed() => [
-        for (final m in RegExp(r'_SettingSearchSpec(?:\.macOnly|\.windowsOnly|\.plans|\.computerOnly)?\(_SettingsSection\.([a-z]+), \(l\) => l\.([A-Za-z0-9_]+)[,)]')
+        for (final m in RegExp(r'_SettingSearchSpec(?:\.macOnly|\.windowsOnly|\.touchOnly|\.plans|\.computerOnly)?\(_SettingsSection\.([a-z]+), \(l\) => l\.([A-Za-z0-9_]+)[,)]')
             .allMatches(code))
           (m.group(1)!, m.group(2)!),
       ];

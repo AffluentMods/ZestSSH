@@ -336,14 +336,22 @@ class _TmuxWorkspaceState extends ConsumerState<TmuxWorkspace> {
 
   /// Keyboard focus follows tmux's active pane of the active window, once
   /// per change (never reactively every build, which fights the user).
-  void _focusActivePane() {
+  void _focusActivePane([int tries = 0]) {
     final id = c.activeWindow?.activePaneId;
     if (id == null || id == _focusedPane) return;
-    _focusedPane = id;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || c.activeWindow?.activePaneId != id) return;
       final node = _paneFocus[id];
-      if (node != null && !node.hasFocus) node.requestFocus();
+      // The pane is not built yet: asked again on the next frames (it was
+      // marked as done at once, and a pane that came a frame later never
+      // got the keyboard: on a tablet in the computer layout nothing gave
+      // it back, a report of 4.0.0).
+      if (node == null || node.context == null) {
+        if (tries < 10) _focusActivePane(tries + 1);
+        return;
+      }
+      _focusedPane = id;
+      if (!node.hasFocus) node.requestFocus();
     });
   }
 

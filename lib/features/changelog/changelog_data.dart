@@ -41,6 +41,22 @@ class ChangelogEntry {
 /// Every release, newest first. The first entry is the current version.
 const List<ChangelogEntry> kChangelog = [
   ChangelogEntry(
+    version: "4.1.1",
+    date: "November 2026",
+    sections: [
+      ChangelogSection(ChangelogCategory.improvements, [
+        ChangelogNote("Tablets: Settings > General > Layout on a large screen chooses between the computer layout and the phone's tabs, however the tablet is held. A tablet with a keyboard is kept on its side, where 4.0 always showed the computer layout"),
+        ChangelogNote("Terminal: hold Shift and right-click (or middle-click) to paste while a program on the host has the mouse (tmux with its mouse on, vim, mc), as Shift and a drag selects there"),
+      ]),
+      ChangelogSection(ChangelogCategory.fixes, [
+        ChangelogNote("tmux: the panes take the keyboard when they open, and the terminal takes it back when they close (detached or ended). After a detach nothing typed arrived until a click or a tap, on computers and on tablets in the computer layout"),
+        ChangelogNote("Tablets in the computer layout: with a keyboard attached, the on-screen keyboard no longer comes up at every tap"),
+        ChangelogNote("tmux: a new session started from ZestSSH shows its prompt at once. Its pane could stay blank, the prompt above what the pane showed, until more was typed"),
+        ChangelogNote("tmux on phones and tablets with a keyboard: letters keep arriving after Resync panes. Enter arrived and letters did not until a tap"),
+      ]),
+    ],
+  ),
+  ChangelogEntry(
     version: "4.1.0",
     date: "November 2026",
     tag: "Bring Your Own AI",

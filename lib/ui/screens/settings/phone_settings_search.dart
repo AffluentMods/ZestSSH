@@ -97,6 +97,7 @@ final List<PhoneSetting> kPhoneSettingsIndex = [
 
   PhoneSetting(_P.backups, (l) => l.settingsCatBackups, (l) => l.settingsMobAutoBackupSheetDesc),
   PhoneSetting(_P.language, (l) => l.settingsLanguage, (l) => l.settingsLanguageSubtitle),
+  PhoneSetting(_P.language, (l) => l.largeLayoutLabel, (l) => l.largeLayoutDesc),
 
   PhoneSetting(_P.appearance, (l) => l.settingsMobAppearance, (l) => l.settingsMobAppearanceDesc),
   PhoneSetting(_P.appearance, (l) => l.appearanceApplyThemeToEntireApp, (l) => l.appearanceApplyThemeToEntireAppSubtitle),

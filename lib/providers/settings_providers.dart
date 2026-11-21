@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm/xterm.dart';
 import 'package:zestssh/l10n/generated/app_localizations.dart';
@@ -9,6 +11,8 @@ import 'package:zestssh/services/settings_service.dart';
 import 'package:zestssh/services/notification_service.dart';
 import 'package:zestssh/providers/redaction_providers.dart';
 import 'package:zestssh/utils/redactor.dart';
+import 'package:zestssh/utils/platform_utils.dart'
+    show LargeScreenLayout, kLargeScreenLayoutKey, largeScreenLayout;
 import 'package:zestssh/providers/theme_providers.dart';
 import 'package:zestssh/providers/theme_sync_provider.dart';
 import 'package:zestssh/theme/terminal_themes.dart' as app_themes;
@@ -491,6 +495,27 @@ final notifyUpdateAvailableProvider = StateProvider<bool>((ref) {
 /// A computer's "Also show as system notifications" (4.0, off at first):
 /// the app's notices go to the system's notifications as well while the
 /// window is not in front (NotificationService.onComputer).
+/// What a tablet's large screen shows on this device (4.1.1): the
+/// computer's shell or the phone's tabs. Kept on the device, and told to
+/// what has no provider to ask (platform_utils' largeScreenLayout).
+final largeScreenLayoutProvider =
+    NotifierProvider<LargeScreenLayoutNotifier, LargeScreenLayout>(LargeScreenLayoutNotifier.new);
+
+class LargeScreenLayoutNotifier extends Notifier<LargeScreenLayout> {
+  @override
+  LargeScreenLayout build() {
+    final kept = LargeScreenLayout.of(ref.watch(sharedPreferencesProvider).getString(kLargeScreenLayoutKey));
+    largeScreenLayout = kept;
+    return kept;
+  }
+
+  void set(LargeScreenLayout layout) {
+    largeScreenLayout = layout;
+    state = layout;
+    unawaited(ref.read(sharedPreferencesProvider).setString(kLargeScreenLayoutKey, layout.name));
+  }
+}
+
 final desktopSystemNotificationsProvider = StateProvider<bool>((ref) {
   return ref.read(settingsServiceProvider).desktopSystemNotifications;
 });

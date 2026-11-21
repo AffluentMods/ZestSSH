@@ -382,6 +382,29 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('with Shift held, a middle or a right click pastes here though a program takes the mouse',
+        (tester) async {
+      final terminal = await pumpTerminal(tester);
+      terminal.write('[?1000h[?1006h');
+      await tester.pump();
+      clipboard = 'ls -la';
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      final middle = await press(tester, cell(tester, terminal, 9, 0), kMiddleMouseButton);
+      await release(tester, middle);
+      expect(typed, ['ls -la'], reason: 'pasted, and neither the press nor the release told to the program');
+      typed.clear();
+      final right = await press(tester, cell(tester, terminal, 9, 0), kSecondaryButton);
+      await release(tester, right);
+      expect(typed, ['ls -la']);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      // Without Shift again, the click is the program's as before.
+      typed.clear();
+      final plain = await press(tester, cell(tester, terminal, 9, 0), kSecondaryButton);
+      await release(tester, plain);
+      expect(typed.every((t) => t.startsWith('[<2;')), isTrue);
+      await finish(tester);
+    });
+
     testWidgets('pastes nothing when its setting is off, whatever a right click does', (tester) async {
       final terminal = await pumpTerminal(tester, settings: {'desktop_middle_click_paste': false});
       clipboard = 'ls -la';

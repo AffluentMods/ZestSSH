@@ -73,6 +73,21 @@ class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
   void initState() {
     widget.focusNode.addListener(_onFocusChange);
     super.initState();
+    _connectIfFocusedAlready();
+  }
+
+  /// Built anew while its focus node, which outlives it, has the focus
+  /// already (tmux's panes drawn again by Resync panes, a pane moved in the
+  /// tree): no change of focus comes to connect the input on, and the view
+  /// before it closed its connection as it went. Connected a frame later,
+  /// the on-screen keyboard left as it is: without it a keyboard's letters,
+  /// which come through this connection on a phone or a tablet, went nowhere
+  /// until a tap, while Enter (a plain key) still arrived (seen on a tablet
+  /// with a keyboard, 21 November 2026).
+  void _connectIfFocusedAlready() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.focusNode.hasFocus && !hasInputConnection) _openInputConnection(show: false);
+    });
   }
 
   @override
@@ -83,6 +98,7 @@ class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
       oldWidget.focusNode.removeListener(_onFocusChange);
       widget.focusNode.addListener(_onFocusChange);
     }
+    if (widget.focusNode != oldWidget.focusNode) _connectIfFocusedAlready();
 
     if (!_shouldCreateInputConnection) {
       _closeInputConnectionIfNeeded();
@@ -184,9 +200,20 @@ class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
   }
 
   void _openOrCloseInputConnectionIfNeeded() {
-    if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
-      _openInputConnection(show: _showOnFocus ?? widget.showKeyboard);
-    } else if (!widget.focusNode.hasFocus) {
+    if (widget.focusNode.hasFocus) {
+      if (widget.focusNode.consumeKeyboardToken()) {
+        _openInputConnection(show: _showOnFocus ?? widget.showKeyboard);
+      } else {
+        // The focus came back by itself (a menu or a dialog over the
+        // terminal closed, the panes it stood behind went): connected
+        // again, the on-screen keyboard left as it is. A keyboard's letters
+        // come through this connection on a phone or a tablet, and with the
+        // focus back but no connection Enter and the arrows arrived and the
+        // letters went nowhere until a tap (seen on a tablet with a
+        // keyboard, 21 November 2026).
+        _openInputConnection(show: false);
+      }
+    } else {
       _closeInputConnectionIfNeeded();
     }
     _showOnFocus = null;

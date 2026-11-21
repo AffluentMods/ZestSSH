@@ -14,6 +14,7 @@ import 'package:zestssh/ui/screens/connection/connection_edit_screen.dart';
 import 'package:zestssh/ui/screens/connection/qr_scan_screen.dart';
 import 'package:zestssh/ui/screens/desktop/desktop_shell.dart';
 import 'package:zestssh/ui/screens/home/home_screen.dart';
+import 'package:zestssh/providers/settings_providers.dart' show largeScreenLayoutProvider;
 import 'package:zestssh/utils/platform_utils.dart';
 import 'package:zestssh/ui/screens/identity/identity_edit_screen.dart';
 import 'package:zestssh/ui/screens/identity/identity_list_screen.dart';
@@ -143,11 +144,16 @@ class _RouterRefreshNotifier extends ChangeNotifier {
 /// smaller one (a small tablet's too). Turning a tablet can change which: the
 /// sessions, their tabs and the pages' state are the app's, not Home's, and
 /// stay.
-class AppHome extends StatelessWidget {
+class AppHome extends ConsumerWidget {
   const AppHome({super.key});
 
   @override
-  Widget build(BuildContext context) => usesDesktopShell(context) ? const DesktopShell() : const HomeScreen();
+  Widget build(BuildContext context, WidgetRef ref) {
+    // This device's choice for a large screen (4.1.1): changed in Settings,
+    // Home is the other one at once.
+    ref.watch(largeScreenLayoutProvider);
+    return usesDesktopShell(context) ? const DesktopShell() : const HomeScreen();
+  }
 }
 
 /// The terminal's page, for a session's id in [state].

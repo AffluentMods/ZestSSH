@@ -1519,6 +1519,9 @@ const _nobodys = <String>{
   // only on or off and which views want it; it goes with its session, which a change of profile
   // ends.
   'features/screens/view/screen_sound_gate.dart _gates',
+  // This device's choice of what a tablet's large screen shows (4.1.1): the device's, not a person's
+  // (large_screen_layout among the device's keys).
+  'utils/platform_utils.dart largeScreenLayout',
   // The remote screen that takes the system keys now (4.1, Windows): one screen's controller, which
   // lets go when its view goes; a change of profile ends the sessions and their views.
   'features/screens/view/screen_key_grab.dart _owner',

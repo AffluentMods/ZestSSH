@@ -1647,6 +1647,9 @@ class _TerminalPaneState extends ConsumerState<_TerminalPane> {
   /// remembers the request and takes the keyboard the moment it can, past every
   /// check here, from a dialog opened meanwhile (a key typed in Quick connect
   /// reached the host, 30 October 2026).
+  bool _tmuxWasLive = false;
+  bool _tmuxWasActive = false;
+
   void _takeKeyboard() {
     if (!mounted || !widget.front || widget.sessionState.session == null) return;
     if (!(ModalRoute.of(context)?.isCurrent ?? true)) {
@@ -1773,6 +1776,28 @@ class _TerminalPaneState extends ConsumerState<_TerminalPane> {
     // the main terminal's focus node must not steal it back.
     final tmuxHost = ref.watch(tmuxHostProvider(sessionId));
     final tmuxActive = tmuxHost.active;
+    // tmux's panes just came up in this pane's place: the terminal that had
+    // the keyboard is gone, so the workspace is asked to take it, a frame
+    // after it is built (a tablet in the computer layout also opens its
+    // keyboard's connection with it, without which a keyboard's letters
+    // went nowhere).
+    final tmuxLive = tmuxHost.live;
+    if (tmuxLive && !_tmuxWasLive && widget.front) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _tmuxKeyboardAsk++);
+      });
+    }
+    _tmuxWasLive = tmuxLive;
+    // And back: tmux's panes went (detached, closed, ended) and the terminal
+    // is on the screen again in their place. It takes the keyboard, which
+    // went with the panes: nothing typed arrived until a tap (seen on a
+    // tablet with a keyboard, 21 November 2026).
+    if (!tmuxActive && _tmuxWasActive && widget.front) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _takeKeyboard();
+      });
+    }
+    _tmuxWasActive = tmuxActive;
     // Find in terminal (the shell's shortcut, menu or palette), opened for
     // this session: its bar above the terminal, or above tmux's panes for
     // the one in front.

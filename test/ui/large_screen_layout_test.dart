@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zestssh/providers/core_providers.dart';
+import 'package:zestssh/providers/settings_providers.dart' show largeScreenLayoutProvider;
 import 'package:zestssh/router/router.dart' show AppHome;
 import 'package:zestssh/theme/themes/all_themes.dart';
 import 'package:zestssh/theme/ui_density.dart';
@@ -107,6 +108,50 @@ void main() {
         expect(touchDesktopShells, 1);
         await unpumpQuickWins(tester);
       } finally {
+        debugTouchLayout = null;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    // 4.1.1: a tablet with a keyboard is kept on its side, so turning it was
+    // no way to get the tabs (a report of 4.0.0). Settings chooses.
+    test('the choice: kept as a word, anything else is the computer layout; a tablet either way up is offered it', () {
+      expect(LargeScreenLayout.of('tabs'), LargeScreenLayout.tabs);
+      expect(LargeScreenLayout.of('computer'), LargeScreenLayout.computer);
+      expect(LargeScreenLayout.of(null), LargeScreenLayout.computer);
+      expect(LargeScreenLayout.of('??'), LargeScreenLayout.computer);
+      expect(canBeLargeScreen(const Size(800, 1280)), isTrue, reason: 'upright: a large screen once turned');
+      expect(canBeLargeScreen(const Size(1280, 800)), isTrue);
+      expect(canBeLargeScreen(const Size(412, 915)), isFalse, reason: 'a phone');
+      expect(canBeLargeScreen(const Size(915, 412)), isFalse, reason: 'a phone on its side');
+      addTearDown(() => largeScreenLayout = LargeScreenLayout.computer);
+      largeScreenLayout = LargeScreenLayout.tabs;
+      expect(hasLargeScreenShell(const Size(1280, 800)), isFalse);
+      largeScreenLayout = LargeScreenLayout.computer;
+      expect(hasLargeScreenShell(const Size(1280, 800)), isTrue);
+      expect(hasLargeScreenShell(const Size(800, 1280)), isFalse);
+    });
+
+    testWidgets('Tabs chosen: a tablet on its side has the tabs, and the computer layout again once chosen back',
+        (tester) async {
+      debugTouchLayout = true;
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        await pumpQuickWins(tester, const AppHome(), const Size(1280, 800));
+        expect(find.byType(DesktopShell), findsOneWidget);
+        final container = ProviderScope.containerOf(tester.element(find.byType(AppHome)));
+        container.read(largeScreenLayoutProvider.notifier).set(LargeScreenLayout.tabs);
+        await settleQuickWins(tester);
+        expect(find.byType(DesktopShell), findsNothing);
+        expect(find.byType(HomeScreen), findsOneWidget);
+        expect(touchDesktopShells, 0);
+        expect(container.read(sharedPreferencesProvider).getString(kLargeScreenLayoutKey), 'tabs');
+        container.read(largeScreenLayoutProvider.notifier).set(LargeScreenLayout.computer);
+        await settleQuickWins(tester);
+        expect(find.byType(DesktopShell), findsOneWidget);
+        await unpumpQuickWins(tester);
+      } finally {
+        largeScreenLayout = LargeScreenLayout.computer;
         debugTouchLayout = null;
         debugDefaultTargetPlatformOverride = null;
       }

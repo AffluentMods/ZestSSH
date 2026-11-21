@@ -174,6 +174,9 @@ class _TerminalGestureHandlerState extends State<TerminalGestureHandler> {
     terminalView.widget.terminal.mouseMotion(cell);
   }
 
+  /// The buttons whose press, with Shift held, was kept from the program.
+  final _localClicks = <TerminalMouseButton>{};
+
   bool get _shouldSendTapEvent =>
       !widget.readOnly &&
       widget.terminalController.shouldSendPointerInput(PointerInput.tap);
@@ -186,7 +189,17 @@ class _TerminalGestureHandlerState extends State<TerminalGestureHandler> {
   }) {
     // Check if the terminal should and can handle the tap down event.
     var handled = false;
-    if (_shouldSendTapEvent) {
+    // With Shift held a right or a middle click is this device's (a paste),
+    // whatever the program asked for, as a drag with Shift is a selection
+    // here: in tmux with its mouse on, vim or mc there was no way to paste
+    // with the mouse. Its release is this device's too.
+    final local = button != TerminalMouseButton.left && HardwareKeyboard.instance.isShiftPressed;
+    if (local) {
+      _localClicks.add(button);
+    } else {
+      _localClicks.remove(button);
+    }
+    if (_shouldSendTapEvent && !local) {
       handled = renderTerminal.mouseEvent(
         button,
         TerminalMouseButtonState.down,
@@ -208,7 +221,9 @@ class _TerminalGestureHandlerState extends State<TerminalGestureHandler> {
   }) {
     // Check if the terminal should and can handle the tap up event.
     var handled = false;
-    if (_shouldSendTapEvent) {
+    // (A click whose press was kept from the program: its release too.)
+    final local = _localClicks.remove(button);
+    if (_shouldSendTapEvent && !local) {
       handled = renderTerminal.mouseEvent(
         button,
         TerminalMouseButtonState.up,

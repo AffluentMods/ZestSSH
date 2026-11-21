@@ -11143,5 +11143,9 @@
   "screenSystemKeysDesc": "当全屏的屏幕获得键盘时，Windows 键、Alt+Tab、Alt+Esc、Ctrl+Esc、Alt+空格、Alt+F4、Print Screen 和菜单键会发送到远程，与 Windows 自带的远程桌面应用一致。Ctrl+Alt+Break 退出全屏；Ctrl+Alt+Del 和 Windows+L 仍归这台电脑。",
   "screenAllMonitors": "在所有显示器上全屏",
   "screenAllMonitorsFailed": "窗口无法覆盖所有显示器。屏幕保持原样。",
-  "screenHelpAllMonitors": "远程会为这台电脑的每个显示器各分配一个显示器，大小和缩放与其一致，窗口覆盖全部显示器。Ctrl+Alt+Break 退出。"
+  "screenHelpAllMonitors": "远程会为这台电脑的每个显示器各分配一个显示器，大小和缩放与其一致，窗口覆盖全部显示器。Ctrl+Alt+Break 退出。",
+  "largeLayoutLabel": "大屏幕上的布局",
+  "largeLayoutDesc": "足够宽的平板会显示电脑布局：侧边栏、标签页和分屏窗格。选择“标签”可始终保留手机的标签，无论平板如何握持。",
+  "largeLayoutComputer": "电脑布局",
+  "largeLayoutTabs": "标签"
 }
