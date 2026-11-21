@@ -231,7 +231,9 @@ class ZestConfirmDialog extends StatelessWidget {
   /// they pressed the cancel button, and null if they closed it without an answer
   /// (the X, Escape, outside it). A cancel button that does something of its own
   /// ([cancelLabel] says what) is told from closing by that null: where both
-  /// buttons do something, [ask] says which by name.
+  /// buttons do something, [ask] says which by name. [closeWhen] closes it
+  /// (null) when it completes first: a question that nothing waits for any
+  /// more, so it cannot be answered.
   static Future<bool?> show(
     BuildContext context, {
     required ZestDialogTone tone,
@@ -244,6 +246,7 @@ class ZestConfirmDialog extends StatelessWidget {
     bool showCancel = true,
     IconData? icon,
     bool? autofocusConfirm,
+    Future<void>? closeWhen,
   }) {
     final dialog = ZestConfirmDialog(
       tone: tone,
@@ -258,14 +261,17 @@ class ZestConfirmDialog extends StatelessWidget {
       autofocusConfirm: autofocusConfirm,
     );
     // Asked from a dialog: in its place (rule 4, no dialog over a dialog).
-    final host = ZestInPlaceHost.maybeOf(context);
+    // ([closeWhen] closes a question's own route, which a question in place
+    // does not have: it is not asked in place.)
+    final host = closeWhen == null ? ZestInPlaceHost.maybeOf(context) : null;
     if (host != null) return host.show<bool>((_) => dialog);
+    final Widget shown = closeWhen == null ? dialog : _ClosedWhen(closeWhen, child: dialog);
     // A phone: a bottom sheet (3.0 UI).
-    if (zestUsesSheets(context)) return showZestSheet<bool>(context: context, child: dialog);
+    if (zestUsesSheets(context)) return showZestSheet<bool>(context: context, child: shown);
     return showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.55),
-      builder: (_) => ZestInPlaceHost(child: dialog),
+      builder: (_) => ZestInPlaceHost(child: shown),
     );
   }
 
@@ -2385,4 +2391,36 @@ class _DialogButtonState extends State<_DialogButton> {
     ),
     );
   }
+}
+
+/// Closes the route it is in once [closeWhen] completes, unless that route
+/// is already on its way out (answered).
+class _ClosedWhen extends StatefulWidget {
+  const _ClosedWhen(this.closeWhen, {required this.child});
+
+  final Future<void> closeWhen;
+  final Widget child;
+
+  @override
+  State<_ClosedWhen> createState() => _ClosedWhenState();
+}
+
+class _ClosedWhenState extends State<_ClosedWhen> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(widget.closeWhen.then((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route == null || !route.isActive) return;
+      if (route.isCurrent) {
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).removeRoute(route);
+      }
+    }));
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

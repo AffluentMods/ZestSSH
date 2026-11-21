@@ -48,6 +48,7 @@ String? screenActionHelpIn(AppLocalizations l10n, ScreenAction a, {bool phone = 
       ScreenAction.remoteResize => l10n.screenHelpRemoteResize,
       ScreenAction.viewOnly => l10n.screenHelpViewOnly,
       ScreenAction.ownWindow => l10n.screenHelpOwnWindow,
+      ScreenAction.allMonitors => l10n.screenHelpAllMonitors,
       ScreenAction.refresh => l10n.screenHelpRefresh,
       ScreenAction.textSize => l10n.screenHelpTextSize,
       ScreenAction.frameLimit => l10n.screenHelpFrameLimit,

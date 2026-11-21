@@ -40,6 +40,12 @@ const String kScreenRecordingKey = 'screen_recording';
 /// (screen_clipboard.*) and a team's rules come first.
 const String kScreenClipboardDefaultKey = 'screen_default_clipboard';
 
+/// Whether the system keys (the Windows key, Alt+Tab, Alt+Esc, Ctrl+Esc,
+/// Alt+Space, Alt+F4, Print Screen, the menu key) go to the remote in full
+/// screen (4.1, Windows): on unless turned off, as in Windows' own Remote
+/// Desktop app.
+const String kScreenSystemKeysKey = 'screen_system_keys';
+
 /// [kScreenClipboardDefaultKey] as [prefs] hold it: on unless turned off.
 bool screenOwnClipboardDefault(SharedPreferences prefs) => prefs.getString(kScreenClipboardDefaultKey) != 'off';
 
@@ -155,6 +161,18 @@ class ScreenClipboardDefaultNotifier extends Notifier<bool> {
   void set(bool on) {
     state = on;
     unawaited(ref.read(sharedPreferencesProvider).setString(kScreenClipboardDefaultKey, on ? 'on' : 'off'));
+  }
+}
+
+final screenSystemKeysProvider = NotifierProvider<ScreenSystemKeysNotifier, bool>(ScreenSystemKeysNotifier.new);
+
+class ScreenSystemKeysNotifier extends Notifier<bool> {
+  @override
+  bool build() => ref.watch(sharedPreferencesProvider).getBool(kScreenSystemKeysKey) ?? true;
+
+  void set(bool on) {
+    state = on;
+    unawaited(ref.read(sharedPreferencesProvider).setBool(kScreenSystemKeysKey, on));
   }
 }
 

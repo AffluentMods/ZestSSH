@@ -193,8 +193,19 @@ class ScreenKeyboard {
   }
 
   /// A key event from the view's Focus.
+  /// The Windows key stays this computer's (4.1, Windows, outside full
+  /// screen): Windows opens its Start on it whatever the app does, so sent to
+  /// the remote as well it opened both. As in Windows' own Remote Desktop,
+  /// it is the remote's in full screen only (the keyboard hook), or from the
+  /// menu's Send the Windows key.
+  bool keepSuperLocal = false;
+
+  static bool _isSuper(PhysicalKeyboardKey k) =>
+      k == PhysicalKeyboardKey.metaLeft || k == PhysicalKeyboardKey.metaRight;
+
   KeyEventResult handle(KeyEvent e) {
     final physical = e.physicalKey;
+    if (keepSuperLocal && _isSuper(physical) && !_down.containsKey(physical)) return KeyEventResult.ignored;
     if (_pasting case final p?) {
       // The pasting key's repeat (or a second key down for it) while it is
       // held asks for nothing more; everything else, a new press after it was
@@ -357,6 +368,20 @@ class ScreenKeyboard {
       _up(k);
     }
     _menuKeys.clear();
+  }
+
+  /// A key the computer's keyboard hook took for this screen (4.1: the
+  /// system keys in full screen, screen_key_grab.dart), pressed or let go.
+  /// Kept with the keys held, so it is let go with them.
+  void grabbedKey(PhysicalKeyboardKey physical, ScreenKey key, {required bool down}) {
+    if (!enabled) return;
+    final k = sendScancodes ? key : ScreenKey(key.keysym, 0);
+    if (down) {
+      _down[physical] = k;
+      _send(k.keysym, k.scancode, true);
+    } else if (_down.containsKey(physical)) {
+      _up(physical);
+    }
   }
 
   /// One key pressed and let go, with the [latched] modifiers around it.

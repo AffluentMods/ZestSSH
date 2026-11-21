@@ -68,6 +68,10 @@ enum ScreenAction {
   viewOnly,
   fullScreen,
 
+  /// RDP on a computer with several monitors (4.1, Windows): full screen
+  /// on every monitor, the remote asked for one display per monitor.
+  allMonitors,
+
   /// A computer: the screen moves to a window of its own, which can sit on
   /// another monitor (4.0). The tab stays, to bring it back.
   ownWindow,
@@ -138,7 +142,16 @@ enum ScreenAction {
   sessionDetails;
 
   ScreenActionGroup get group => switch (this) {
-        fit || fill || oneToOne || remoteResize || viewOnly || fullScreen || ownWindow || keepBar || disconnect =>
+        fit ||
+        fill ||
+        oneToOne ||
+        remoteResize ||
+        viewOnly ||
+        fullScreen ||
+        allMonitors ||
+        ownWindow ||
+        keepBar ||
+        disconnect =>
           ScreenActionGroup.session,
         refresh || textSize || frameLimit || smoothScaling || sound => ScreenActionGroup.video,
         sendCtrlAltDel ||
@@ -162,6 +175,7 @@ enum ScreenAction {
         fit || fill || oneToOne || remoteResize || touchPointer || touchTouch => ScreenActionKind.choice,
         viewOnly ||
         fullScreen ||
+        allMonitors ||
         keepBar ||
         clipboard ||
         sendText ||
@@ -239,6 +253,7 @@ enum ScreenAction {
         remoteResize => l10n.connectionEditScreenScalingRemote,
         viewOnly => l10n.connectionEditScreenViewOnly,
         fullScreen => l10n.screenFullScreen,
+        allMonitors => l10n.screenAllMonitors,
         ownWindow => l10n.screenOwnWindow,
         refresh => l10n.screenRefresh,
         textSize => l10n.connectionEditRdpTextSize,
@@ -268,6 +283,7 @@ enum ScreenAction {
         remoteResize => LucideIcons.monitor,
         viewOnly => LucideIcons.eye,
         fullScreen => LucideIcons.expand,
+        allMonitors => LucideIcons.monitorCheck,
         ownWindow => LucideIcons.externalLink,
         refresh => LucideIcons.refreshCw,
         textSize => LucideIcons.type,
@@ -392,6 +408,8 @@ class ScreenMenuState {
     required ScreenFit fit,
     required bool viewOnly,
     bool fullScreen = false,
+    bool allMonitorsOffered = false,
+    bool allMonitorsOn = false,
     bool keyboardHeld = true,
     bool canResizeRemote = false,
     bool resizingRemote = false,
@@ -422,6 +440,7 @@ class ScreenMenuState {
       if (canResizeRemote) ScreenAction.remoteResize,
       ScreenAction.viewOnly,
       if (!phone) ScreenAction.fullScreen,
+      if (!phone && allMonitorsOffered && !inOwnWindow) ScreenAction.allMonitors,
       if (!phone && ownWindowOffered) ScreenAction.ownWindow,
       if (phone) ScreenAction.keepBar,
       if (!inOwnWindow) ScreenAction.disconnect,
@@ -449,6 +468,7 @@ class ScreenMenuState {
       canResizeRemote && resizingRemote ? ScreenAction.remoteResize : ScreenAction.ofFit(fit),
       if (viewOnly) ScreenAction.viewOnly,
       if (!phone && fullScreen) ScreenAction.fullScreen,
+      if (!phone && allMonitorsOffered && allMonitorsOn && !inOwnWindow) ScreenAction.allMonitors,
       if (phone && barKept) ScreenAction.keepBar,
       if (phone && touchMode != null) ScreenAction.ofTouch(touchMode),
       if (phone && sendTextShown) ScreenAction.sendText,

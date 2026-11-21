@@ -26,6 +26,7 @@ const _allowed = <String, String>{
   'lib/features/orchards/export/event_exporter.dart|': "events sent to a team's own collector",
   'lib/services/ssh_service.dart|Failed to start ': "the SSH core's own words, matched, not shown",
   'lib/services/desktop_auth_server.dart|': 'the pages a browser shows a developer when a sign-in breaks',
+  'lib/features/mcp/mcp_service.dart|': "the MCP tools' names and words, read by the person's AI model, not shown",
   'lib/ui/windows/editor_window.dart|ZestSSH Editor': "a window of its own's name for the system",
   'lib/ui/screens/desktop/widgets/cert_import_dialog.dart|ssh-ed25519-cert-v01': 'a certificate, as an example',
   'lib/ui/screens/import/ssh_config_import_screen.dart|Host myserver': 'an SSH config, as an example',

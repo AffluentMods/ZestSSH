@@ -68,9 +68,11 @@ class _ScreenViewState extends State<ScreenView> {
     super.didUpdateWidget(old);
     if (old.controller != widget.controller) {
       old.controller.removeListener(_onChange);
+      old.controller.keyboardFocused = false;
       old.controller.keyboard.onMenuKey = null;
       old.controller.touch.onHold = null;
       _attach();
+      widget.controller.keyboardFocused = _focus.hasFocus;
     } else {
       _c.keyboard.onMenuKey = widget.onMenuKey;
       _c.keyboard.menuKey = widget.menuKey;
@@ -102,6 +104,8 @@ class _ScreenViewState extends State<ScreenView> {
   @override
   void dispose() {
     _c.removeListener(_onChange);
+    // (A view that goes no longer has the keyboard: no system keys for it.)
+    _c.keyboardFocused = false;
     if (_c.keyboard.onMenuKey == widget.onMenuKey) _c.keyboard.onMenuKey = null;
     _c.touch.onHold = null;
     _ownFocus?.dispose();
@@ -183,6 +187,8 @@ class _ScreenViewState extends State<ScreenView> {
             autofocus: widget.autofocus,
             onKeyEvent: (_, e) => _c.keyboard.handle(e),
             onFocusChange: (has) {
+              // The system keys are taken only while the picture has the keyboard.
+              _c.keyboardFocused = has;
               if (!has) {
                 _c.keyboard.releaseAll();
                 // The picture no longer has the keyboard (another window, a

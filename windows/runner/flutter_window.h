@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "key_grab.h"
+#include "monitor_span.h"
 #include "pointer_hold.h"
 #include "view_windows.h"
 #include "win32_window.h"
@@ -79,6 +81,26 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>>
       pointer_events_;
   std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> pointer_sink_;
+
+  // System keys to a full-screen remote screen (key_grab.h): the channel
+  // zestssh/key_grab (available, start, stop, renew) and its events
+  // zestssh/key_grab/events ([vk, scan, extended, down]), as
+  // lib/features/screens/view/screen_key_grab.dart names them.
+  void SetUpKeyGrab();
+  std::unique_ptr<key_grab::KeyGrab> key_grab_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      key_channel_;
+  std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>>
+      key_events_;
+  std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> key_sink_;
+
+  // Full screen on all monitors (monitor_span.h): the channel
+  // zestssh/monitor_span (monitors, span, unspan), as
+  // lib/features/screens/desktop/screen_span.dart names it.
+  void SetUpMonitorSpan();
+  monitor_span::Span span_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      span_channel_;
 
   // Windows of the app's own drawn by this window's engine, a view each
   // (view_windows.h): a remote screen in a window of its own.

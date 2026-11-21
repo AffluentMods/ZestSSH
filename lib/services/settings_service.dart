@@ -58,6 +58,8 @@ class SettingsService {
     'auto_execute_snippets', 'auto_reconnect', 'auto_restore_workspace', 'automation_enabled', 'bell_enabled',
     'close_confirmation', 'command_history_enabled', 'command_history_include_sensitive',
     'command_history_suggestions', 'compact_keyboard', 'connection_timeout', 'copy_on_select',
+    // AI apps through MCP (4.1): the switch and the port it listens on.
+    'mcp_enabled', 'mcp_port',
     'cursor_blink', 'cursor_style', 'cursor_visibility', 'custom_accent_color', 'dangerous_command_protection',
     'default_auth_method', 'default_identity_id', 'default_port', 'default_snippet_category', 'default_username',
     'desktop_confirm_close_sessions', 'desktop_host_panel_collapsed_groups', 'desktop_host_panel_visible',
@@ -83,7 +85,7 @@ class SettingsService {
     // strip of a remote's displays is open (4.0: a layout), and whether a phone's bar over a remote
     // screen stays shown, whether a Mac's Command key goes to a remote screen as Ctrl, and which groups of a
     // remote screen's session panel are folded.
-    'screen_bar_kept', 'screen_cmd_as_ctrl', 'screen_default_clipboard', 'screen_default_scaling', 'screen_default_touch',
+    'screen_bar_kept', 'screen_cmd_as_ctrl', 'screen_default_clipboard', 'screen_system_keys', 'screen_default_scaling', 'screen_default_touch',
     'screen_display_strip', 'screen_panel_folded',
     'screen_menu_key', 'screen_recording', 'screen_smooth_scaling',
     'session_log_dir', 'session_log_enabled',
@@ -194,6 +196,8 @@ class SettingsService {
   /// and its layout, the keyboard, update checks, recording mode, rendering,
   /// the language until a person picks one, what is asked once per device.
   static const Set<String> deviceKeys = {
+    // The port AI apps reach ZestSSH's MCP server on (4.1): this computer's.
+    'mcp_port',
     // The app lock, and what its lock screen shows.
     'encrypting_lock_enabled', 'security_lock_enabled', 'lock2_app_lock', 'lock2_encrypting', 'lock_show_sessions',
     'lock_sessions_shown',
@@ -256,6 +260,7 @@ class SettingsService {
   /// by name so that a new key has to say which it is.
   static const Set<String> profileKeys = {
     // Their settings.
+    'mcp_enabled',
     'agentless_monitor_enabled', 'app_locale', 'app_theme_id', 'ask_before_trusting_keys', 'auto_backup_interval',
     'auto_execute_snippets', 'auto_reconnect', 'auto_restore_workspace', 'automation_enabled', 'bell_enabled',
     'close_confirmation', 'command_history_enabled', 'command_history_include_sensitive',
@@ -273,7 +278,7 @@ class SettingsService {
     'notify_transfer_failed', 'osc52_clipboard', 'reachability_checks_enabled', 'scrollback_lines',
     // The scaling their new remote screens are saved with, and whether their own hosts' screens share the
     // clipboard by default (4.0).
-    'screen_default_clipboard', 'screen_default_scaling',
+    'screen_default_clipboard', 'screen_system_keys', 'screen_default_scaling',
     'session_log_dir',
     'session_log_enabled', 'session_log_timestamps', 'sftp_delete_hold_seconds', 'sftp_hidden_level',
     'sftp_time_format', 'shortcut_overrides', 'snippet_destructive_confirm', 'sync_interval_minutes',
@@ -1219,6 +1224,18 @@ class SettingsService {
       _prefs.getBool('automation_enabled') ?? false;
   Future<void> setAutomationEnabled(bool enabled) =>
       _prefs.setBool('automation_enabled', enabled);
+
+  // ── AI apps (MCP, 4.1) ──────────────────────────────────────────
+
+  /// Whether AI apps on this computer may use ZestSSH through its MCP
+  /// server. Off until the person turns it on.
+  bool get mcpEnabled => _prefs.getBool('mcp_enabled') ?? false;
+  Future<void> setMcpEnabled(bool enabled) => _prefs.setBool('mcp_enabled', enabled);
+
+  /// The port the MCP server listens on, on 127.0.0.1.
+  static const int defaultMcpPort = 47390;
+  int get mcpPort => _prefs.getInt('mcp_port') ?? defaultMcpPort;
+  Future<void> setMcpPort(int port) => _prefs.setInt('mcp_port', port);
 
   // ── Networks ─────────────────────────────────────────────────────
 

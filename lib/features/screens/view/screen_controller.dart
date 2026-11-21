@@ -31,6 +31,7 @@ import 'package:zestssh/features/screens/model/screen_view_size.dart';
 
 import 'screen_keyboard.dart';
 import 'screen_pointer.dart';
+import 'screen_key_grab.dart';
 import 'screen_pointer_hold.dart';
 import 'screen_sound_gate.dart';
 import 'screen_touch.dart';
@@ -101,6 +102,8 @@ class ScreenController extends ChangeNotifier {
     // Places are the shown display's; the remote takes the whole desktop's.
     pointer = ScreenPointer((x, y, buttons) => session.pointer(x + _shownX, y + _shownY, buttons));
     keyboard = ScreenKeyboard((keysym, scancode, down) => session.key(keysym, down: down, scancode: scancode));
+    // On Windows the Windows key stays this computer's until full screen's hook takes it.
+    keyboard.keepSuperLocal = defaultTargetPlatform == TargetPlatform.windows;
     mouse = ScreenMouse(viewport: viewport, pointer: pointer, changed: notifyListeners);
     touch = ScreenTouch(viewport: viewport, pointer: pointer, changed: notifyListeners)
       // A phone's Mouse pointer mode with relative mouse on: movement as movement.
@@ -132,6 +135,42 @@ class ScreenController extends ChangeNotifier {
 
   /// Holds this computer's pointer while relative mouse is on ([relativeMouse]).
   late final ScreenPointerHold hold;
+
+  /// Takes the system keys for this screen in full screen (4.1, Windows).
+  late final ScreenKeyGrab keyGrab = ScreenKeyGrab(
+    grabber: debugKeyGrabber ?? ChannelKeyGrabber(),
+    onKey: (physical, key, down) => keyboard.grabbedKey(physical, key, down: down),
+  );
+
+  /// The computer's part that takes system keys, for tests (the app's own
+  /// channel otherwise).
+  @visibleForTesting
+  static KeyGrabber? debugKeyGrabber;
+
+  bool _systemKeysWanted = false;
+  bool _keyboardFocused = false;
+
+  /// Full screen with Settings' "Send system keys in full screen" on: the
+  /// tab or window says so.
+  set systemKeysWanted(bool value) {
+    if (_systemKeysWanted == value) return;
+    _systemKeysWanted = value;
+    _updateKeyGrab();
+  }
+
+  /// Whether the picture has the keyboard (the view says so).
+  set keyboardFocused(bool value) {
+    if (_keyboardFocused == value) return;
+    _keyboardFocused = value;
+    _updateKeyGrab();
+  }
+
+  /// The system keys are taken only while all of it holds.
+  void _updateKeyGrab() {
+    keyGrab.wanted = !_disposed && _systemKeysWanted && _keyboardFocused && !_viewOnly && !_paused && !_idle;
+    // On Windows the Windows key is the remote's only while the hook takes it.
+    keyboard.keepSuperLocal = defaultTargetPlatform == TargetPlatform.windows && !keyGrab.wanted;
+  }
 
   /// The computer's part that holds the pointer, for tests (the app's own
   /// channel otherwise).
@@ -675,6 +714,7 @@ class ScreenController extends ChangeNotifier {
   void pause() {
     if (_paused || _disposed) return;
     _paused = true;
+    _updateKeyGrab();
     keyboard.releaseAll();
     pointer.release();
     // Not in front: the pointer is this computer's.
@@ -690,6 +730,7 @@ class ScreenController extends ChangeNotifier {
   void resume() {
     if (!_paused || _disposed) return;
     _paused = false;
+    _updateKeyGrab();
     _gateInput();
     if (!_idle) session.resume();
     _pending = true;
@@ -706,6 +747,7 @@ class ScreenController extends ChangeNotifier {
   set idle(bool value) {
     if (_idle == value || _disposed) return;
     _idle = value;
+    _updateKeyGrab();
     if (value) {
       keyboard.releaseAll();
       pointer.release();
@@ -752,6 +794,7 @@ class ScreenController extends ChangeNotifier {
       hold.release();
     }
     _viewOnly = value;
+    _updateKeyGrab();
     _gateInput();
     notifyListeners();
   }
@@ -889,6 +932,35 @@ class ScreenController extends ChangeNotifier {
     _ask(viewport.viewSize, after: Duration.zero);
   }
 
+  /// Full screen on all monitors (4.1): the displays the remote is asked
+  /// for, one per monitor of this PC, kept while it lasts; null otherwise.
+  /// Meanwhile the view's size asks for nothing.
+  List<ScreenDisplaySpec>? get spanned => _span;
+  List<ScreenDisplaySpec>? _span;
+
+  /// Asks the remote for [displays] (one per monitor) and shows them all.
+  void spanDisplays(List<ScreenDisplaySpec> displays) {
+    if (_disposed || displays.isEmpty) return;
+    _span = List.unmodifiable(displays);
+    _resizeTimer?.cancel();
+    session.setDisplays(displays);
+    showDisplay(null);
+  }
+
+  /// Back from all monitors: the remote follows the view again, where it
+  /// did ([followViewSize]), or is asked for what it had before
+  /// ([before]: the displays it had, or null to leave it as it is).
+  void endSpan({List<ScreenDisplaySpec>? before}) {
+    if (_span == null || _disposed) return;
+    _span = null;
+    if (_followViewSize) {
+      _askedSize = Size.zero;
+      _ask(viewport.viewSize, after: Duration.zero);
+    } else if (before != null && before.isNotEmpty) {
+      session.setDisplays(before);
+    }
+  }
+
   /// The server said it takes no resize (the engine's
   /// `{"resize_unavailable": true}`): [followViewSize] is off again, the
   /// picture stays fitted, and whoever shows the view says so.
@@ -952,6 +1024,8 @@ class ScreenController extends ChangeNotifier {
     // In the screen's own pixels, the text made as much larger: sharp on a
     // screen scaled above 100% (ScreenViewSize.ratioFor).
     final ratio = ScreenViewSize.ratioFor(viewport.devicePixelRatio, phone: maxDesktopPixels != null);
+    // On all monitors the displays are the monitors', whatever the view's size.
+    if (_span != null) return;
     if (size.isEmpty || (size == _askedSize && ratio == _askedRatio)) return;
     // The first time: the scale this session started with, the one given for
     // the view that last followed its tab (screen_shell_service's startScale).
@@ -1006,6 +1080,7 @@ class ScreenController extends ChangeNotifier {
     // silences it (unless it handed its part to a window of its own).
     if (_soundPlays && !_closed) ScreenSoundGate.of(session).release(this);
     _disposed = true;
+    keyGrab.dispose();
     _resizeTimer?.cancel();
     _gate?.cancel();
     unawaited(_sub.cancel());

@@ -1519,6 +1519,9 @@ const _nobodys = <String>{
   // only on or off and which views want it; it goes with its session, which a change of profile
   // ends.
   'features/screens/view/screen_sound_gate.dart _gates',
+  // The remote screen that takes the system keys now (4.1, Windows): one screen's controller, which
+  // lets go when its view goes; a change of profile ends the sessions and their views.
+  'features/screens/view/screen_key_grab.dart _owner',
   // The conversation with a security key: it holds what one sign-in asks while it runs (a label, the PIN
   // typed for it) and nothing once it ends; a change of profile ends the sessions that could ask.
   'services/fido/fido_signer.dart fidoSigner',

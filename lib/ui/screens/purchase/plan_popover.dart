@@ -127,13 +127,13 @@ class PlanChip extends ConsumerWidget {
             key: named == null ? const ValueKey('plan-chip') : ValueKey('plan-chip-${named.name}'),
             borderRadius: BorderRadius.circular(999),
             onTap: open,
-            // 48 high to a thumb on a phone or a tablet, drawn as small.
-            child: touch
-                ? ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
-                    child: Center(widthFactor: 1, heightFactor: 1, child: pill),
-                  )
-                : pill,
+            // 48 high to a thumb on a phone or a tablet, 32 to a pointer on a
+            // computer, drawn as small (it was 19 high on a computer: found
+            // in the accessibility pass when What's new tagged a note).
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: touch ? 48 : 32, minWidth: touch ? 48 : 32),
+              child: Center(widthFactor: 1, heightFactor: 1, child: pill),
+            ),
           ),
         ),
       ),

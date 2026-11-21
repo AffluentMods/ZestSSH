@@ -18,7 +18,7 @@ import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatf
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:zest_native/screen.dart' show ScreenProtocol, ScreenSession;
+import 'package:zest_native/screen.dart' show ScreenDisplaySpec, ScreenProtocol, ScreenSession;
 import 'package:zestssh/providers/shortcut_overrides_provider.dart';
 import 'package:zestssh/features/shortcuts/shortcut_key.dart';
 import 'package:zestssh/features/screens/displays/screen_display_keys.dart';
@@ -60,6 +60,7 @@ import 'package:zestssh/ui/widgets/top_snackbar.dart';
 import 'package:zestssh/utils/platform_utils.dart' show isDesktopPlatform;
 
 import 'screen_menu.dart';
+import 'screen_span.dart';
 import 'screen_toolbar.dart';
 
 /// The scaling a host's saved option starts the tab in. "Resize the remote"
@@ -104,6 +105,11 @@ class ScreenPane extends ConsumerStatefulWidget {
   /// This computer's clipboard, for widget tests.
   @visibleForTesting
   static ScreenClipboardIo? debugClipboard;
+
+  /// The monitors and the window's stretching over them (full screen on all
+  /// monitors, 4.1), for widget tests.
+  @visibleForTesting
+  static MonitorSpanner? debugSpanner;
 
   @override
   ConsumerState<ScreenPane> createState() => _ScreenPaneState();
@@ -170,6 +176,7 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
     );
     WindowService.fullscreen.addListener(_onFullscreen);
     _focus.addListener(_onFocus);
+    unawaited(_countMonitors());
     ScreenWindows.instance.shown.addListener(_onOwnWindows);
     // The picture of its own window took the keyboard: this computer's
     // clipboard goes to the remote, as when the tab's picture takes it.
@@ -292,6 +299,77 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
   /// person had made full screen before stays so).
   bool _enteredWindowFullScreen = false;
 
+  // Full screen on all monitors (4.1, Windows, RDP): the window stretched
+  // over every monitor and the remote asked for one display per monitor;
+  // what the remote had before, put back on leaving; how many monitors this
+  // PC has, as last asked (the menu offers it with two or more).
+  bool _spanned = false;
+  List<ScreenDisplaySpec>? _beforeSpan;
+  int _monitorCount = 0;
+  MonitorSpanner get _spanner => ScreenPane.debugSpanner ?? const ChannelMonitorSpanner();
+
+  /// How many monitors this PC has, asked again before the menu shows it.
+  Future<void> _countMonitors() async {
+    if (defaultTargetPlatform != TargetPlatform.windows && ScreenPane.debugSpanner == null) return;
+    final n = (await _spanner.monitors()).length;
+    if (mounted && n != _monitorCount) setState(() => _monitorCount = n);
+  }
+
+  /// Full screen on all monitors: the remote asked for one display per
+  /// monitor, the window over them all, and the full-screen frame (its bar,
+  /// the menu key, Ctrl+Alt+Break) to lead out.
+  Future<void> _enterSpan() async {
+    final c = _c;
+    if (c == null || _inOwnWindow || _spanned) return;
+    // From the system's own full screen first: the window is stretched from
+    // a plain one, and its full screen's end is not taken for this one's.
+    if (_fullScreen) await _setFullScreen(false);
+    if (!mounted) return;
+    final plan = SpanPlan.of(await _spanner.monitors());
+    if (plan == null || !mounted) return;
+    if (!await _spanner.span(plan.area)) {
+      if (mounted) showTopSnackBar(context, AppLocalizations.of(context)!.screenAllMonitorsFailed, isError: true);
+      return;
+    }
+    if (!mounted) {
+      unawaited(_spanner.unspan());
+      return;
+    }
+    // What the remote has now, to ask for again on leaving: its displays, or
+    // its one picture.
+    final have = c.displays.value.list;
+    _beforeSpan = have.length > 1
+        ? [
+            for (final d in have)
+              ScreenDisplaySpec(x: d.x, y: d.y, width: d.width, height: d.height, scale: c.textScale, primary: d.primary),
+          ]
+        : [
+            ScreenDisplaySpec(
+              width: c.desktopWidth > 0 ? c.desktopWidth : c.width,
+              height: c.desktopHeight > 0 ? c.desktopHeight : c.height,
+              scale: c.textScale,
+              primary: true,
+            ),
+          ];
+    c.spanDisplays(plan.displays);
+    _spanned = true;
+    _enteredWindowFullScreen = false;
+    setState(() => _fullScreen = true);
+    _portal.show();
+    _sayFullScreen(true);
+    _takeKeyboardSoon();
+  }
+
+  /// Back from all monitors: the window as it was, the remote's displays as
+  /// they were (or following the tab again).
+  Future<void> _leaveSpan() async {
+    if (!_spanned) return;
+    _spanned = false;
+    _c?.endSpan(before: _beforeSpan);
+    _beforeSpan = null;
+    await _spanner.unspan();
+  }
+
   /// The keys that show displays 1 to 4 (Settings, Keyboard shortcuts).
   List<ShortcutKey?> _displayKeys({bool watch = false}) {
     final bindings = watch ? ref.watch(shortcutBindingsProvider) : ref.read(shortcutBindingsProvider);
@@ -344,6 +422,9 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
       _portal.show();
       _sayFullScreen(true);
     } else {
+      // On all monitors: the window and the remote's displays put back first.
+      await _leaveSpan();
+      if (!mounted) return;
       final leave = _enteredWindowFullScreen;
       _enteredWindowFullScreen = false;
       setState(() => _fullScreen = false);
@@ -490,6 +571,11 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
   @override
   void dispose() {
     WindowService.fullscreen.removeListener(_onFullscreen);
+    // Closed while on all monitors: the window is put back.
+    if (_spanned) {
+      _spanned = false;
+      unawaited(_spanner.unspan());
+    }
     // Closed while in full screen (the session ended, its tab was closed):
     // the window is put back as this screen found it.
     if (_fullScreen && _enteredWindowFullScreen && WindowService.fullscreen.value) {
@@ -563,6 +649,11 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
         fit: _fit ?? ScreenFit.fit,
         viewOnly: _viewOnly ?? false,
         fullScreen: _fullScreen,
+        allMonitorsOffered: (defaultTargetPlatform == TargetPlatform.windows || ScreenPane.debugSpanner != null) &&
+            _shell?.protocol == ScreenProtocol.rdp &&
+            _monitorCount > 1 &&
+            !_covered,
+        allMonitorsOn: _spanned,
         keyboardHeld: keyboardHeld ?? _focus.hasFocus,
         canResizeRemote: _shell?.protocol == ScreenProtocol.rdp,
         resizingRemote: _resizeRemote ?? false,
@@ -618,6 +709,13 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
           c?.viewOnly = _viewOnly!;
         case ScreenAction.fullScreen:
           await _setFullScreen(!_fullScreen);
+          return;
+        case ScreenAction.allMonitors:
+          if (_spanned) {
+            await _setFullScreen(false);
+          } else {
+            await _enterSpan();
+          }
           return;
         case ScreenAction.refresh:
           _session?.fullRefresh();
@@ -773,6 +871,9 @@ class _ScreenPaneState extends ConsumerState<ScreenPane> {
       scheduleMicrotask(() => unawaited(_setFullScreen(false)));
     }
     c?.keyboard.onLeaveFullScreen = _fullScreen ? () => unawaited(_setFullScreen(false)) : null;
+    // In full screen the system keys (the Windows key, Alt+Tab...) are the
+    // remote's, unless Settings says otherwise (4.1, Windows).
+    c?.systemKeysWanted = _fullScreen && defaultTargetPlatform == TargetPlatform.windows && ref.watch(screenSystemKeysProvider);
     // Alt and a digit (unless changed): that display, caught before the remote has it.
     c?.keyboard.onAppKey = c == null ? null : (e) => showDisplayForKey(_displayKeys(), c, e);
     // Their labels for full screen's buttons, following a change in Settings.

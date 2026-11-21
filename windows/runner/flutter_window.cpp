@@ -26,6 +26,11 @@ constexpr size_t kMaxPendingLinks = 8;
 // Relative mouse's channels, as screen_pointer_hold.dart names them.
 constexpr char kPointerCaptureChannel[] = "zestssh/pointer_capture";
 constexpr char kPointerCaptureEvents[] = "zestssh/pointer_capture/events";
+// System keys' channels, as screen_key_grab.dart names them.
+constexpr char kKeyGrabChannel[] = "zestssh/key_grab";
+constexpr char kKeyGrabEvents[] = "zestssh/key_grab/events";
+// Full screen on all monitors' channel, as screen_span.dart names it.
+constexpr char kMonitorSpanChannel[] = "zestssh/monitor_span";
 }  // namespace
 
 LRESULT CALLBACK FlutterWindow::InjectedKeySubclassProc(
@@ -114,6 +119,8 @@ bool FlutterWindow::OnCreate() {
       });
 
   SetUpPointerCapture();
+  SetUpKeyGrab();
+  SetUpMonitorSpan();
   view_windows_ = std::make_unique<ViewWindows>(flutter_controller_.get());
 
   // Register plugin re-initialization for secondary (detached) windows.
@@ -227,6 +234,123 @@ void FlutterWindow::SetUpPointerCapture() {
           }));
 }
 
+void FlutterWindow::SetUpKeyGrab() {
+  using flutter::EncodableList;
+  using flutter::EncodableValue;
+
+  key_grab_ = std::make_unique<key_grab::KeyGrab>(
+      key_grab::SystemOs(), [this](int vk, int scan, bool extended, bool down) {
+        if (key_sink_) {
+          key_sink_->Success(EncodableValue(EncodableList{
+              EncodableValue(static_cast<int32_t>(vk)),
+              EncodableValue(static_cast<int32_t>(scan)),
+              EncodableValue(extended),
+              EncodableValue(down),
+          }));
+        }
+      });
+
+  key_channel_ = std::make_unique<flutter::MethodChannel<EncodableValue>>(
+      flutter_controller_->engine()->messenger(), kKeyGrabChannel,
+      &flutter::StandardMethodCodec::GetInstance());
+  key_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<EncodableValue>> result) {
+        const std::string& method = call.method_name();
+        if (method == "available") {
+          result->Success(EncodableValue(true));
+        } else if (method == "start") {
+          result->Success(EncodableValue(
+              key_grab_ != nullptr && key_grab_->Start(GetHandle())));
+        } else if (method == "stop") {
+          if (key_grab_) {
+            key_grab_->Stop();
+          }
+          result->Success();
+        } else if (method == "renew") {
+          if (key_grab_) {
+            key_grab_->Renew();
+          }
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+
+  key_events_ = std::make_unique<flutter::EventChannel<EncodableValue>>(
+      flutter_controller_->engine()->messenger(), kKeyGrabEvents,
+      &flutter::StandardMethodCodec::GetInstance());
+  key_events_->SetStreamHandler(
+      std::make_unique<flutter::StreamHandlerFunctions<EncodableValue>>(
+          [this](const EncodableValue* arguments,
+                 std::unique_ptr<flutter::EventSink<EncodableValue>>&& events)
+              -> std::unique_ptr<flutter::StreamHandlerError<EncodableValue>> {
+            key_sink_ = std::move(events);
+            return nullptr;
+          },
+          [this](const EncodableValue* arguments)
+              -> std::unique_ptr<flutter::StreamHandlerError<EncodableValue>> {
+            // Nobody listens any more: nothing is taken.
+            if (key_grab_) {
+              key_grab_->Stop();
+            }
+            key_sink_ = nullptr;
+            return nullptr;
+          }));
+}
+
+void FlutterWindow::SetUpMonitorSpan() {
+  using flutter::EncodableList;
+  using flutter::EncodableValue;
+
+  span_channel_ = std::make_unique<flutter::MethodChannel<EncodableValue>>(
+      flutter_controller_->engine()->messenger(), kMonitorSpanChannel,
+      &flutter::StandardMethodCodec::GetInstance());
+  span_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<EncodableValue>> result) {
+        const std::string& method = call.method_name();
+        if (method == "monitors") {
+          // [left, top, width, height, dpi, primary] each, the primary first.
+          EncodableList list;
+          for (const monitor_span::Monitor& m : monitor_span::ListMonitors()) {
+            list.push_back(EncodableValue(EncodableList{
+                EncodableValue(static_cast<int32_t>(m.rect.left)),
+                EncodableValue(static_cast<int32_t>(m.rect.top)),
+                EncodableValue(static_cast<int32_t>(m.rect.right - m.rect.left)),
+                EncodableValue(static_cast<int32_t>(m.rect.bottom - m.rect.top)),
+                EncodableValue(static_cast<int32_t>(m.dpi)),
+                EncodableValue(m.primary),
+            }));
+          }
+          result->Success(EncodableValue(list));
+        } else if (method == "span") {
+          // [left, top, width, height] of the area to cover.
+          const auto* args = std::get_if<EncodableList>(call.arguments());
+          if (args == nullptr || args->size() != 4) {
+            result->Success(EncodableValue(false));
+            return;
+          }
+          int32_t v[4];
+          for (size_t i = 0; i < 4; ++i) {
+            const auto* n = std::get_if<int32_t>(&(*args)[i]);
+            if (n == nullptr) {
+              result->Success(EncodableValue(false));
+              return;
+            }
+            v[i] = *n;
+          }
+          const RECT area{v[0], v[1], v[0] + v[2], v[1] + v[3]};
+          result->Success(EncodableValue(span_.Enter(GetHandle(), area)));
+        } else if (method == "unspan") {
+          span_.Leave(GetHandle());
+          result->Success();
+        } else {
+          result->NotImplemented();
+        }
+      });
+}
+
 void FlutterWindow::OnDestroy() {
   single_instance::UnmarkMainWindow(GetHandle());
   // The windows drawn by this window's engine go before the engine does.
@@ -236,6 +360,12 @@ void FlutterWindow::OnDestroy() {
   pointer_sink_ = nullptr;
   pointer_events_ = nullptr;
   pointer_channel_ = nullptr;
+  span_channel_ = nullptr;
+  // The keyboard hook goes with the grab.
+  key_grab_ = nullptr;
+  key_sink_ = nullptr;
+  key_events_ = nullptr;
+  key_channel_ = nullptr;
   deep_link_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
@@ -267,6 +397,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   // mouse's raw movement, and every reason to give the pointer back.
   if (pointer_hold_ &&
       pointer_hold_->OnMessage(hwnd, message, wparam, lparam)) {
+    return 0;
+  }
+
+  // A system key the keyboard hook took for a full-screen remote screen.
+  if (key_grab_ && key_grab_->OnMessage(hwnd, message, wparam, lparam)) {
     return 0;
   }
 

@@ -20,7 +20,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zestssh/theme/ui_density.dart' show UiDensity, setUiDensity, uiDensityProvider;
-import 'package:zestssh/utils/platform_utils.dart' show isTouchLayout;
+import 'package:zestssh/utils/platform_utils.dart' show isDesktopPlatform, isTouchLayout;
+import 'package:zestssh/features/mcp/mcp_service.dart';
+import 'package:zestssh/features/screens/this_pc/this_pc_remote_access_dialog.dart' show showThisPcRemoteAccess;
+import 'package:zestssh/features/mcp/widgets/mcp_settings_parts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:zestssh/features/password_managers/password_manager_providers.dart';
@@ -120,6 +123,8 @@ enum _SettingsSection {
   // Remote screens (4.0): the screen menu's key, a new screen's scaling, a
   // phone's pointer and what recording mode does to the picture.
   screens(LucideIcons.monitor, _SettingsGroup.connections),
+  // Your own AI app using ZestSSH through MCP (4.1): computers only.
+  ai(LucideIcons.bot, _SettingsGroup.connections),
   // The app lock, encryption at rest, host keys, dangerous commands and
   // recording mode.
   security(LucideIcons.shield, _SettingsGroup.securityData),
@@ -133,6 +138,14 @@ enum _SettingsSection {
   final IconData icon;
   final _SettingsGroup group;
 }
+
+/// Whether this device's Settings has [section]: Plan where there are plans
+/// to buy, AI apps on a computer (the MCP server runs on computers only).
+bool _sectionShown(_SettingsSection section) => switch (section) {
+      _SettingsSection.plan => zestHasPlans,
+      _SettingsSection.ai => isDesktopPlatform,
+      _ => true,
+    };
 
 /// The name of a group of pages, over them in the list (About stands alone,
 /// under a line, with no name over it).
@@ -155,6 +168,7 @@ String _sectionLabel(AppLocalizations l10n, _SettingsSection section) => switch 
       _SettingsSection.terminal => l10n.settingsPageTerminalSsh,
       _SettingsSection.files => l10n.settingsPageFiles,
       _SettingsSection.screens => l10n.settingsScreensSection,
+      _SettingsSection.ai => l10n.settingsPageMcp,
       _SettingsSection.security => l10n.settingsPageSecurityPrivacy,
       _SettingsSection.data => l10n.settingsPageBackupsData,
       _SettingsSection.about => l10n.settingsInlineSectionAbout,
@@ -186,7 +200,7 @@ const String kSettingsLastSectionKey = 'settings_last_section';
 final _lastSettingsSectionProvider = StateProvider<_SettingsSection>((ref) {
   final kept = ref.read(sharedPreferencesProvider).getString(kSettingsLastSectionKey);
   return _SettingsSection.values
-          .where((s) => s.name == kept && (s != _SettingsSection.plan || zestHasPlans))
+          .where((s) => s.name == kept && _sectionShown(s))
           .firstOrNull ??
       _kMovedSections[kept] ??
       _SettingsSection.general;
@@ -788,8 +802,9 @@ class _SettingsNav extends ConsumerWidget {
     final items = <Widget>[];
     _SettingsGroup? group;
     for (final s in _SettingsSection.values) {
-      // (No Plan page in a build with no plans to buy.)
-      if (s == _SettingsSection.plan && !zestHasPlans) continue;
+      // (No Plan page in a build with no plans to buy, no AI apps page on a
+      // phone or tablet.)
+      if (!_sectionShown(s)) continue;
       if (s.group != group) {
         group = s.group;
         final name = _groupLabel(l10n, s.group);
@@ -1089,6 +1104,16 @@ class _SettingSearchEntry {
 class _SettingSearchSpec {
   const _SettingSearchSpec(this.section, this.title, [this.subtitle])
       : macOnly = false,
+        windowsOnly = false,
+        byName = false,
+        plans = false,
+        computerOnly = false;
+
+  /// A row Windows' Settings has alone (Remote access to this PC, 4.1): found
+  /// on Windows only.
+  const _SettingSearchSpec.windowsOnly(this.section, this.title, [this.subtitle])
+      : macOnly = false,
+        windowsOnly = true,
         byName = false,
         plans = false,
         computerOnly = false;
@@ -1096,6 +1121,7 @@ class _SettingSearchSpec {
   /// A row a Mac's Settings has alone (Option as Meta): found on a Mac only.
   const _SettingSearchSpec.macOnly(this.section, this.title, [this.subtitle])
       : macOnly = true,
+        windowsOnly = false,
         byName = false,
         plans = false,
         computerOnly = false;
@@ -1105,6 +1131,7 @@ class _SettingSearchSpec {
   /// of its own (4.0), so found on a computer only.
   const _SettingSearchSpec.computerOnly(this.section, this.title, [this.subtitle])
       : macOnly = false,
+        windowsOnly = false,
         byName = false,
         plans = false,
         computerOnly = true;
@@ -1113,6 +1140,7 @@ class _SettingSearchSpec {
   /// is not shown: found by those who are in no team.
   const _SettingSearchSpec.plans(this.section, this.title, [this.subtitle])
       : macOnly = false,
+        windowsOnly = false,
         byName = false,
         plans = true,
         computerOnly = false;
@@ -1123,6 +1151,7 @@ class _SettingSearchSpec {
   /// before.
   const _SettingSearchSpec.page(this.section, this.title, [this.subtitle])
       : macOnly = false,
+        windowsOnly = false,
         byName = true,
         plans = false,
         computerOnly = false;
@@ -1131,6 +1160,7 @@ class _SettingSearchSpec {
   final String Function(AppLocalizations l) title;
   final String Function(AppLocalizations l)? subtitle;
   final bool macOnly;
+  final bool windowsOnly;
   final bool byName;
   final bool plans;
   final bool computerOnly;
@@ -1255,6 +1285,14 @@ final List<_SettingSearchSpec> _kSettingsSearchIndex = [
   _SettingSearchSpec(_SettingsSection.screens, (l) => l.settingsScreenTouchDefault, (l) => l.settingsScreenTouchDefaultDesc),
   _SettingSearchSpec(_SettingsSection.screens, (l) => l.settingsScreenRecording, (l) => l.settingsScreenRecordingDesc),
   _SettingSearchSpec(_SettingsSection.screens, (l) => l.settingsScreenClipboardDefault, (l) => l.settingsScreenClipboardDefaultDesc),
+  _SettingSearchSpec.windowsOnly(_SettingsSection.screens, (l) => l.screenSystemKeys, (l) => l.screenSystemKeysDesc),
+  _SettingSearchSpec.windowsOnly(_SettingsSection.screens, (l) => l.thisPcLabel, (l) => l.thisPcDesc),
+  _SettingSearchSpec(_SettingsSection.ai, (l) => l.mcpSwitch, (l) => l.mcpSwitchDesc),
+  _SettingSearchSpec(_SettingsSection.ai, (l) => l.mcpStatusLabel),
+  _SettingSearchSpec(_SettingsSection.ai, (l) => l.mcpPortLabel, (l) => l.mcpPortDesc),
+  _SettingSearchSpec(_SettingsSection.ai, (l) => l.mcpTokenLabel, (l) => l.mcpTokenDesc),
+  _SettingSearchSpec(_SettingsSection.ai, (l) => l.mcpSetupLabel, (l) => l.mcpSetupDesc),
+  _SettingSearchSpec(_SettingsSection.ai, (l) => l.mcpActivityLabel, (l) => l.mcpActivityDesc),
   // Security and privacy
   _SettingSearchSpec(_SettingsSection.security, (l) => l.settingsInlineAppLock),
   _SettingSearchSpec(_SettingsSection.security, (l) => l.secSetChangePin, (l) => l.secSetChangePinSubtitle),
@@ -1543,6 +1581,7 @@ class _ContentArea extends ConsumerWidget {
         _SettingsSection.terminal => l10n.settingsPageTerminalSshDesc,
         _SettingsSection.files => l10n.settingsPageFilesDesc,
         _SettingsSection.screens => l10n.settingsScreensHelp,
+        _SettingsSection.ai => l10n.settingsPageMcpDesc,
         _SettingsSection.security => l10n.settingsPageSecurityPrivacyDesc,
         _SettingsSection.data => l10n.settingsPageBackupsDataDesc,
         _SettingsSection.about => '',
@@ -1647,8 +1686,9 @@ class _ContentArea extends ConsumerWidget {
     final inTeam = (ref.watch(orchardSummariesProvider).valueOrNull ?? const []).isNotEmpty;
     for (final spec in _kSettingsSearchIndex) {
       if (spec.macOnly && defaultTargetPlatform != TargetPlatform.macOS) continue;
+      if (spec.windowsOnly && defaultTargetPlatform != TargetPlatform.windows) continue;
       if (spec.computerOnly && isTouchLayout) continue;
-      if (spec.section == _SettingsSection.plan && !zestHasPlans) continue;
+      if (!_sectionShown(spec.section)) continue;
       if (identical(spec, _kMoshSearchSpec) && !moshSystemClientOffered) continue;
       if (spec.plans && inTeam) continue;
       final e = spec.said(l10n);
@@ -1754,6 +1794,93 @@ class _ContentArea extends ConsumerWidget {
           onChanged: (v) => ref.read(screenClipboardDefaultProvider.notifier).set(v),
         ),
       ),
+      // The system keys to the remote in full screen (4.1, Windows' keyboard hook).
+      if (defaultTargetPlatform == TargetPlatform.windows && !isTouchLayout)
+        _SettingRow(
+          label: l10n.screenSystemKeys,
+          subtitle: l10n.screenSystemKeysDesc,
+          child: _Toggle(
+            key: const ValueKey('screen-settings-system-keys'),
+            value: ref.watch(screenSystemKeysProvider),
+            onChanged: (v) => ref.read(screenSystemKeysProvider.notifier).set(v),
+          ),
+        ),
+      // Remote access to this PC (4.1): Windows' Remote Desktop, checked and
+      // turned on through Windows' own administrator question.
+      if (defaultTargetPlatform == TargetPlatform.windows && !isTouchLayout)
+        _SettingRow(
+          label: l10n.thisPcLabel,
+          subtitle: l10n.thisPcDesc,
+          child: _ActionButton(
+            key: const ValueKey('this-pc-open'),
+            label: l10n.thisPcOpen,
+            icon: LucideIcons.monitorSmartphone,
+            onPressed: () => showThisPcRemoteAccess(context),
+          ),
+        ),
+    ];
+  }
+
+  /// AI apps (4.1): the MCP server's switch, where it listens, its port and
+  /// token, the setup to paste into an AI app, and what AI apps did.
+  List<Widget> _buildMcp(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    // Squeezed's (a team seat has the full app): without it the switch shows
+    // off and opens the plans.
+    final isPro = ref.watch(isProProvider);
+    final inTeam = (ref.watch(orchardSummariesProvider).valueOrNull ?? const []).isNotEmpty;
+    return [
+      _SettingRow(
+        label: l10n.mcpSwitch,
+        labelTrailing: inTeam ? null : const PlanChip(plan: AccountPlan.squeezed),
+        subtitle: l10n.mcpSwitchDesc,
+        alwaysShowSubtitle: true,
+        child: _Toggle(
+          key: const ValueKey('mcp-switch'),
+          value: isPro && ref.watch(mcpEnabledProvider),
+          onChanged: (v) {
+            if (v && !isPro) {
+              PricingModal.show(context);
+              return;
+            }
+            ref.read(mcpEnabledProvider.notifier).set(v);
+          },
+        ),
+      ),
+      _SettingRow(
+        label: l10n.mcpStatusLabel,
+        child: const McpStatusText(),
+      ),
+      _SettingRow(
+        label: l10n.mcpPortLabel,
+        subtitle: l10n.mcpPortDesc,
+        child: SizedBox(
+          width: 110,
+          child: _NumberField(
+            value: ref.watch(mcpPortProvider),
+            min: 1024,
+            max: 65535,
+            onChanged: (v) => ref.read(mcpPortProvider.notifier).set(v),
+          ),
+        ),
+      ),
+      _SettingRow(
+        label: l10n.mcpTokenLabel,
+        subtitle: l10n.mcpTokenDesc,
+        child: const McpTokenButtons(),
+      ),
+      _SettingRow(
+        label: l10n.mcpSetupLabel,
+        subtitle: l10n.mcpSetupDesc,
+        alwaysShowSubtitle: true,
+        child: const McpSetupButtons(),
+      ),
+      _SettingRow(
+        label: l10n.mcpActivityLabel,
+        subtitle: l10n.mcpActivityDesc,
+        child: const SizedBox.shrink(),
+      ),
+      const McpActivityList(),
     ];
   }
 
@@ -1786,6 +1913,8 @@ class _ContentArea extends ConsumerWidget {
         return _buildFiles(context, ref);
       case _SettingsSection.screens:
         return _buildScreens(context, ref);
+      case _SettingsSection.ai:
+        return _buildMcp(context, ref);
       case _SettingsSection.security:
         return _buildSecurity(context, ref);
       case _SettingsSection.data:

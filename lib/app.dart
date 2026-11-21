@@ -10,6 +10,8 @@ import 'package:zestssh/services/review_prompt.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:zestssh/ui/screens/sync/cloud_device_room.dart';
+import 'package:zestssh/features/mcp/mcp_service.dart' show McpStatus, mcpServerProvider;
+import 'package:zestssh/features/mcp/widgets/mcp_dialogs.dart' show answerMcpRequests;
 import 'package:zestssh/features/password_managers/password_manager_providers.dart';
 import 'package:zestssh/features/automation/automation_link_question.dart' show answerAutomationLinks;
 import 'package:zestssh/features/orchards/widgets/team_host_commands_question.dart' show answerTeamCommandRequests;
@@ -1767,6 +1769,11 @@ class _ZestSSHAppState extends ConsumerState<ZestSSHApp>
     // offline limit is about to close something (3.0): opened here, over
     // whatever screen is up.
     answerPassAskRequests(ref, () => ref.read(routerProvider).routerDelegate.navigatorKey.currentContext);
+    // Your own AI app using ZestSSH through MCP (4.1, computers): the server
+    // runs while its switch is on and the database open, and what it asks
+    // (reading a session, running a command) is asked here.
+    ref.listen<McpStatus>(mcpServerProvider, (_, _) {});
+    answerMcpRequests(ref, () => ref.read(routerProvider).routerDelegate.navigatorKey.currentContext);
     // What unlocked Bitwarden or KeePassXC is kept only until ZestSSH locks.
     ref.listen<bool>(isAppLockedProvider, (_, locked) {
       if (locked) ref.read(passwordManagersProvider)?.lock();

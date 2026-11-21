@@ -367,6 +367,9 @@ void main() {
       // Quick connect typed as user@host: SSH.
       'lib/features/hosts/pages/hosts_home_page.dart': 1,
       'lib/features/hosts/phone/phone_host_selection.dart': 1,
+      // An AI app's open_session (4.1, MCP): SSH, Mosh and Eternal Terminal
+      // hosts only, never Telnet.
+      'lib/features/mcp/mcp_service.dart': 1,
       // Joining a shared tmux session of a team's host.
       'lib/features/sharing/share_providers.dart': 1,
       'lib/features/snippets/run_snippet.dart': 1,

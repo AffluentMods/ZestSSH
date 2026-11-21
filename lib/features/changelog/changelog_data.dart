@@ -41,6 +41,19 @@ class ChangelogEntry {
 /// Every release, newest first. The first entry is the current version.
 const List<ChangelogEntry> kChangelog = [
   ChangelogEntry(
+    version: "4.1.0",
+    date: "November 2026",
+    tag: "Bring Your Own AI",
+    sections: [
+      ChangelogSection(ChangelogCategory.features, [
+        ChangelogNote("Your own AI app can use ZestSSH (preview, computers): turn on Settings > AI apps and paste the setup into Claude Code, Cursor, VS Code or another app that speaks MCP. It can list the hosts of your own list and open sessions on them; it reads a session only once you allow it, and every command it wants to run waits for you to allow that command in ZestSSH, where you see it typed. Passwords and keys are never given out, team hosts are not offered, and nothing listens on your network: only on this computer, with a token. Settings shows what AI apps did", ChangelogTier.pro),
+        ChangelogNote("Remote access to this PC (Windows): Settings > Remote screens says whether another device can reach this PC's desktop over Remote Desktop (the edition, Remote Desktop, the sign-in before the desktop, the firewall), turns it on after Windows' administrator question, changing only what Windows' own switch changes, and lists the addresses to add from your other devices"),
+        ChangelogNote("Remote screens on Windows: in full screen the Windows key, Alt+Tab, Alt+Esc, Ctrl+Esc, Alt+Space, Alt+F4, Print Screen and the menu key go to the remote instead of this PC, as in Windows' own Remote Desktop (Settings > Remote screens > Send system keys in full screen). Another program in front, or the screen losing the keyboard, gives them back at once"),
+        ChangelogNote("Remote screens on Windows: Full screen on all monitors (in the screen's menu, for RDP on a PC with two or more monitors) asks the remote for one display per monitor, each at that monitor's size, place and scaling, and covers them all, as Remote Desktop's own Use all my monitors does. Ctrl+Alt+Break or the menu puts the window and the remote's displays back"),
+      ]),
+    ],
+  ),
+  ChangelogEntry(
     version: "4.0.1",
     date: "November 2026",
     tag: "Room to Work",

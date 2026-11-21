@@ -206,6 +206,11 @@ void main() {
       'lib/services/automation_service.dart': [
         'client.execute(CommandText.script(command))',
       ],
+      // An AI app's command (4.1, MCP), allowed by the person: one line
+      // (a line break is refused), entered.
+      'lib/features/mcp/mcp_service.dart': [
+        '.sendInput(id, Uint8List.fromList(utf8.encode(CommandText.entered(command))));',
+      ],
       // Run on hosts (3.0): one command on many hosts, handed whole.
       'lib/features/run/run_on_hosts.dart': [
         '.execute(CommandText.script(run.command))',

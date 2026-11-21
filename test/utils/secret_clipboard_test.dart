@@ -212,6 +212,8 @@ void main() {
       'lib/ui/screens/sftp/sftp_browser_screen.dart': 1,
       'lib/ui/screens/sftp/widgets/sftp_pane.dart': 2,
       'lib/ui/screens/sftp/widgets/transfer_queue_panel.dart': 1,
+      // This PC's address on its network, to add it from another device (4.1): no secret.
+      'lib/features/screens/this_pc/this_pc_remote_access_dialog.dart': 1,
       'lib/ui/screens/snippets/snippets_screen.dart': 2,
       'lib/ui/screens/terminal/terminal_screen.dart': 2,
       // The changed key's command; the first connection's fingerprint and its
